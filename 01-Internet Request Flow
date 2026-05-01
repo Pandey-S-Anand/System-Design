@@ -363,13 +363,20 @@ Example:
         53
 
 Yahan:
-
     53000 = temporary client port assigned by OS to laptop
-
     53  = DNS server ka well-known port
 
 
+Agar DNS answer cache me nahi ho,
+to router upstream DNS server ko request forward karta hai.
+
+    - Google DNS
+    - ISP DNS
+    - Cloudflare DNS
+
+
 Router fir:
+- Ethernet/MAC header remove karta hai
 - routing table check karta hai
 - next-hop decide karta hai
 - new frame bana kar internet me forward karta hai
@@ -380,16 +387,6 @@ Yahan router:
     - DNS Cache
 
 ka kaam karta hai.
-
-Matlab:
-
-router DNS request ko actual upstream DNS servers:
-
-    - Google DNS
-    - ISP DNS
-    - Cloudflare DNS
-
-etc. ko forward karta hai.
 
 
 IMPORTANT:
