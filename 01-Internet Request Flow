@@ -1,7 +1,7 @@
 /*
 ╔═════════════════════════════════════════════════════════════════════╗
-║                 COMPLETE INTERNET REQUEST FLOW                    ║
-║            (DHCP → DNS → TCP → TLS → HTTPS → PAT)                ║
+║                 COMPLETE INTERNET REQUEST FLOW                      ║
+║            (DHCP → DNS → TCP → TLS → HTTPS → PAT)                   ║
 ╚═════════════════════════════════════════════════════════════════════╝
 
 
