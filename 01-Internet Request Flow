@@ -1,0 +1,1035 @@
+/*
+╔═════════════════════════════════════════════════════════════════════╗
+║                 COMPLETE INTERNET REQUEST FLOW                    ║
+║            (DHCP → DNS → TCP → TLS → HTTPS → PAT)                ║
+╚═════════════════════════════════════════════════════════════════════╝
+
+
+=====================================================================
+1. DEVICE CONNECTS TO ROUTER (DHCP PHASE)
+=====================================================================
+
+Jab device (laptop/mobile) router se connect karta hai,
+to router DHCP (Dynamic Host Configuration Protocol) ke through
+network configuration assign karta hai.
+
+
+                    ┌──────────────────────┐
+                    │      ROUTER          │
+                    │   (DHCP SERVER)      │
+                    └──────────┬───────────┘
+                               │
+                               │ Assigns
+                               ▼
+
+                    ┌──────────────────────┐
+                    │       LAPTOP         │
+                    └──────────────────────┘
+
+
+Example:
+
+IP Address:
+192.168.1.5
+
+Gateway:
+192.168.1.1
+
+DNS Server:
+192.168.1.1
+OR
+8.8.8.8 (Google DNS)
+
+Subnet Mask:
+255.255.255.0
+
+
+---------------------------------------------------------------------
+CAN TWO DEVICES CONNECTED TO SAME ROUTER HAVE SAME PRIVATE IP?
+---------------------------------------------------------------------
+
+NO.
+
+Same local network ke andar:
+do active devices ka same private IP nahi ho sakta.
+
+
+❌ INVALID:
+
+    Laptop:
+    192.168.1.5
+
+    Phone:
+    192.168.1.5
+
+
+Agar dono same IP use karein,
+to network conflict ho jayega.
+
+Isi wajah se DHCP ensure karta hai:
+har connected device ko unique private IP mile.
+
+
+HOWEVER:
+
+Different routers/networks me same private IP possible hai.
+
+
+✔ VALID:
+
+    Home router mai Mobile ka IP:
+    192.168.1.5
+
+    Office router mai mobile ka IP:
+    192.168.1.5
+
+
+Ye valid hai because:
+private IPs globally unique nahi hote.
+
+Sirf local network ke andar unique hone chahiye.
+
+
+=====================================================================
+2. PRIVATE IP vs PUBLIC IP
+=====================================================================
+
+                    LOCAL NETWORK
+    ┌──────────────────────────────────────────┐
+
+        Laptop      Phone        TV
+      192.168.1.5  192.168.1.7  192.168.1.10
+             \         |          /
+              \        |         /
+               ▼       ▼        ▼
+
+            ┌─────────────────────┐
+            │       ROUTER        │
+            │   49.205.10.20      │  ← PUBLIC IP
+            └─────────────────────┘
+
+    └──────────────────────────────────────────┘
+                        │
+                        │
+                        ▼
+                    INTERNET
+
+
+192.168.x.x wala IP private IP hota hai.
+
+Ye sirf local network ke andar valid hota hai.
+Internet par directly visible nahi hota.
+
+Isliye:
+- mera laptop internet par directly visible nahi hota
+- duniya ko sirf router ka public IP dikhta hai
+
+
+Router ko ISP (Jio/Airtel etc.) ek public IP assign karta hai.
+
+Example:
+49.205.10.20
+
+Ye public IP globally visible hota hai.
+
+
+=====================================================================
+3. USER TYPES: google.com
+=====================================================================
+
+                    ┌──────────────────────┐
+                    │       BROWSER        │
+                    │    google.com        │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                       DNS RESOLUTION
+
+
+Browser pehle DNS resolution karta hai.
+
+Agar DHCP ne DNS as:
+192.168.1.1
+diya hai, to DNS request pehle router ke paas jayegi.
+
+Router yahan:
+- DNS forwarder
+- DNS cache
+
+ka kaam karta hai.
+
+
+Router ke paas upstream DNS configured hota hai:
+- ISP DNS
+OR
+- Google DNS (8.8.8.8)
+OR
+- Cloudflare DNS (1.1.1.1)
+
+
+=====================================================================
+4. DNS QUERY FLOW
+=====================================================================
+
+
+                DNS REQUEST FLOW
+
+    ┌─────────────────────────────────────┐
+    │ 192.168.1.5:53000                  │
+    │             ↓                      │
+    │      192.168.1.1:53                │
+    └─────────────────────────────────────┘
+
+
+Example DNS request:
+
+192.168.1.5:53000
+-> 192.168.1.1:53
+
+
+Yahan:
+
+192.168.1.5
+= laptop private IP
+
+53000
+= temporary client port assigned by OS
+(ephemeral port)
+
+53
+= DNS server port
+
+
+NOTE:
+Client side par ports usually temporary hote hain.
+Server side par ports mostly fixed/well-known hote hain.
+
+
+Examples:
+
+53  -> DNS
+80  -> HTTP
+443 -> HTTPS
+
+
+=====================================================================
+5. ROUTER DOES PAT (Port Address Translation)
+=====================================================================
+
+People casually "NAT" bol dete hain.
+
+But technically:
+
+NAT
+= only IP translation
+
+PAT
+= IP + Port translation
+
+
+Home routers usually PAT use karte hain because:
+multiple devices same public IP share karte hain.
+
+
+                    BEFORE PAT
+
+    192.168.1.5:53000
+            │
+            ▼
+      8.8.8.8:53
+
+
+                     AFTER PAT
+
+    49.205.10.20:61000
+            │
+            ▼
+       8.8.8.8:53
+
+
+Yahan router:
+- private IP replace karta hai apne public IP se
+- source port bhi remap karta hai
+
+
+=====================================================================
+WHY PORT TRANSLATION IS ALSO NEEDED?
+=====================================================================
+
+IMPORTANT.
+
+Suppose:
+
+Laptop:
+192.168.1.5:4321
+
+Phone:
+192.168.1.7:4321
+
+
+Dono devices same source port use kar sakte hain internally.
+
+
+Agar router sirf IP translate kare aur port same rakhe:
+
+❌ INVALID:
+
+49.205.10.20:4321
+49.205.10.20:4321
+
+
+To ambiguity ho jayegi.
+
+Router ko pata nahi chalega:
+response laptop ke liye tha ya phone ke liye.
+
+
+Isliye router unique public-side ports assign karta hai:
+
+
+✔ VALID:
+
+Laptop:
+49.205.10.20:3921
+
+Phone:
+49.205.10.20:3922
+
+
+Isi wajah se PAT powerful hai.
+
+
+=====================================================================
+DO ALL DEVICES CONNECTED TO THE SAME ROUTER APPEAR WITH THE SAME PUBLIC IP ON THE INTERNET DURING PAT?
+=====================================================================
+
+YES.
+
+
+                    INTERNET VIEW
+
+            49.205.10.20
+                 │
+       ┌─────────┼─────────┐
+       ▼         ▼         ▼
+
+    Laptop     Phone       TV
+    :3921      :3922      :3923
+
+
+Home network me usually:
+sab devices same public IP share karte hain.
+
+
+Example:
+
+Laptop:
+192.168.1.5
+
+Phone:
+192.168.1.7
+
+TV:
+192.168.1.10
+
+
+Internet ko sab:
+49.205.10.20
+
+ke through hi visible honge.
+
+
+Difference create hota hai:
+PORT mappings se.
+
+
+Example:
+
+49.205.10.20:3921
+-> Laptop
+
+49.205.10.20:3922
+-> Phone
+
+49.205.10.20:3923
+-> TV
+
+
+=====================================================================
+WHY PORTS EXIST?
+=====================================================================
+
+
+                    SINGLE MACHINE
+    ┌────────────────────────────────────┐
+    │                                    │
+    │  Chrome     → Port 4321            │
+    │  Spotify    → Port 5500            │
+    │  VSCode     → Port 6200            │
+    │  WhatsApp   → Port 7100            │
+    │                                    │
+    └────────────────────────────────────┘
+
+
+Ek machine ke andar multiple applications simultaneously
+network use kar sakte hain:
+
+- Chrome
+- Spotify
+- VSCode
+- WhatsApp
+
+
+To OS ko identify karna hota hai:
+response kis application/socket ke liye hai.
+
+
+Isliye:
+
+IP
+= identifies machine
+
+Port
+= identifies application/process/socket
+
+
+=====================================================================
+6. DNS RESPONSE RETURNS
+=====================================================================
+
+
+                    DNS RESPONSE
+
+        8.8.8.8:53
+              │
+              ▼
+    49.205.10.20:61000
+
+
+Google DNS response bhejta hai:
+
+8.8.8.8:53
+-> 49.205.10.20:61000
+
+
+Router PAT table check karta hai:
+
+49.205.10.20:61000
+-> 192.168.1.5:53000
+
+
+Fir router response laptop ko forward karta hai.
+
+Browser ko finally Google ka IP mil jata hai.
+
+
+Example:
+
+142.250.xx.xx
+
+
+=====================================================================
+7. HTTPS CONNECTION STARTS
+=====================================================================
+
+                    HTTPS REQUEST
+
+    192.168.1.5:4321
+              │
+              ▼
+    142.250.xx.xx:443
+
+
+Ab browser actual HTTPS connection start karta hai.
+
+
+Example:
+
+192.168.1.5:4321
+-> 142.250.xx.xx:443
+
+
+Yahan:
+
+142.250.xx.xx
+= Google server IP
+
+443
+= HTTPS server port
+
+4321
+= temporary client port assigned by OS
+
+
+=====================================================================
+SUBNET MASK AND GATEWAY ROLE
+=====================================================================
+
+Jab laptop ko kisi destination IP par packet bhejna hota hai,
+to sabse pehle wo check karta hai:
+
+"Kya ye destination mere local network (same subnet) me hai?"
+
+
+                    ┌────────────────────┐
+                    │  SUBNET MASK       │
+                    │ decides:           │
+                    │                    │
+                    │ LOCAL ?            │
+                    │ or                 │
+                    │ OUTSIDE NETWORK ?  │
+                    └────────────────────┘
+
+
+Yahan subnet mask use hota hai.
+
+
+---------------------------------------------------------------------
+EXAMPLE
+---------------------------------------------------------------------
+
+Laptop IP:
+    192.168.1.5
+
+Subnet Mask:
+    255.255.255.0
+
+
+Is subnet mask ka meaning hai:
+
+    192.168.1.xxx
+
+wale devices same local network me hain.
+
+
+To:
+
+    192.168.1.2
+    192.168.1.5
+    192.168.1.100
+
+same local network me hain.
+
+
+But:
+
+    142.250.xx.xx  (Google server IP)
+
+same local network me nahi hai.
+
+
+=====================================================================
+CASE 1: DESTINATION SAME LOCAL NETWORK ME HAI
+=====================================================================
+
+
+                    SAME LOCAL NETWORK
+
+    Laptop                        Mobile
+ 192.168.1.5  ───────────────▶ 192.168.1.7
+
+
+Suppose:
+
+Mobile bhi same router se connected hai.
+
+Mobile IP:
+    192.168.1.7
+
+
+Ab laptop packet bhejna chahta hai:
+
+    192.168.1.5
+        ->
+    192.168.1.7
+
+
+Laptop subnet check karta hai aur dekhta hai:
+
+    192.168.1.7
+
+same subnet me hai because:
+
+    192.168.1.xxx
+
+same local network hai.
+
+
+Ab laptop conclude karta hai:
+
+"Destination local network me hi hai,
+isliye gateway/router ki zarurat nahi hai."
+
+
+Is case me:
+
+- gateway use nahi hoga
+- packet directly local network me bheja jayega
+
+
+Laptop ko mobile ko packet bhejne ke liye mobile ka MAC address chahiye.
+
+
+So laptop ARP broadcast bhejta hai:
+
+    "Who has 192.168.1.7 ?
+     Tell 192.168.1.5"
+
+
+Mobile reply karta hai:
+
+    "192.168.1.7 is me.
+     My MAC is:
+     XX:YY:ZZ"
+
+
+NOW LAPTOP FRAME BHEJTA HAI
+
+
+Ethernet/WiFi Frame:
+
+    Destination MAC:
+    Mobile MAC
+
+    Source MAC:
+    Laptop MAC
+
+
+Inside IP Packet:
+
+    Source IP:
+    192.168.1.5
+
+    Destination IP:
+    192.168.1.7
+
+
+=====================================================================
+CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI
+=====================================================================
+
+
+                    OUTSIDE NETWORK
+
+    Laptop
+ 192.168.1.5
+        │
+        ▼
+    Gateway / Router
+     192.168.1.1
+        │
+        ▼
+      INTERNET
+        │
+        ▼
+  142.250.xx.xx
+
+
+Ab suppose laptop Google server ko packet bhejna chahta hai:
+
+    142.250.xx.xx
+
+
+Laptop subnet check karta hai aur conclude karta hai:
+
+    "Ye IP mere local network me nahi hai."
+
+
+Ab laptop decide karta hai:
+
+    "Packet ko gateway/router ke paas bhejna padega."
+
+
+IMPORTANT:
+
+Packet ka final destination IP change nahi hota.
+
+
+Packet ke andar STILL likha hota hai:
+
+    Destination IP:
+    142.250.xx.xx
+
+NOT:
+
+    192.168.1.1
+
+
+GATEWAY KA ROLE :
+
+Gateway actually "next-hop" hota hai.
+
+Matlab laptop internally sochta hai:
+
+    "Ye packet ultimately Google ke liye hai,
+     but us tak pahunchne ke liye pehle router ko dena padega,
+     kyunki router hi internet tak rasta jaanta hai."
+
+
+=====================================================================
+DNS LOOKUP CASE ME SUBNET AUR GATEWAY KA ROLE
+=====================================================================
+
+
+                    CASE 1
+         DNS SERVER = 192.168.1.1
+
+
+Example:
+
+DHCP ne DNS server diya:
+
+    192.168.1.1
+
+
+Ab laptop DNS request bhejna chahta hai:
+
+    192.168.1.5
+        ->
+    192.168.1.1
+
+
+Laptop subnet mask check karta hai aur dekhta hai:
+
+    192.168.1.1
+
+same local network me hai because:
+
+    192.168.1.xxx
+
+same subnet hai.
+
+
+IS CASE ME KYA HOGA?
+
+- destination local hai
+- gateway use nahi hoga
+- packet directly local network me bheja jayega
+
+
+Laptop ko packet bhejne ke liye
+destination MAC address chahiye.
+
+IP address enough nahi hota
+local Ethernet/WiFi communication ke liye.
+
+
+So laptop ARP broadcast bhejta hai:
+
+    "Who has 192.168.1.1 ?
+     Tell 192.168.1.5"
+
+
+Router bolta hai:
+
+    "192.168.1.1 is me.
+     My MAC is:
+     AA:BB:CC:DD"
+
+
+NOW LAPTOP FRAME BHEJTA HAI
+
+
+Ethernet/WiFi Frame:
+
+    Destination MAC:
+    Router MAC
+
+    Source MAC:
+    Laptop MAC
+
+
+Inside IP Packet:
+
+    Source IP:
+    192.168.1.5
+
+    Destination IP:
+    192.168.1.1
+
+
+IMPORTANT UNDERSTANDING
+
+Yahan router as gateway act nahi kar raha.
+
+Yahan router simply ek local device ki tarah act kar raha hai.
+
+Kyuki:
+
+    192.168.1.1
+
+same subnet me hai.
+
+
+---------------------------------------------------------------------
+CASE 2
+DNS SERVER = 8.8.8.8
+---------------------------------------------------------------------
+
+
+Suppose DHCP ne DNS server diya hota:
+
+    8.8.8.8  (Google DNS)
+
+
+Ab laptop subnet check karta aur conclude karta:
+
+    "8.8.8.8 mere local network me nahi hai."
+
+
+Ab is case me: gateway use hoga.
+
+
+                    FLOW
+
+    Laptop
+        │
+        ▼
+    Gateway / Router
+        │
+        ▼
+    Google DNS
+      8.8.8.8
+
+
+Matlab:
+
+    Subnet batata hai:
+        destination local hai ya nahi.
+
+    Aur agar destination local nahi hai,
+    to packet gateway/router ko bheja jata hai.
+
+
+=====================================================================
+8. WHY TCP IS NEEDED?
+=====================================================================
+
+Internet is somewhat unreliable.
+
+
+Internet par packets:
+- lost ho sakte hain
+- duplicate ho sakte hain
+- wrong order me pahunch sakte hain
+
+
+                    INTERNET
+
+    Packet 1   ❌ Lost
+    Packet 2   ✅ Received
+    Packet 3   ✅ Received
+
+
+Example:
+
+Agar browser HTML page download kar raha hai:
+
+Packet 1
+Packet 2
+Packet 3
+
+
+Possible hai:
+- Packet 2 lost ho jaye
+- Packet 3 pehle aa jaye
+- Packet duplicate ho jaye
+
+
+Agar reliable protocol na ho,
+to webpage corrupt ho sakta hai.
+
+
+Isi problem ko solve karta hai TCP.
+
+
+TCP = Transmission Control Protocol
+
+
+TCP provide karta hai:
+
+1. Reliable delivery
+   -> lost packet dubara mangta hai
+
+2. Ordered delivery
+   -> packets correct sequence me arrange karta hai
+
+3. Error checking
+   -> corrupted packet detect karta hai
+
+4. Flow control
+   -> sender ko control karta hai ki kitna fast bhejna hai
+
+5. Congestion control
+   -> internet overload hone se bachata hai
+
+
+Isliye:
+HTTP/HTTPS usually TCP use karte hain.
+
+
+=====================================================================
+9. TCP HANDSHAKE (VERY IMPORTANT)
+=====================================================================
+
+HTTP/HTTPS directly start nahi hota.
+
+Sabse pehle:
+TCP connection establish hota hai.
+
+
+TCP ek connection-oriented protocol hai.
+
+Matlab:
+communication start hone se pehle
+client aur server ek reliable connection establish karte hain.
+
+
+Is process ko:
+TCP 3-way handshake bolte hain.
+
+
+                    TCP 3-WAY HANDSHAKE
+
+
+    CLIENT                         SERVER
+
+      SYN        ───────────────▶
+
+                  ◀───────────────  SYN-ACK
+
+      ACK        ───────────────▶
+
+
+Ab:
+TCP connection successfully establish ho gaya.
+
+
+=====================================================================
+10. TLS HANDSHAKE (HTTPS SECURITY LAYER)
+=====================================================================
+
+TCP establish hone ke baad:
+
+TLS handshake hota hai.
+
+
+TLS = Transport Layer Security
+
+Ye encryption provide karta hai.
+
+
+TLS ensure karta hai:
+- data encrypted ho
+- hacker packets sniff kare to bhi read na kar sake
+- server genuine ho
+
+
+TLS handshake me:
+- certificates exchange hote hain
+- encryption algorithms decide hote hain
+- session keys generate hoti hain
+
+
+                    CONNECTION STACK
+
+        TCP Handshake
+                ↓
+        TLS Handshake
+                ↓
+      Encrypted HTTPS Traffic
+
+
+IMPORTANT:
+
+HTTPS actually:
+
+HTTP + TLS hota hai.
+
+
+=====================================================================
+11. ROUTER AGAIN DOES PAT
+=====================================================================
+
+
+                    BEFORE PAT
+
+    192.168.1.5:4321
+            │
+            ▼
+    142.250.xx.xx:443
+
+
+                     AFTER PAT
+
+    49.205.10.20:3921
+            │
+            ▼
+    142.250.xx.xx:443
+
+
+Router internally PAT table maintain karta hai:
+
+49.205.10.20:3921
+-> 192.168.1.5:4321
+
+
+=====================================================================
+12. GOOGLE RECEIVES REQUEST
+=====================================================================
+
+
+                    GOOGLE SEES
+
+    49.205.10.20:3921
+              │
+              ▼
+    142.250.xx.xx:443
+
+
+Google ko request dikhti hai:
+
+49.205.10.20:3921
+-> 142.250.xx.xx:443
+
+
+Google response bhejta hai:
+
+142.250.xx.xx:443
+-> 49.205.10.20:3921
+
+
+=====================================================================
+13. ROUTER REVERSE PAT
+=====================================================================
+
+
+                    ROUTER PAT TABLE
+
+    49.205.10.20:3921
+                │
+                ▼
+    192.168.1.5:4321
+
+
+Router PAT table check karta hai:
+
+49.205.10.20:3921
+-> 192.168.1.5:4321
+
+
+Fir router response correct:
+- device
+- application/socket
+
+ko forward karta hai.
+
+
+Final delivery:
+
+192.168.1.5:4321
+
+
+Aur finally Chrome response receive karta hai.
+
+*/
