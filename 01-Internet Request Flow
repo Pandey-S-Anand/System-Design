@@ -271,11 +271,9 @@ Ab laptop DNS request bhejna chahta hai:
     192.168.1.1
 
 
-Laptop subnet mask check karta hai aur dekhta hai:
+Laptop subnet mask check karta hai aur conclude karta hai:
 
-    192.168.1.1
-
-same local network me hai.
+    "192.168.1.1 same local network me hai."
 
 
 IS CASE ME KYA HOGA?
@@ -285,46 +283,112 @@ IS CASE ME KYA HOGA?
     ✔ packet directly local network me bheja jayega
 
 
-Laptop ko packet bhejne ke liye
-destination MAC address chahiye.
+Lekin local network me packet bhejne ke liye
+laptop ko destination device ka MAC address chahiye.
 
 
-So laptop ARP broadcast bhejta hai:
+Isliye laptop ARP broadcast bhejta hai:
 
     "Who has 192.168.1.1 ?
      Tell 192.168.1.5"
 
 
-Router bolta hai:
+Router reply karta hai:
 
     "192.168.1.1 is me.
      My MAC is:
      AA:BB:CC:DD"
 
 
-NOW LAPTOP FRAME BHEJTA HAI
+Ab laptop actual DNS request send karta hai.
+
+IMPORTANT:
+
+Laptop:
+- IP packet aur Ethernet/WiFi frame separately nahi bhejta
+- balki multiple layers ko ek dusre ke andar wrap/encapsulate karta hai
+
+NOW LAPTOP Ethernet/WiFi frame local network ke through router ko send karta hai.
+
+┌──────────────────────────────────────┐
+│         Ethernet / Wi-Fi Frame       │
+│  [MAC Header]                        │
+│  Destination MAC : Router MAC        │
+│  Source MAC      : Laptop MAC        │
+│                                      │
+│   ┌──────────────────────────────┐   │
+│   │         IP Packet            │   │
+│   │ [IP Header]                  │   │
+│   │ Source IP : 192.168.1.5      │   │
+│   │ Dest IP   : 192.168.1.1      │   │
+│   │                              │   │
+│   │   ┌──────────────────────┐   │   │
+│   │   │   UDP Segment        |   |   |
+│   │   │                      |   |   |
+│   │   │ [UDP Header]         │   │   │
+│   │   │ Src Port : 53000     │   │   │
+│   │   │ Dst Port : 53        │   │   │
+│   │   │                      │   │   │
+│   │   │ DNS Request Data     │   │   │
+│   │   └──────────────────────┘   │   │
+│   │                              │   │
+│   └──────────────────────────────┘   │
+│                                      │
+└──────────────────────────────────────┘
 
 
-Ethernet/WiFi Frame:
+UDP SEGMENT KYA HOTA HAI?
 
-    Destination MAC:
-        Router MAC
+DNS usually UDP protocol use karta hai.
 
-    Source MAC:
-        Laptop MAC
+UDP ka full form: User Datagram Protocol
+
+UDP transport layer protocol hai.
+
+Ye:
+- source port
+- destination port
+
+maintain karta hai so that OS ko pata chale:
+
+    "Ye data kis application/process ke liye hai?"
 
 
-Inside IP Packet:
+Example:
 
-    Source IP:
-        192.168.1.5
+    Source Port:
+        53000
 
-    Destination IP:
-        192.168.1.1
+    Destination Port:
+        53
+
+Yahan:
+
+    53000 = temporary client port assigned by OS
+
+    53  = DNS server ka well-known port
 
 
-Is tarah laptop DNS request directly router ko bhejta hai.
+IMPORTANT:
 
+MAC change hota rehta hai every hop
+IP mostly same rehta hai
+
+Example:
+
+Laptop → Router:
+
+Src MAC = Laptop
+Dst MAC = Router
+
+Router → ISP:
+
+Src MAC = Router
+Dst MAC = ISP Next Hop
+
+BUT:
+
+IP packet mostly same rehta hai:
 
 Yahan router:
 
@@ -332,7 +396,6 @@ Yahan router:
     - DNS Cache
 
 ka kaam karta hai.
-
 
 Matlab:
 
@@ -343,7 +406,6 @@ router DNS request ko actual upstream DNS servers:
     - Cloudflare DNS
 
 etc. ko forward karta hai.
-
 
 IMPORTANT UNDERSTANDING
 
@@ -408,7 +470,6 @@ Google DNS tak forward karta hai.
 IMPORTANT:
 
 Packet ka final destination IP change nahi hota.
-
 
 Packet ke andar STILL likha hota hai:
 
@@ -706,54 +767,54 @@ Yahan:
 = temporary client port assigned by OS
 
 =====================================================================
-CASE 1 : DESTINATION SAME LOCAL NETWORK / ME HAI 
+CASE 1 : DESTINATION SAME LOCAL NETWORK ME HAI
 =====================================================================
 
- SAME LOCAL NETWORK
+                  SAME LOCAL NETWORK
 
-    Laptop                        Mobile
- 192.168.1.5  ───────────────▶ 192.168.1.7
+    Laptop                                      Mobile
+192.168.1.5:53000  ───────────────▶  192.168.1.7:8080
 
 
 Suppose:
 
-Mobile bhi same router se connected hai.
+Mobile bhi same router/local network se connected hai.
 
 Mobile IP:
-    192.168.1.7
-
-
-Ab laptop packet bhejna chahta hai:
-
-    192.168.1.5
-        ->
-    192.168.1.7
-
-
-Laptop subnet check karta hai aur dekhta hai:
 
     192.168.1.7
 
-same subnet me hai because:
 
-    192.168.1.xxx
+Ab laptop mobile ko data bhejna chahta hai:
 
-same local network hai.
-
-
-Ab laptop conclude karta hai:
-
-"Destination local network me hi hai,
-isliye gateway ki zarurat nahi hai."
+    192.168.1.5:53000
+              ->
+    192.168.1.7:8080
 
 
-Is case me:
+Yahan:
 
-- gateway use nahi hoga
-- packet directly local network me bheja jayega
+    53000
+        = temporary source port
+          assigned by laptop OS
+
+    8080
+        = destination port on which
+          mobile application/service is listening
+
+Laptop subnet mask check karta hai aur conclude karta hai:
+
+    "192.168.1.7 same local network/subnet me hai."
 
 
-Laptop ko mobile ko packet bhejne ke liye mobile ka MAC address chahiye.
+Isliye laptop decide karta hai:
+
+    ✔ gateway use nahi hoga
+    ✔ packet directly local network me bheja jayega
+
+
+Lekin local network me packet bhejne ke liye
+laptop ko destination device ka MAC address chahiye.
 
 
 So laptop ARP broadcast bhejta hai:
@@ -769,27 +830,84 @@ Mobile reply karta hai:
      XX:YY:ZZ"
 
 
-NOW LAPTOP FRAME BHEJTA HAI
+Ab laptop actual data send karta hai.
+
+IMPORTANT:
+
+Laptop:
+- IP packet aur Ethernet/WiFi frame separately nahi bhejta
+- balki multiple networking layers ko ek dusre ke andar encapsulate/wrap karta hai
 
 
-Ethernet/WiFi Frame:
-
-    Destination MAC:
-    Mobile MAC
-
-    Source MAC:
-    Laptop MAC
+NOW LAPTOP FRAME SEND KARTA HAI
 
 
-Inside IP Packet:
+┌──────────────────────────────────────┐
+│         Ethernet / Wi-Fi Frame       │
+│                                      │
+│  [MAC Header]                        │
+│                                      │
+│  Destination MAC : Mobile MAC        │
+│  Source MAC      : Laptop MAC        │
+│                                      │
+│   ┌──────────────────────────────┐   │
+│   │         IP Packet            │   │
+│   │                              │   │
+│   │ [IP Header]                  │   │
+│   │                              │   │
+│   │ Source IP : 192.168.1.5      │   │
+│   │ Dest IP   : 192.168.1.7      │   │
+│   │                              │   │
+│   │   ┌──────────────────────┐   │   │
+│   │   │   TCP/UDP Segment    │   │   │
+│   │   │                      │   │   │
+│   │   │ [Transport Header]   │   │   │
+│   │   │                      │   │   │
+│   │   │ Src Port : 53000     │   │   │
+│   │   │ Dst Port : 8080      │   │   │
+│   │   │                      │   │   │
+│   │   │ Application Data     │   │   │
+│   │   └──────────────────────┘   │   │
+│   │                              │   │
+│   └──────────────────────────────┘   │
+│                                      │
+└──────────────────────────────────────┘
 
-    Source IP:
-    192.168.1.5
 
-    Destination IP:
-    192.168.1.7
+Ye complete Ethernet/WiFi frame same local network ke through directly mobile tak travel karta hai.
 
-This is how devices send packets over the same network.
+
+=====================================================================
+TCP vs UDP
+=====================================================================
+
+TCP:
+- TCP use hota hai jab reliability chahiye
+- Ordered delivery
+- Packet loss recover karta hai
+- Connection-oriented (handshake hota hai)
+
+Used in:
+- HTTPS
+- Login systems
+- Banking
+- File downloads
+- APIs
+
+
+UDP:
+- UDP use hota hai jab speed important ho
+- No reliability guarantee
+- No ordering guarantee
+- Connectionless (no handshake)
+
+Used in:
+- DNS
+- Online gaming
+- Video calls
+- Live streaming
+- VoIP
+
 =====================================================================
 CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI (Original Case : Accessing google.com)
 =====================================================================
