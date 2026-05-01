@@ -370,13 +370,27 @@ Yahan:
 
 
 Router fir:
+- routing table check karta hai
+- next-hop decide karta hai
+- new frame bana kar internet me forward karta hai
 
-    - frame receive karta hai
-    - Ethernet / MAC header remove karta hai
-    - IP packet inspect karta hai
-    - routing table check karta hai
-    - next-hop decide karta hai
-    - new frame bana kar internet me forward karta hai
+
+Yahan router:
+    - DNS Forwarder
+    - DNS Cache
+
+ka kaam karta hai.
+
+Matlab:
+
+router DNS request ko actual upstream DNS servers:
+
+    - Google DNS
+    - ISP DNS
+    - Cloudflare DNS
+
+etc. ko forward karta hai.
+
 
 IMPORTANT:
 
@@ -395,23 +409,6 @@ Router → ISP:
 
 Src MAC = Router
 Dst MAC = ISP Next Hop
-
-
-Yahan router:
-    - DNS Forwarder
-    - DNS Cache
-
-ka kaam karta hai.
-
-Matlab:
-
-router DNS request ko actual upstream DNS servers:
-
-    - Google DNS
-    - ISP DNS
-    - Cloudflare DNS
-
-etc. ko forward karta hai.
 
 
 IMPORTANT UNDERSTANDING
