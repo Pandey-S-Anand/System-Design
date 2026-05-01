@@ -381,7 +381,6 @@ Router fir:
 IMPORTANT:
 
 MAC change hota rehta hai every hop
-IP mostly same rehta hai
 
 Example:
 
@@ -1145,8 +1144,7 @@ Google response bhejta hai:
 11. ROUTER REVERSE PAT
 =====================================================================
 
-
-                    ROUTER PAT TABLE
+ ROUTER PAT TABLE
 
     49.205.10.20:3921
                 │
