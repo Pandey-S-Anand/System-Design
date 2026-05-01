@@ -485,7 +485,7 @@ FLOW
     (8.8.8.8:53)
 
 =====================================================================
-3. ROUTER DOES PAT (Port Address Translation)
+4. ROUTER DOES PAT (Port Address Translation)
 =====================================================================
 
 People casually "NAT" bol dete hain.
@@ -666,7 +666,7 @@ Port
 
 
 =====================================================================
-4. DNS RESPONSE RETURNS
+5. DNS RESPONSE RETURNS
 =====================================================================
 
 DNS RESPONSE
@@ -700,7 +700,7 @@ Example:
 
 
 =====================================================================
-5. HTTPS CONNECTION STARTS
+6. HTTPS CONNECTION STARTS
 =====================================================================
 
 HTTPS REQUEST
@@ -943,7 +943,7 @@ Matlab laptop internally sochta hai:
      kyunki gateway hi internet tak rasta jaanta hai."
 
 =====================================================================
-6. WHY TCP IS NEEDED?
+7. WHY TCP IS NEEDED?
 =====================================================================
 
 Internet is somewhat unreliable.
@@ -1010,7 +1010,7 @@ HTTP/HTTPS usually TCP use karte hain.
 
 
 =====================================================================
-7. TCP HANDSHAKE (VERY IMPORTANT)
+8. TCP HANDSHAKE (VERY IMPORTANT)
 =====================================================================
 
 HTTP/HTTPS directly start nahi hota.
@@ -1047,7 +1047,7 @@ TCP connection successfully establish ho gaya.
 
 
 =====================================================================
-8. TLS HANDSHAKE (HTTPS SECURITY LAYER)
+9. TLS HANDSHAKE (HTTPS SECURITY LAYER)
 =====================================================================
 
 TCP establish hone ke baad:
@@ -1089,7 +1089,7 @@ HTTP + TLS hota hai.
 
 
 =====================================================================
-9. ROUTER AGAIN DOES PAT
+10. ROUTER AGAIN DOES PAT
 =====================================================================
 
 
@@ -1116,7 +1116,7 @@ Router internally PAT table maintain karta hai:
 
 
 =====================================================================
-10. GOOGLE RECEIVES REQUEST
+11. GOOGLE RECEIVES REQUEST
 =====================================================================
 
 
@@ -1141,7 +1141,7 @@ Google response bhejta hai:
 
 
 =====================================================================
-11. ROUTER REVERSE PAT
+12. ROUTER REVERSE PAT
 =====================================================================
 
  ROUTER PAT TABLE
