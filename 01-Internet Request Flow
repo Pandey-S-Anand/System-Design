@@ -15,35 +15,34 @@ network configuration assign karta hai.
 
 
                     ┌──────────────────────┐
-                    │      ROUTER          │
-                    │   (DHCP SERVER)      │
+                    │        ROUTER        │
+                    │     (DHCP SERVER)    │
                     └──────────┬───────────┘
                                │
                                │ Assigns
                                ▼
-
                     ┌──────────────────────┐
-                    │       LAPTOP         │
+                    │        LAPTOP        │
                     └──────────────────────┘
 
 
 Example:
 
-IP Address:
-192.168.1.5
+    IP Address:
+        192.168.1.5
 
-Gateway:
-192.168.1.1
+    Gateway:
+        192.168.1.1
 
-DNS Server:
-192.168.1.1
-OR
-8.8.8.8 (Google DNS)
-OR
-1.1.1.1 (Cloudflare DNS)
+    DNS Server:
+        192.168.1.1
+            OR
+        8.8.8.8 (Google DNS)
+            OR
+        1.1.1.1 (Cloudflare DNS)
 
-Subnet Mask:
-255.255.255.0
+    Subnet Mask:
+        255.255.255.0
 
 
 ---------------------------------------------------------------------
@@ -59,10 +58,10 @@ do active devices ka same private IP nahi ho sakta.
 ❌ INVALID:
 
     Laptop:
-    192.168.1.5
+        192.168.1.5
 
     Phone:
-    192.168.1.5
+        192.168.1.5
 
 
 Agar dono same IP use karein,
@@ -80,10 +79,10 @@ Different routers/networks me same private IP possible hai.
 ✔ VALID:
 
     Home router mai Mobile ka IP:
-    192.168.1.5
+        192.168.1.5
 
     Office router mai mobile ka IP:
-    192.168.1.5
+        192.168.1.5
 
 
 Ye valid hai because:
@@ -96,18 +95,21 @@ Sirf local network ke andar unique hone chahiye.
 2. PRIVATE IP vs PUBLIC IP
 =====================================================================
 
+
                     LOCAL NETWORK
+
     ┌──────────────────────────────────────────┐
 
-        Laptop      Phone        TV
-      192.168.1.5  192.168.1.7  192.168.1.10
-             \         |          /
-              \        |         /
-               ▼       ▼        ▼
+        Laptop        Phone          TV
+
+      192.168.1.5   192.168.1.7   192.168.1.10
+             \            |             /
+              \           |            /
+               ▼          ▼           ▼
 
             ┌─────────────────────┐
             │       ROUTER        │
-            │   49.205.10.20      │  ← PUBLIC IP
+            │    49.205.10.20     │  ← PUBLIC IP
             └─────────────────────┘
 
     └──────────────────────────────────────────┘
@@ -130,89 +132,331 @@ Isliye:
 Router ko ISP (Jio/Airtel etc.) ek public IP assign karta hai.
 
 Example:
-49.205.10.20
+
+    49.205.10.20
 
 Ye public IP globally visible hota hai.
 
 
 =====================================================================
+SUBNET AUR GATEWAY KA ROLE
+=====================================================================
+
+Jab bhi device ko kisi destination IP par packet bhejna hota hai,
+to sabse pehle wo check karta hai:
+
+"Kya ye destination IP mere local network me hai?"
+
+Yahan subnet mask use hota hai.
+
+SUBNET MASK ka role :
+
+It decides whether destination IP is:
+
+        ✔ LOCAL
+               OR
+        ✔ OUTSIDE NETWORK
+
+
+Agar destination IP:
+same/local network me hai  -> packet directly local network me bheja jayega via ARP
+
+
+Agar destination IP:
+local network ke bahar hai -> packet gateway ko bheja jayega
+
+-----------------
+GATEWAY ka role:
+-----------------
+
+Device/laptop ke perspective se:
+
+    "Jo bhi traffic mere local network ke bahar hai,
+     use mujhe is IP ko bhejna hai."
+
+
+Matlab:
+device non-local traffic gateway ko forward karta hai.
+
+
+Home networks me usually:
+
+    gateway = router ka local/private IP
+
+=====================================================================
+IMPORTANT
+=====================================================================
+
+Gateway aur router(private IP)
+zaruri nahi ki hamesha same cheez ho.
+
+
+Gateway:
+wo next-hop / exit point hota hai
+jiske paas device non-local traffic bhejta hai.
+
+
+Router:
+network traffic ko different networks ke beech route karta hai.
+
+
+Home networks me usually:
+same router device hi gateway ka role perform karta hai.
+
+Isliye ghar ke networks me:
+router aur gateway same lagte hain.
+
+
+But enterprise/cloud environments me:
+gateway aur actual internet router alag devices ho sakte hain.
+
+
+Example:
+
+    PC
+      ->
+    Firewall
+      ->
+    Router
+      ->
+    Internet
+
+
+Is case me:
+
+    PC ka default gateway:
+        firewall ho sakta hai,
+        NOT actual internet router.
+
+=====================================================================
 3. USER TYPES: google.com
 =====================================================================
 
+
                     ┌──────────────────────┐
                     │       BROWSER        │
-                    │    google.com        │
+                    │      google.com      │
                     └──────────┬───────────┘
                                │
                                ▼
-                       DNS RESOLUTION
+                        DNS RESOLUTION
 
 
 Browser pehle DNS resolution karta hai.
 
-Agar DHCP ne DNS as:
-192.168.1.1
-diya hai, to DNS request pehle router ke paas jayegi.
+DNS request bhejne se pehle laptop ek important check karta hai:
 
-Router yahan:
-- DNS forwarder
-- DNS cache
+    "Kya ye DNS ka IP mere local network me hai?"
+
+
+=====================================================================
+CASE 1 : DNS SERVER = 192.168.1.1
+=====================================================================
+
+Example:
+
+DHCP ne DNS server diya:
+
+    DNS Server:
+        192.168.1.1
+
+    Subnet Mask:
+        255.255.255.0
+
+
+Ab laptop DNS request bhejna chahta hai:
+
+    192.168.1.5
+            ->
+    192.168.1.1
+
+
+Laptop subnet mask check karta hai aur dekhta hai:
+
+    192.168.1.1
+
+same local network me hai.
+
+
+IS CASE ME KYA HOGA?
+
+    ✔ destination local hai
+    ✔ gateway use nahi hoga
+    ✔ packet directly local network me bheja jayega
+
+
+Laptop ko packet bhejne ke liye
+destination MAC address chahiye.
+
+
+So laptop ARP broadcast bhejta hai:
+
+    "Who has 192.168.1.1 ?
+     Tell 192.168.1.5"
+
+
+Router bolta hai:
+
+    "192.168.1.1 is me.
+     My MAC is:
+     AA:BB:CC:DD"
+
+
+NOW LAPTOP FRAME BHEJTA HAI
+
+
+Ethernet/WiFi Frame:
+
+    Destination MAC:
+        Router MAC
+
+    Source MAC:
+        Laptop MAC
+
+
+Inside IP Packet:
+
+    Source IP:
+        192.168.1.5
+
+    Destination IP:
+        192.168.1.1
+
+
+Is tarah laptop DNS request directly router ko bhejta hai.
+
+
+Yahan router:
+
+    - DNS Forwarder
+    - DNS Cache
 
 ka kaam karta hai.
 
 
-Router ke paas upstream DNS configured hota hai:
-- ISP DNS
-OR
-- Google DNS (8.8.8.8)
-OR
-- Cloudflare DNS (1.1.1.1)
+Matlab:
+
+router DNS request ko actual upstream DNS servers:
+
+    - Google DNS
+    - ISP DNS
+    - Cloudflare DNS
+
+etc. ko forward karta hai.
+
+
+IMPORTANT UNDERSTANDING
+
+Yahan router simply ek local device ki tarah act kar raha hai.
+
+Kyuki:
+
+    192.168.1.1
+
+same subnet me hai.
 
 
 =====================================================================
-4. DNS QUERY FLOW
+CASE 2 : DNS SERVER = 8.8.8.8
 =====================================================================
 
 
-                DNS REQUEST FLOW
+Suppose DHCP ne DNS server diya hota:
 
-    ┌─────────────────────────────────────┐
-    │ 192.168.1.5:53000                  │
-    │             ↓                      │
-    │      192.168.1.1:53                │
-    └─────────────────────────────────────┘
+    DNS Server:
+        8.8.8.8
+
+    Subnet Mask:
+        255.255.255.0
 
 
-Example DNS request:
+Ab laptop subnet check karta aur conclude karta:
 
-192.168.1.5:53000
--> 192.168.1.1:53
+    "8.8.8.8 mere local network me nahi hai."
+
+
+Ab is case me:
+gateway use hoga.
+
+
+=====================================================================
+FLOW
+=====================================================================
+
+
+    Laptop
+    (192.168.1.5:53000)
+                │
+                ▼
+    Gateway / Router
+    (192.168.1.1)
+                │
+                ▼
+    Google DNS
+    (8.8.8.8:53)
 
 
 Yahan:
 
-192.168.1.5
-= laptop private IP
+Laptop directly 8.8.8.8 ko local network me reach nahi kar sakta.
 
-53000
-= temporary client port assigned by OS
-(ephemeral port)
+Isliye packet pehle gateway/router ko diya jata hai,
+aur router us packet ko internet ke through
+Google DNS tak forward karta hai.
 
-53
-= DNS server port
+
+IMPORTANT:
+
+Packet ka final destination IP change nahi hota.
+
+
+Packet ke andar STILL likha hota hai:
+
+    Destination IP:
+        8.8.8.8
+
+NOT:
+
+    192.168.1.1
+
+
+=====================================================================
+DNS REQUEST FLOW
+=====================================================================
+
+
+Example DNS request:
+
+    192.168.1.5:53000
+            ->
+    192.168.1.1:53
+
+
+Yahan:
+
+    192.168.1.5
+        = laptop private IP
+
+    53000
+        = temporary client port assigned by OS
+          (ephemeral port)
+
+    53
+        = DNS server port
 
 
 NOTE:
+
 Client side par ports usually temporary hote hain.
+
 Server side par ports mostly fixed/well-known hote hain.
 
 
 Examples:
 
-53  -> DNS
-80  -> HTTP
-443 -> HTTPS
-
+    53   -> DNS
+    80   -> HTTP
+    443  -> HTTPS
 
 =====================================================================
 5. ROUTER DOES PAT (Port Address Translation)
@@ -233,7 +477,7 @@ Home routers usually PAT use karte hain because:
 multiple devices same public IP share karte hain.
 
 
-                    BEFORE PAT
+BEFORE PAT
 
     192.168.1.5:53000
             │
@@ -399,8 +643,7 @@ Port
 6. DNS RESPONSE RETURNS
 =====================================================================
 
-
-                    DNS RESPONSE
+DNS RESPONSE
 
         8.8.8.8:53
               │
@@ -434,7 +677,7 @@ Example:
 7. HTTPS CONNECTION STARTS
 =====================================================================
 
-                    HTTPS REQUEST
+HTTPS REQUEST
 
     192.168.1.5:4321
               │
@@ -462,70 +705,11 @@ Yahan:
 4321
 = temporary client port assigned by OS
 
-
 =====================================================================
-SUBNET MASK AND GATEWAY ROLE
-=====================================================================
-
-Jab laptop ko kisi destination IP par packet bhejna hota hai,
-to sabse pehle wo check karta hai:
-
-"Kya ye destination mere local network (same subnet) me hai?"
-
-
-                    ┌────────────────────┐
-                    │  SUBNET MASK       │
-                    │ decides:           │
-                    │                    │
-                    │ LOCAL ?            │
-                    │ or                 │
-                    │ OUTSIDE NETWORK ?  │
-                    └────────────────────┘
-
-
-Yahan subnet mask use hota hai.
-
-
----------------------------------------------------------------------
-EXAMPLE
----------------------------------------------------------------------
-
-Laptop IP:
-    192.168.1.5
-
-Subnet Mask:
-    255.255.255.0
-
-
-Is subnet mask ka meaning hai:
-
-    192.168.1.xxx
-
-wale devices same local network me hain.
-
-
-To:
-
-    192.168.1.2
-    192.168.1.5
-    192.168.1.100
-
-same local network me hain.
-
-
-But:
-
-    142.250.xx.xx  (Google server IP)
-
-same local network me nahi hai.
-
-
-=====================================================================
-CASE 1: DESTINATION SAME LOCAL NETWORK ME HAI
+CASE 1 : DESTINATION SAME LOCAL NETWORK / ME HAI 
 =====================================================================
 
-
-                    SAME LOCAL NETWORK
+ SAME LOCAL NETWORK
 
     Laptop                        Mobile
  192.168.1.5  ───────────────▶ 192.168.1.7
@@ -605,13 +789,12 @@ Inside IP Packet:
     Destination IP:
     192.168.1.7
 
-
+This is how devices send packets over the same network.
 =====================================================================
-CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI
+CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI (Original Case : Accessing google.com)
 =====================================================================
 
-
-                    OUTSIDE NETWORK
+OUTSIDE NETWORK
 
     Laptop
  192.168.1.5
@@ -665,188 +848,6 @@ Matlab laptop internally sochta hai:
      but us tak pahunchne ke liye pehle gateway ko dena padega,
      kyunki gaetway hi internet tak rasta jaanta hai."
 
-=====================================================================
-DNS LOOKUP CASE ME SUBNET AUR GATEWAY KA ROLE
-=====================================================================
-
-
-                    CASE 1
-         DNS SERVER = 192.168.1.1
-
-
-Example:
-
-DHCP ne DNS server diya:
-
-    192.168.1.1
-
-
-Ab laptop DNS request bhejna chahta hai:
-
-    192.168.1.5
-        ->
-    192.168.1.1
-
-
-Laptop subnet mask check karta hai aur dekhta hai:
-
-    192.168.1.1
-
-same local network me hai because:
-
-    192.168.1.xxx
-
-same subnet hai.
-
-
-IS CASE ME KYA HOGA?
-
-- destination local hai
-- gateway use nahi hoga
-- packet directly local network me bheja jayega
-
-
-Laptop ko packet bhejne ke liye
-destination MAC address chahiye.
-
-IP address enough nahi hota
-local Ethernet/WiFi communication ke liye.
-
-
-So laptop ARP broadcast bhejta hai:
-
-    "Who has 192.168.1.1 ?
-     Tell 192.168.1.5"
-
-
-Router bolta hai:
-
-    "192.168.1.1 is me.
-     My MAC is:
-     AA:BB:CC:DD"
-
-
-NOW LAPTOP FRAME BHEJTA HAI
-
-
-Ethernet/WiFi Frame:
-
-    Destination MAC:
-    Router MAC
-
-    Source MAC:
-    Laptop MAC
-
-
-Inside IP Packet:
-
-    Source IP:
-    192.168.1.5
-
-    Destination IP:
-    192.168.1.1
-
-
-IMPORTANT UNDERSTANDING
-
-Yahan router as gateway act nahi kar raha.
-
-Yahan router simply ek local device ki tarah act kar raha hai.
-
-Kyuki:
-
-    192.168.1.1
-
-same subnet me hai.
-
-
----------------------------------------------------------------------
-CASE 2
-DNS SERVER = 8.8.8.8
----------------------------------------------------------------------
-
-
-Suppose DHCP ne DNS server diya hota:
-
-    8.8.8.8  (Google DNS)
-
-
-Ab laptop subnet check karta aur conclude karta:
-
-    "8.8.8.8 mere local network me nahi hai."
-
-
-Ab is case me: gateway use hoga.
-
-
-                    FLOW
-
-    Laptop
-        │
-        ▼
-    Gateway
-        │
-        ▼
-    Google DNS
-      8.8.8.8
-
-
-Matlab:
-
-    Subnet batata hai:
-        destination local hai ya nahi.
-
-    Aur agar destination local nahi hai,
-    to packet gateway ko bheja jata hai.
-
----------------------------------------------------------------------
-IMPORTANT:
----------------------------------------------------------------------
-
-Gateway aur router zaruri nahi ki hamesha same cheez ho.
-
-Gateway:
-wo next-hop / exit point hota hai
-jiske paas device non-local traffic bhejta hai.
-
-Router:
-network traffic ko different networks ke beech route karta hai.
-
-Home networks me usually:
-same router device hi gateway ka role perform karta hai.
-
-Isliye ghar ke networks me:
-router aur gateway same lagte hain.
-
-But enterprise/cloud environments me:
-gateway aur actual internet router alag devices ho sakte hain.
-
-
-Example:
-
-PC
-  ->
-Firewall
-  ->
-Router
-  ->
-Internet
-
-
-Is case me:
-
-PC ka default gateway:
-firewall ho sakta hai,
-NOT actual ISP/internet router.
-
-
-Basically device/laptop ke perspective se:
-
-"Jo bhi traffic mere local subnet ke bahar hai,
-use mujhe is IP ko bhejna hai."
-
-Ye IP:
-default gateway hota hai.
 =====================================================================
 8. WHY TCP IS NEEDED?
 =====================================================================
