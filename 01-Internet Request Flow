@@ -381,6 +381,8 @@ Router fir:
 IMPORTANT:
 
 MAC change hota rehta hai every hop
+Destination IP  end-to-end same rehta hai
+because packet ultimately final destination tak hi jana hota hai.
 
 Example:
 
@@ -840,6 +842,7 @@ NOW LAPTOP FRAME SEND KARTA HAI
 
 
 Ye complete Ethernet/WiFi frame same local network ke through directly mobile tak travel karta hai.
+
 
 
 =====================================================================
