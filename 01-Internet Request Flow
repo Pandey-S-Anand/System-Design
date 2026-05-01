@@ -39,6 +39,8 @@ DNS Server:
 192.168.1.1
 OR
 8.8.8.8 (Google DNS)
+OR
+1.1.1.1 (Cloudflare DNS)
 
 Subnet Mask:
 255.255.255.0
@@ -558,7 +560,7 @@ same local network hai.
 Ab laptop conclude karta hai:
 
 "Destination local network me hi hai,
-isliye gateway/router ki zarurat nahi hai."
+isliye gateway ki zarurat nahi hai."
 
 
 Is case me:
@@ -615,7 +617,7 @@ CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI
  192.168.1.5
         │
         ▼
-    Gateway / Router
+    Gateway
      192.168.1.1
         │
         ▼
@@ -637,13 +639,12 @@ Laptop subnet check karta hai aur conclude karta hai:
 
 Ab laptop decide karta hai:
 
-    "Packet ko gateway/router ke paas bhejna padega."
+    "Packet ko gateway ke paas bhejna padega."
 
 
 IMPORTANT:
 
 Packet ka final destination IP change nahi hota.
-
 
 Packet ke andar STILL likha hota hai:
 
@@ -651,7 +652,6 @@ Packet ke andar STILL likha hota hai:
     142.250.xx.xx
 
 NOT:
-
     192.168.1.1
 
 
@@ -662,9 +662,8 @@ Gateway actually "next-hop" hota hai.
 Matlab laptop internally sochta hai:
 
     "Ye packet ultimately Google ke liye hai,
-     but us tak pahunchne ke liye pehle router ko dena padega,
-     kyunki router hi internet tak rasta jaanta hai."
-
+     but us tak pahunchne ke liye pehle gateway ko dena padega,
+     kyunki gaetway hi internet tak rasta jaanta hai."
 
 =====================================================================
 DNS LOOKUP CASE ME SUBNET AUR GATEWAY KA ROLE
@@ -785,7 +784,7 @@ Ab is case me: gateway use hoga.
     Laptop
         │
         ▼
-    Gateway / Router
+    Gateway
         │
         ▼
     Google DNS
@@ -798,9 +797,56 @@ Matlab:
         destination local hai ya nahi.
 
     Aur agar destination local nahi hai,
-    to packet gateway/router ko bheja jata hai.
+    to packet gateway ko bheja jata hai.
+
+---------------------------------------------------------------------
+IMPORTANT:
+---------------------------------------------------------------------
+
+Gateway aur router zaruri nahi ki hamesha same cheez ho.
+
+Gateway:
+wo next-hop / exit point hota hai
+jiske paas device non-local traffic bhejta hai.
+
+Router:
+network traffic ko different networks ke beech route karta hai.
+
+Home networks me usually:
+same router device hi gateway ka role perform karta hai.
+
+Isliye ghar ke networks me:
+router aur gateway same lagte hain.
+
+But enterprise/cloud environments me:
+gateway aur actual internet router alag devices ho sakte hain.
 
 
+Example:
+
+PC
+  ->
+Firewall
+  ->
+Router
+  ->
+Internet
+
+
+Is case me:
+
+PC ka default gateway:
+firewall ho sakta hai,
+NOT actual ISP/internet router.
+
+
+Basically device/laptop ke perspective se:
+
+"Jo bhi traffic mere local subnet ke bahar hai,
+use mujhe is IP ko bhejna hai."
+
+Ye IP:
+default gateway hota hai.
 =====================================================================
 8. WHY TCP IS NEEDED?
 =====================================================================
