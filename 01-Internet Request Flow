@@ -364,10 +364,19 @@ Example:
 
 Yahan:
 
-    53000 = temporary client port assigned by OS
+    53000 = temporary client port assigned by OS to laptop
 
     53  = DNS server ka well-known port
 
+
+Router fir:
+
+    - frame receive karta hai
+    - Ethernet / MAC header remove karta hai
+    - IP packet inspect karta hai
+    - routing table check karta hai
+    - next-hop decide karta hai
+    - new frame bana kar internet me forward karta hai
 
 IMPORTANT:
 
@@ -386,12 +395,8 @@ Router → ISP:
 Src MAC = Router
 Dst MAC = ISP Next Hop
 
-BUT:
-
-IP packet mostly same rehta hai:
 
 Yahan router:
-
     - DNS Forwarder
     - DNS Cache
 
@@ -406,6 +411,7 @@ router DNS request ko actual upstream DNS servers:
     - Cloudflare DNS
 
 etc. ko forward karta hai.
+
 
 IMPORTANT UNDERSTANDING
 
@@ -437,9 +443,31 @@ Ab laptop subnet check karta aur conclude karta:
     "8.8.8.8 mere local network me nahi hai."
 
 
-Ab is case me:
-gateway use hoga.
+Ab is case me: gateway use hoga.
 
+IMPORTANT:
+
+Default gateway same local network me hi hota hai
+as the device.
+
+
+Example:
+
+    Laptop:
+        192.168.1.5
+
+    Gateway:
+        192.168.1.1
+
+
+Kyuki laptop ko gateway tak directly
+local network ke through reach karna hota hai using ARP
+
+
+Isliye:
+
+Laptop → Gateway communication initially
+same-local-network communication ki tarah hi hota hai.
 
 =====================================================================
 FLOW
@@ -457,70 +485,8 @@ FLOW
     Google DNS
     (8.8.8.8:53)
 
-
-Yahan:
-
-Laptop directly 8.8.8.8 ko local network me reach nahi kar sakta.
-
-Isliye packet pehle gateway/router ko diya jata hai,
-aur router us packet ko internet ke through
-Google DNS tak forward karta hai.
-
-
-IMPORTANT:
-
-Packet ka final destination IP change nahi hota.
-
-Packet ke andar STILL likha hota hai:
-
-    Destination IP:
-        8.8.8.8
-
-NOT:
-
-    192.168.1.1
-
-
 =====================================================================
-DNS REQUEST FLOW
-=====================================================================
-
-
-Example DNS request:
-
-    192.168.1.5:53000
-            ->
-    192.168.1.1:53
-
-
-Yahan:
-
-    192.168.1.5
-        = laptop private IP
-
-    53000
-        = temporary client port assigned by OS
-          (ephemeral port)
-
-    53
-        = DNS server port
-
-
-NOTE:
-
-Client side par ports usually temporary hote hain.
-
-Server side par ports mostly fixed/well-known hote hain.
-
-
-Examples:
-
-    53   -> DNS
-    80   -> HTTP
-    443  -> HTTPS
-
-=====================================================================
-5. ROUTER DOES PAT (Port Address Translation)
+3. ROUTER DOES PAT (Port Address Translation)
 =====================================================================
 
 People casually "NAT" bol dete hain.
@@ -546,7 +512,7 @@ BEFORE PAT
       8.8.8.8:53
 
 
-                     AFTER PAT
+AFTER PAT
 
     49.205.10.20:61000
             │
@@ -701,7 +667,7 @@ Port
 
 
 =====================================================================
-6. DNS RESPONSE RETURNS
+4. DNS RESPONSE RETURNS
 =====================================================================
 
 DNS RESPONSE
@@ -735,7 +701,7 @@ Example:
 
 
 =====================================================================
-7. HTTPS CONNECTION STARTS
+5. HTTPS CONNECTION STARTS
 =====================================================================
 
 HTTPS REQUEST
@@ -909,7 +875,8 @@ Used in:
 - VoIP
 
 =====================================================================
-CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI (Original Case : Accessing google.com)
+CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI
+(Original Case : Accessing google.com)
 =====================================================================
 
 OUTSIDE NETWORK
@@ -919,7 +886,7 @@ OUTSIDE NETWORK
         │
         ▼
     Gateway
-     192.168.1.1
+  192.168.1.1
         │
         ▼
       INTERNET
@@ -945,18 +912,28 @@ Ab laptop decide karta hai:
 
 IMPORTANT:
 
-Packet ka final destination IP change nahi hota.
-
-Packet ke andar STILL likha hota hai:
-
-    Destination IP:
-    142.250.xx.xx
-
-NOT:
-    192.168.1.1
+Default gateway  same local network me hi hota hai
+as the device.
 
 
-GATEWAY KA ROLE :
+Example:
+
+    Laptop:
+        192.168.1.5
+
+    Gateway:
+        192.168.1.1
+
+
+Kyuki laptop ko gateway tak directly local network ke through reach karna hota hai using:  ARP
+
+Isliye:
+
+Laptop → Gateway communication initially
+same-local-network communication ki tarah hi hota hai.
+
+
+GATEWAY KA ROLE:
 
 Gateway actually "next-hop" hota hai.
 
@@ -964,10 +941,10 @@ Matlab laptop internally sochta hai:
 
     "Ye packet ultimately Google ke liye hai,
      but us tak pahunchne ke liye pehle gateway ko dena padega,
-     kyunki gaetway hi internet tak rasta jaanta hai."
+     kyunki gateway hi internet tak rasta jaanta hai."
 
 =====================================================================
-8. WHY TCP IS NEEDED?
+6. WHY TCP IS NEEDED?
 =====================================================================
 
 Internet is somewhat unreliable.
@@ -1034,7 +1011,7 @@ HTTP/HTTPS usually TCP use karte hain.
 
 
 =====================================================================
-9. TCP HANDSHAKE (VERY IMPORTANT)
+7. TCP HANDSHAKE (VERY IMPORTANT)
 =====================================================================
 
 HTTP/HTTPS directly start nahi hota.
@@ -1071,7 +1048,7 @@ TCP connection successfully establish ho gaya.
 
 
 =====================================================================
-10. TLS HANDSHAKE (HTTPS SECURITY LAYER)
+8. TLS HANDSHAKE (HTTPS SECURITY LAYER)
 =====================================================================
 
 TCP establish hone ke baad:
@@ -1096,7 +1073,7 @@ TLS handshake me:
 - session keys generate hoti hain
 
 
-                    CONNECTION STACK
+CONNECTION STACK
 
         TCP Handshake
                 ↓
@@ -1113,7 +1090,7 @@ HTTP + TLS hota hai.
 
 
 =====================================================================
-11. ROUTER AGAIN DOES PAT
+9. ROUTER AGAIN DOES PAT
 =====================================================================
 
 
@@ -1140,7 +1117,7 @@ Router internally PAT table maintain karta hai:
 
 
 =====================================================================
-12. GOOGLE RECEIVES REQUEST
+10. GOOGLE RECEIVES REQUEST
 =====================================================================
 
 
@@ -1165,7 +1142,7 @@ Google response bhejta hai:
 
 
 =====================================================================
-13. ROUTER REVERSE PAT
+11. ROUTER REVERSE PAT
 =====================================================================
 
 
