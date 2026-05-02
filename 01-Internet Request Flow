@@ -161,7 +161,6 @@ It decides whether destination IP is:
 Agar destination IP:
 same/local network me hai  -> packet directly local network me bheja jayega via ARP
 
-
 Agar destination IP:
 local network ke bahar hai -> packet gateway ko bheja jayega
 
@@ -380,6 +379,7 @@ Router fir:
 - routing table check karta hai
 - next-hop decide karta hai
 - new frame bana kar internet me forward karta hai
+- Packet forward karta hai
 
 
 Yahan router:
@@ -455,8 +455,7 @@ Example:
         192.168.1.1
 
 
-Kyuki laptop ko gateway tak directly
-local network ke through reach karna hota hai using ARP
+Kyuki laptop ko gateway tak directly local network ke through reach karna hota hai using ARP
 
 
 Isliye:
@@ -468,16 +467,46 @@ same-local-network communication ki tarah hi hota hai.
 FLOW
 =====================================================================
 
-
     Laptop
-    (192.168.1.5:53000)
-                │
-                ▼
-    Gateway / Router
+(192.168.1.5:53000)
+        │
+        │  Src MAC = Laptop MAC
+        │  Dst MAC = Gateway MAC
+        │
+        │  Src IP  = 192.168.1.5
+        │  Dst IP  = 8.8.8.8
+        ▼
+ Gateway / Router
     (192.168.1.1)
-                │
-                ▼
-    Google DNS
+        │
+        │  Router:
+        │  - removes old Ethernet frame
+        │  - checks routing table
+        │  - decides next-hop
+        │  - applies PAT/NAT
+        │  - creates new Ethernet frame
+        │
+        │  Src MAC = Router MAC
+        │  Dst MAC = ISP Next-Hop MAC
+        │
+        │  Src IP  = 49.205.10.20
+        │  Dst IP  = 8.8.8.8
+        ▼
+     INTERNET
+        │
+        │  Packet multiple routers
+        │  aur networks ke through travel karta hai
+        │
+        │  Har router:
+        │  - old frame remove karta hai
+        │  - routing table check karta hai
+        │  - next-hop decide karta hai
+        │  - new frame banata hai
+        │
+        │  MAC addresses har hop par change hote hain
+        │  Destination IP same rehta hai
+        ▼
+   Google DNS
     (8.8.8.8:53)
 
 =====================================================================
@@ -875,22 +904,6 @@ CASE 2: DESTINATION LOCAL NETWORK KE BAHAR HAI
 (Original Case : Accessing google.com)
 =====================================================================
 
-OUTSIDE NETWORK
-
-    Laptop
- 192.168.1.5
-        │
-        ▼
-    Gateway
-  192.168.1.1
-        │
-        ▼
-      INTERNET
-        │
-        ▼
-  142.250.xx.xx
-
-
 Ab suppose laptop Google server ko packet bhejna chahta hai:
 
     142.250.xx.xx
@@ -908,36 +921,70 @@ Ab laptop decide karta hai:
 
 IMPORTANT:
 
-Default gateway  same local network me hi hota hai
-as the device.
+Default gateway  same local network me hi hota hai as the device.
 
+Kyuki gateway tak pahunchne ke liye device ko usse directly local network pe communicate karna padta hai.
 
-Example:
+Aur local communication:
 
-    Laptop:
-        192.168.1.5
+- ARP
+- MAC address
+- Ethernet/Wi-Fi frame
 
-    Gateway:
-        192.168.1.1
+ke through hoti hai.
 
-
-Kyuki laptop ko gateway tak directly local network ke through reach karna hota hai using:  ARP
+Ye sirf same network me hi possible hota hai.
 
 Isliye:
 
 Laptop → Gateway communication initially
 same-local-network communication ki tarah hi hota hai.
 
+=====================================================================
+FLOW
+=====================================================================
 
-GATEWAY KA ROLE:
-
-Gateway actually "next-hop" hota hai.
-
-Matlab laptop internally sochta hai:
-
-    "Ye packet ultimately Google ke liye hai,
-     but us tak pahunchne ke liye pehle gateway ko dena padega,
-     kyunki gateway hi internet tak rasta jaanta hai."
+    Laptop
+(192.168.1.5:53000)
+        │
+        │  Src MAC = Laptop MAC
+        │  Dst MAC = Gateway MAC
+        │
+        │  Src IP  = 192.168.1.5
+        │  Dst IP  = 142.250.xx.xx
+        ▼
+ Gateway / Router
+    (192.168.1.1)
+        │
+        │  Router:
+        │  - removes old Ethernet frame
+        │  - checks routing table
+        │  - decides next-hop
+        │  - applies PAT/NAT
+        │  - creates new Ethernet frame
+        │
+        │  Src MAC = Router MAC
+        │  Dst MAC = ISP Next-Hop MAC
+        │
+        │  Src IP  = 49.205.10.20
+        │  Dst IP  = 142.250.xx.xx
+        ▼
+     INTERNET
+        │
+        │  Packet multiple routers
+        │  aur networks ke through travel karta hai
+        │
+        │  Har router:
+        │  - old frame remove karta hai
+        │  - routing table check karta hai
+        │  - next-hop decide karta hai
+        │  - new frame banata hai
+        │
+        │  MAC addresses har hop par change hote hain
+        │  Destination IP same rehta hai
+        ▼
+       Google 
+    (142.250.xx.xx: 443)
 
 =====================================================================
 7. WHY TCP IS NEEDED?
@@ -1089,8 +1136,7 @@ HTTP + TLS hota hai.
 10. ROUTER AGAIN DOES PAT
 =====================================================================
 
-
-                    BEFORE PAT
+      BEFORE PAT
 
     192.168.1.5:4321
             │
@@ -1117,7 +1163,7 @@ Router internally PAT table maintain karta hai:
 =====================================================================
 
 
-                    GOOGLE SEES
+     GOOGLE SEES
 
     49.205.10.20:3921
               │
