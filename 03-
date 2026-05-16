@@ -1,0 +1,593 @@
+/*
+================================================================================
+DATABASE, PRIMARY DB, READ REPLICA, REDIS - COMPONENT LEVEL UNDERSTANDING
+================================================================================
+
+================================================================================
+1. Basic Single DB Access Flow
+================================================================================
+
+Generally application/server database ko directly access karta hai.
+
+Small applications me usually ek hi database hota hai.
+
+Flow:
+
+    User Request
+        |
+        v
+    Application Server
+        |
+        v
+    Single Database
+        |
+        v
+    Application Server returns response
+
+Is setup me:
+
+    Reads  -> same DB
+    Writes -> same DB
+
+Example:
+
+    GET /users/1
+
+Application DB query run karega:
+
+    SELECT * FROM users WHERE id = 1;
+
+DB result return karega, and application response bana ke user ko bhej dega.
+
+This setup is simple and good for small scale applications.
+
+================================================================================
+2. How DB Reads and Writes Happen
+================================================================================
+
+Database operations broadly two types ke hote hain:
+
+    1. Read operations - Read ka matlab data fetch karna.
+    2. Write operations - Write ka matlab data change karna.
+
+Read operations:
+
+    SELECT queries
+
+Write operations:
+
+    INSERT
+    UPDATE
+    DELETE
+
+
+================================================================================
+3. Problem with Single DB for Everything
+================================================================================
+
+Jab traffic badhta hai, single DB bottleneck ban sakta hai.
+
+Reasons:
+
+    - Bahut saare read requests same DB par aate hain
+    - Bahut saare write requests same DB par aate hain
+    - DB CPU high ho sakta hai
+    - DB connections full ho sakte hain
+
+Important point:
+
+    Most applications read-heavy hoti hain.
+
+    Example:
+        In an E-commerce application product ko 1 baar create/update kiya jaata hai,
+        but thousands/millions of users us product ko read karte hain.
+
+Isliye reads ko scale karna important hota hai.
+
+================================================================================
+4. Primary Database
+================================================================================
+
+Primary DB main database hota hai jahan writes perform hoti hain.
+
+Writes means:
+
+    INSERT
+    UPDATE
+    DELETE
+
+Flow:
+
+    Application
+        |
+        | write queries
+        v
+    Primary DB
+
+Example:
+
+    Create order      -> Primary DB
+    Update payment    -> Primary DB
+    Delete cart item  -> Primary DB
+
+Primary DB is usually the source of truth.
+
+Source of truth means:
+
+    Correct and latest data primary DB me maana jaata hai.
+
+================================================================================
+6. Read Replica
+================================================================================
+
+Read Replica primary DB ki copy hoti hai.
+
+Primary DB se data replica DB me replicate hota hai.
+
+Flow:
+
+    Primary DB
+        |
+        | replication
+        v
+    Read Replica
+
+Read Replica ka main kaam read queries handle karna hota hai.
+
+Reads means:
+
+    SELECT queries
+
+Example:
+
+    Product listing    -> Read Replica
+    Product details    -> Read Replica
+
+================================================================================
+7. Primary + Read Replica Setup
+================================================================================
+
+In this setup:
+
+    Writes -> Primary DB
+    Reads  -> Read Replica
+
+Diagram:
+
+                    +-------------+
+    Writes -------> | Primary DB  |
+                    +-------------+
+                           |
+                           | replication
+                           v
+                    +-------------+
+    Reads --------> | Read Replica|
+                    +-------------+
+
+With multiple replicas:
+
+                    +-------------+
+    Writes -------> | Primary DB  |
+                    +-------------+
+                       |       |
+                       |       |
+                       v       v
+                +----------+ +----------+
+    Reads ----> | Replica1 | | Replica2 |
+                +----------+ +----------+
+
+Benefits:
+
+    - Read traffic scale hota hai
+    - Application faster feel hoti hai
+
+================================================================================
+8. Why Writes Usually Go to Primary Only
+================================================================================
+
+Traditional setup me writes primary DB par hi bheji jaati hain.
+
+Reason:
+
+    Agar multiple DB nodes par writes allow kar di,
+    to data conflicts ho sakte hain.
+
+Example:
+
+    User balance = 1000
+
+Request A:
+    Debit 500
+
+Request B:
+    Debit 700
+
+Agar dono writes different DB nodes/replicas par same time par ho gayi,
+to final balance inconsistent ho sakta hai.
+
+================================================================================
+9. How Replication Works
+================================================================================
+
+Replication ka matlab hai:
+
+    Primary DB me jo changes hote hain, woh replicas tak copy hote hain.
+
+Important point:
+
+    Replication usually full database copy baar-baar nahi karti.
+
+    Har write ke baad poora database copy karna extremely expensive hota.
+    Isliye databases incremental changes replicate karte hain.
+
+Example MySQL style:
+
+    1. Primary DB par write hota hai.
+
+    2. Primary DB is change ko log me record karta hai.
+
+        MySQL me ise Binary Log / Binlog bolte hain.
+
+    3. Replica DB primary ke log se changes read karta hai.
+
+    4. Replica same change apne database me apply karta hai.
+
+
+================================================================================
+10. Is Replication Expensive?
+================================================================================
+
+Replication free nahi hoti.
+
+Cost involved:
+
+    - Primary DB ko changes log karne padte hain
+    - Network par changes replicas tak jaate hain
+    - Replica ko changes apply karne padte hain
+    - Replica storage bhi lagta hai
+    - Replication lag aa sakta hai
+
+But benefit:
+
+    - Read load primary se shift ho jaata hai
+    - Overall system zyada read traffic handle kar sakta hai
+
+So replication ka cost hota hai, but read-heavy systems me ye cost worth it hota hai.
+
+================================================================================
+11. Replication Lag
+================================================================================
+
+Replication instant nahi hoti.
+
+Primary par write hone ke baad replica tak data pahunchne me thoda delay ho sakta hai.
+
+Is delay ko replication lag bolte hain.
+
+Example:
+
+    User profile update:
+
+        Old name: Anand
+        New name: Anurag
+
+    Step 1:
+        Write primary DB par ho gaya.
+
+    Step 2:
+        Immediately read replica se data read kiya.
+
+    Step 3:
+        Replica abhi sync nahi hua tha.
+
+    Result:
+        User ko old name "Anand" dikh sakta hai.
+
+This is called stale read.
+
+================================================================================
+12. How to Handle Replication Lag
+================================================================================
+
+Common strategies:
+
+1. Read-your-write from Primary
+
+    Agar user ne abhi data update kiya hai,
+    to immediate next read primary DB se karao.
+
+    Example:
+
+        Update profile -> Primary DB
+        Immediately fetch profile -> Primary DB
+        Later reads -> Replica
+
+2. Critical reads from Primary
+
+    Important data primary se read karo.
+
+    Example:
+
+        Bank balance
+        Payment status
+        Order confirmation
+
+3. Normal reads from Replica
+
+    Non-critical or public data replicas se read kar sakte hain.
+
+    Example:
+
+        Product listing
+        Blog posts
+        Catalog data
+        Public feed
+
+================================================================================
+13. Redis Kaha Aata Hai?
+================================================================================
+Redis RAM/in-memory based hota hai, isliye DB se bahut fast hota hai.
+
+Redis generally application aur database ke beech fast cache layer ke form me use hota hai.
+
+Redis ka most common use case caching hai.
+
+Without Redis:
+
+    Every request -> Database
+
+With Redis:
+
+    Request -> Redis
+        |
+        | Cache Hit
+        v
+    Return from Redis
+
+    Request -> Redis
+        |
+        | Cache Miss
+        v
+    Database -> Store result in Redis -> Return response
+
+
+Cache Hit:
+
+    Data Redis me mil gaya.
+
+Cache Miss:
+
+    Data Redis me nahi mila.
+
+
+First request:
+
+    Redis me product:101 nahi mila.
+    DB se data fetch hua.
+    Redis me store hua.
+    Response return hua.
+
+Second request:
+
+    Redis me product:101 mil gaya.
+    DB hit nahi hua.
+    Response fast return hua.
+
+
+Most systems me:
+
+    Main DB  -> Source of truth
+    Redis    -> Fast temporary cache
+
+
+Redis me data temporary ho sakta hai.
+
+Redis keys ke saath TTL(Time To Live) set kar sakte hain.
+
+Example:
+
+    product:101 -> expires after 10 minutes
+
+TTL expire hone ke baad data Redis se delete ho jaata hai.
+Next request DB se fresh data fetch karegi.
+
+================================================================================
+17. Cache Invalidation
+================================================================================
+
+Cache invalidation important problem hai.
+
+Example:
+
+    Product price DB me update hua:
+
+        Old price: 70000
+        New price: 65000
+
+But Redis me old price cached hai.
+
+Agar Redis update/delete nahi kiya,
+to user ko old price dikh sakta hai.
+
+Common approach:
+
+    Write DB first
+    Then delete/update Redis cache
+
+Flow:
+
+    Application
+        |
+        | update product price
+        v
+    Primary DB updated
+        |
+        v
+    Redis cache invalidated/deleted
+        |
+        v
+    Response returned
+
+Next read:
+
+    Redis miss hoga
+    DB se fresh data aayega
+    Redis me new value store hogi
+
+================================================================================
+18. Redis + Primary + Read Replica Combined Flow
+================================================================================
+
+Read flow:
+
+    Application
+        |
+        v
+    Redis Cache
+        |
+        | cache hit
+        v
+    Return response
+
+    If cache miss:
+
+    Application
+        |
+        v
+    Read Replica / Primary DB
+        |
+        v
+    Store result in Redis
+        |
+        v
+    Return response
+
+Write flow:
+
+    Application
+        |
+        v
+    Primary DB
+        |
+        v
+    Invalidate/update Redis
+        |
+        v
+    Response returned
+
+Replication:
+
+    Primary DB
+        |
+        | incremental changes/logs
+        v
+    Read Replica
+
+Diagram:
+
+                    +-------------+
+                    |    Redis    |
+                    +-------------+
+                          ^
+                          |
+                    Read cache
+                          |
+    Application -----------+
+        |
+        | writes
+        v
+    +-------------+
+    | Primary DB  |
+    +-------------+
+          |
+          | replication logs
+          v
+    +-------------+
+    | Read Replica|
+    +-------------+
+
+================================================================================
+19. DB Connection Pool
+================================================================================
+
+Application har request ke liye naya DB connection create nahi karti.
+
+DB connection create karna expensive hota hai.
+
+Isliye connection pool use hota hai.
+
+Spring Boot me commonly HikariCP use hota hai.
+
+Flow:
+
+    Application
+        |
+        v
+    Connection Pool
+        |
+        v
+    Database
+
+Connection pool me already created DB connections available hote hain.
+
+Example:
+
+    maximum-pool-size = 10
+
+Matlab application at a time 10 DB connections use kar sakti hai.
+
+Without connection pool:
+
+    Every request -> create DB connection -> query -> close connection
+
+With connection pool:
+
+    Request -> borrow existing connection -> query -> return connection to pool
+
+Benefits:
+
+    - Faster DB access
+    - Controlled number of DB connections
+    - DB overload prevent hota hai
+
+================================================================================
+20. Final Mental Model
+================================================================================
+
+Simple system:
+
+    Application -> Database
+
+Read-heavy scaled system:
+
+    Writes -> Primary DB
+    Reads  -> Read Replicas
+
+Cached system:
+
+    Application -> Redis -> Database
+
+Realistic system:
+
+    Read request:
+        Application -> Redis
+            if cache hit:
+                return response
+            if cache miss:
+                read from Replica/Primary
+                store in Redis
+                return response
+
+    Write request:
+        Application -> Primary DB
+        Application -> invalidate/update Redis
+        Primary DB -> replicate changes to Read Replicas
+
+One-line summary:
+
+    Primary DB handles writes.
+    Read Replicas help scale reads.
+    Redis reduces repeated DB hits using cache.
+    Replication copies incremental changes, not the full DB every time.
+    Connection Pool manages DB connections efficiently.
+*/
