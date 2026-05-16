@@ -398,6 +398,9 @@ Next request DB se fresh data fetch karegi.
 Cache invalidation important problem hai.
 
 Example:
+    Suppose intially product ka price 70000 tha 
+    use bad ek read request hui us smay redis mai ye price cache ho gya also assume 10 min. ka TTL hai
+    now within 10 mins
 
     Product price DB me update hua:
 
@@ -406,13 +409,13 @@ Example:
 
 But Redis me old price cached hai.
 
-Agar Redis update/delete nahi kiya,
+Agar Redis mai se old data delete nahi kiya,
 to user ko old price dikh sakta hai.
 
 Common approach:
 
     Write DB first
-    Then delete/update Redis cache
+    Then delete Redis cache
 
 Flow:
 
@@ -423,7 +426,7 @@ Flow:
     Primary DB updated
         |
         v
-    Redis cache invalidated/deleted
+    Redis cache invalidated
         |
         v
     Response returned
@@ -462,52 +465,34 @@ Read flow:
         v
     Return response
 
+
 Write flow:
 
     Application
         |
         v
-    Primary DB
+    Primary DB update
         |
         v
-    Invalidate/update Redis
+    Redis cache invalidation
         |
+        | if cache key exists:
+        |     delete/update key
+        |
+        | if cache key does not exist:
+        |     no action needed
         v
     Response returned
 
-Replication:
+Note:
 
-    Primary DB
-        |
-        | incremental changes/logs
-        v
-    Read Replica
+    Cache invalidation does not require the key to always exist.
+    If key exists, it is deleted/updated.
+    If key does not exist, delete operation is simply a no-op.
 
-Diagram:
-
-                    +-------------+
-                    |    Redis    |
-                    +-------------+
-                          ^
-                          |
-                    Read cache
-                          |
-    Application -----------+
-        |
-        | writes
-        v
-    +-------------+
-    | Primary DB  |
-    +-------------+
-          |
-          | replication logs
-          v
-    +-------------+
-    | Read Replica|
-    +-------------+
 
 ================================================================================
-19. DB Connection Pool
+DB Connection Pool
 ================================================================================
 
 Application har request ke liye naya DB connection create nahi karti.
@@ -518,76 +503,200 @@ Isliye connection pool use hota hai.
 
 Spring Boot me commonly HikariCP use hota hai.
 
+
+When application starts:
+
+    1. Spring Boot application start hoti hai.
+
+    2. Spring Boot datasource configuration read karta hai.
+
+       Example:
+
+            DB URL
+            username
+            password
+            driver class
+            maximum pool size
+            minimum idle connections
+
+    3. HikariCP connection pool initialize hota hai.
+
+    4. HikariCP database ke saath kuch initial connections create karta hai.
+
+       Example:
+
+            minimum-idle = 2
+            maximum-pool-size = 10
+
+       Iska matlab:
+
+            Application start ke time pool me 2 idle connections ready ho sakte hain.
+            Need padne par pool total 10 connections tak grow kar sakta hai.
+
+    5. Ye connections pool ke andar idle state me ready rehte hain.
+
+================================================================================
+Request Time Flow
+================================================================================
+
+When request comes:
+
+    1. Application ko DB query execute karni hoti hai.
+
+    2. Application connection pool se ek available connection borrow karti hai.
+
+    3. Application us connection ka use karke DB query execute karti hai.
+
+    4. Query complete hone ke baad connection close nahi hota.
+
+    5. Connection pool ko wapas return kar diya jaata hai.
+
+    6. Same connection future requests ke liye reuse hota hai.
+
 Flow:
 
+    Request
+        |
+        v
     Application
         |
+        | borrow connection
         v
     Connection Pool
         |
         v
-    Database
+    Database Query
+        |
+        v
+    Return connection back to pool
 
-Connection pool me already created DB connections available hote hain.
-
-Example:
-
-    maximum-pool-size = 10
-
-Matlab application at a time 10 DB connections use kar sakti hai.
+================================================================================
+Without Connection Pool
+================================================================================
 
 Without connection pool:
 
-    Every request -> create DB connection -> query -> close connection
+    Every request
+        |
+        v
+    Create new DB connection
+        |
+        v
+    Execute query
+        |
+        v
+    Close DB connection
+
+Problem:
+
+    DB connection create karna costly hota hai because it may involve:
+
+        - TCP connection setup
+        - Authentication
+        - SSL handshake if enabled
+        - DB session creation
+        - Resource allocation on DB server
+
+Isliye har request ke liye new connection banana slow and inefficient hota hai.
+
+================================================================================
+With Connection Pool
+================================================================================
 
 With connection pool:
 
-    Request -> borrow existing connection -> query -> return connection to pool
+    Request
+        |
+        v
+    Borrow existing connection from pool
+        |
+        v
+    Execute query
+        |
+        v
+    Return connection to pool
 
 Benefits:
 
     - Faster DB access
+    - Existing connections reuse hote hain
     - Controlled number of DB connections
     - DB overload prevent hota hai
+    - Application performance improve hoti hai
 
 ================================================================================
-20. Final Mental Model
+What Happens If All Connections Are Busy?
 ================================================================================
 
-Simple system:
+Suppose:
 
-    Application -> Database
+    maximum-pool-size = 10
 
-Read-heavy scaled system:
+And 10 connections already busy hain.
 
-    Writes -> Primary DB
-    Reads  -> Read Replicas
+Now 11th request ko DB connection chahiye.
 
-Cached system:
+In this case:
 
-    Application -> Redis -> Database
+    1. Request wait karegi for a connection to become free.
 
-Realistic system:
+    2. Agar timeout ke andar connection free ho gaya,
+       request connection borrow karke query execute karegi.
 
-    Read request:
-        Application -> Redis
-            if cache hit:
-                return response
-            if cache miss:
-                read from Replica/Primary
-                store in Redis
-                return response
+    3. Agar timeout ke andar connection free nahi hua,
+       application error throw kar sakti hai.
 
-    Write request:
-        Application -> Primary DB
-        Application -> invalidate/update Redis
-        Primary DB -> replicate changes to Read Replicas
+Example error:
 
-One-line summary:
+    Connection is not available, request timed out.
 
-    Primary DB handles writes.
-    Read Replicas help scale reads.
-    Redis reduces repeated DB hits using cache.
-    Replication copies incremental changes, not the full DB every time.
-    Connection Pool manages DB connections efficiently.
+================================================================================
+How Pool Maintains Connections
+================================================================================
+
+Connection pool background me connections ko maintain karta hai.
+
+It can:
+
+    - Idle connections ko alive rakhna
+    - Dead/broken connections ko remove karna
+    - Need padne par new connections create karna
+    - Extra idle connections ko close karna
+    - Maximum pool size ke upar connections create na karna
+
+Important:
+
+    Application connection ko logically close karti hai,
+    but actual physical DB connection close nahi hota.
+
+    Connection pool us connection ko wapas idle state me daal deta hai.
+
+Example:
+
+    connection.close();
+
+In normal JDBC without pool:
+
+    Actual DB connection close ho jaata hai.
+
+With connection pool:
+
+    Connection pool connection ko reclaim kar leta hai
+    and future request ke liye reuse karta hai.
+
+================================================================================
+Final Summary
+================================================================================
+
+    Application startup ke time connection pool initialize hota hai.
+
+    Pool initial DB connections create karta hai based on configuration.
+
+    Request ke time application pool se connection borrow karti hai.
+
+    Query complete hone ke baad connection pool ko return hota hai.
+
+    Pool connections ko reuse, validate, create, and remove karta rehta hai.
+
+    Isse DB access fast hota hai and DB overload prevent hota hai.
 */
