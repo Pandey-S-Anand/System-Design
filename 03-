@@ -553,22 +553,6 @@ When request comes:
 
     6. Same connection future requests ke liye reuse hota hai.
 
-Flow:
-
-    Request
-        |
-        v
-    Application
-        |
-        | borrow connection
-        v
-    Connection Pool
-        |
-        v
-    Database Query
-        |
-        v
-    Return connection back to pool
 
 ================================================================================
 Without Connection Pool
