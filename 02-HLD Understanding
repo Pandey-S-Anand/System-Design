@@ -1,0 +1,389 @@
+/*
+================================================================================
+DNS, CDN, Load Balancer, API Gateway - Component Level Understanding
+================================================================================
+
+1. DNS Behaviour
+
+DNS ka main kaam hota hai:
+
+    Domain Name  ->  IP Address
+
+Example:
+
+    api.example.com  ->  34.120.10.5
+
+DNS bas configured records ke basis par response deta hai.
+
+Common DNS records:
+
+    A Record:
+        Domain ko IPv4 address se map karta hai.
+
+        Example:
+            api.example.com -> 34.120.10.5
+
+    AAAA Record:
+        Domain ko IPv6 address se map karta hai.
+
+        Example:
+            api.example.com -> 2400:cb00:2048:1::c629:d7a2
+
+    CNAME Record:
+        Ek domain ko doosre domain name se map karta hai.
+
+        Example:
+            api.example.com -> my-load-balancer.aws.com
+
+        Is case me DNS resolver recursively ya internally CNAME ko resolve karke
+        final IP address nikalta hai.
+
+        Final result eventually IP address hi hota hai.
+
+Usually modern cloud infrastructure me CNAME/Alias records zyada use hote hain,
+because cloud resources ke actual IP addresses change ho sakte hain.
+
+================================================================================
+CASE 1: Small Monolithic Application on a Single Server
+================================================================================
+
+Suppose ek small monolithic application hai jo sirf ek single server par deployed hai.
+
+Is case me DNS resolution ke baad directly server ka IP return hota hai.
+
+Flow:
+
+    User
+      |
+      | DNS Resolution
+      v
+    DNS returns Server IP
+      |
+      v
+    Single Server
+      |
+      v
+    Monolithic Application processes the request
+
+Explanation:
+
+    Ye setup small applications, personal projects, ya basic VPS deployments me common hai.
+
+================================================================================
+CASE 2: Monolithic Application with Multiple Instances and Load Balancer
+================================================================================
+
+Suppose ek monolithic application hai, but uske multiple instances different servers
+par run kar rahe hain.
+
+In multiple servers ke traffic ko manage karne ke liye ek Load Balancer configured hai.
+Load Balancers generally algorithms like Round Robin, Least Connections, etc. use karke
+servers ke beech load balance karte hain.
+
+Is case me DNS resolution ke baad Load Balancer ka IP return hota hai.
+
+Flow:
+
+    User
+      |
+      v
+    DNS
+      |
+      | returns Load Balancer IP
+      v
+    Load Balancer
+      |
+      |------------------|------------------|
+      v                  v                  v
+    App Instance 1     App Instance 2     App Instance 3
+
+Explanation:
+
+    Load Balancer ka kaam hai traffic ko multiple running instances ke beech
+    distribute karna.
+
+    URL routing usually application ke andar hoti hai, like Spring Boot controllers.
+
+Example in Spring Boot:
+
+    /users      -> UserController
+    /orders     -> OrderController
+    /payments   -> PaymentController
+
+================================================================================
+CASE 3: Microservices Architecture with API Gateway and Service Load Balancers
+================================================================================
+
+Suppose ek microservices architecture hai jisme multiple services hain.
+
+Example:
+
+    User Service
+    Order Service
+    Payment Service
+
+Har service ke multiple instances different servers par run kar rahe hain.
+Har service ke instances ko manage karne ke liye us service ka apna Load Balancer hai.
+
+Example:
+
+    User Service Load Balancer
+    Order Service Load Balancer
+    Payment Service Load Balancer
+
+Ab question aata hai:
+
+    Request kis service ke Load Balancer ko bhejni hai?
+
+Iske liye API Gateway use hota hai.
+
+Is case me DNS resolution ke baad API Gateway ka IP return hota hai.
+
+Flow:
+
+    User
+      |
+      v
+    DNS
+      |
+      | returns API Gateway IP
+      v
+    API Gateway
+      |
+      |----------------------|----------------------|
+      v                      v                      v
+    User Service LB       Order Service LB       Payment Service LB
+      |                      |                      |
+      v                      v                      v
+    User Instances        Order Instances        Payment Instances
+
+Explanation:
+
+    API Gateway ka kaam sirf URL routing nahi hota.
+    API Gateway aur bhi kaam karta hai:
+
+        - Authentication
+        - Authorization
+        - Rate limiting
+        - Request routing
+        - API versioning
+        - Logging
+        - Monitoring
+        - Request/response transformation
+
+Example routing:
+
+    /users/**     -> User Service Load Balancer
+    /orders/**    -> Order Service Load Balancer
+    /payments/**  -> Payment Service Load Balancer
+
+================================================================================
+CASE 4: Microservices Architecture with CDN + API Gateway + Service Load Balancers
+================================================================================
+
+Suppose ek microservices architecture hai jisme multiple services hain,
+har service ke multiple instances hain, har service ke paas apna Load Balancer hai,
+aur URL routing ke liye API Gateway bhi hai.
+
+Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
+
+CDN ka full form hai Content Delivery Network.
+
+CDNs basically geographically distributed servers hote hain jo different edge locations
+par placed hote hain.
+
+CDN ka main kaam:
+
+    - Static content cache karna
+    - Network latency reduce karna
+    - Origin server par unnecessary load kam karna
+    - Response fast karna
+
+Examples of cacheable content:
+
+    - Images
+    - Videos
+    - CSS files
+    - JavaScript files
+    - Public static files
+
+DNS and CDN behaviour:
+
+    Case 4.1: Anycast IP based CDN
+
+        Multiple CDN edge locations same IP address announce kar sakti hain.
+        Ye same IP DNS me configured ho sakta hai.
+
+        DNS resolution ke baad CDN ka IP return hota hai.
+
+        Then BGP routing user request ko nearest/optimal CDN edge location par route karti hai.
+
+        Example:
+
+            User in India -> Mumbai/Singapore CDN edge
+            User in US    -> US CDN edge
+
+        Same IP ho sakta hai, but network routing nearest CDN edge select kar leti hai.
+
+    Case 4.2: Geo DNS based CDN
+
+        CDN ke different edge locations ke different IPs ho sakte hain.
+        DNS resolver user ke approximate location ke basis par nearby CDN IPs return
+        kar sakta hai.
+
+        Example:
+
+            User India me hai:
+                DNS returns India/Singapore CDN IPs
+
+            User Europe me hai:
+                DNS returns Europe CDN IPs
+
+Flow:
+
+    User
+      |
+      v
+    DNS
+      |
+      | returns CDN IP
+      v
+    Nearby CDN Edge
+      |
+      | cache hit
+      |------------------> Response returned from CDN
+      |
+      | cache miss
+      v
+    API Gateway
+      |
+      |----------------------|----------------------|
+      v                      v                      v
+    User Service LB       Order Service LB       Payment Service LB
+      |                      |                      |
+      v                      v                      v
+    User Instances        Order Instances        Payment Instances
+
+Why CDN helps:
+
+    Suppose ek image repeatedly same geographical location se request ho rahi hai.
+
+    Without CDN:
+
+        User -> Server -> Image fetched from origin every time
+
+    With CDN:
+
+        First request:
+            CDN image ko origin server se fetch karta hai.
+
+        Subsequent requests:
+            CDN same image apne cache se return kar deta hai.
+
+Example:
+
+    Agar image service ka origin server US me hai aur user India me hai,
+    to har baar US server tak request bhejna slow hoga.
+
+    CDN use karne se image India/Singapore ke nearby CDN edge se serve ho sakti hai.
+
+================================================================================
+CASE 5: Microservices Architecture with CDN and Load Balancer doing URL Routing
+================================================================================
+
+Suppose ek microservices architecture hai jisme multiple services hain.
+
+Har service ke multiple instances different servers par run kar rahe hain.
+
+In services ke traffic ko route karne ke liye ek Load Balancer use ho raha hai
+jo URL/path based routing support karta hai.
+
+Is case me separate API Gateway mandatory nahi hai.
+
+Load Balancer khud URL based routing kar sakta hai.
+
+Example:
+
+    /users/**     -> User Service instances
+    /orders/**    -> Order Service instances
+    /payments/**  -> Payment Service instances
+
+Is setup me CDN bhi present hai.
+
+Flow:
+
+    User
+      |
+      v
+    DNS
+      |
+      | returns CDN IP
+      v
+    Nearby CDN Edge
+      |
+      | cache miss
+      v
+    Load Balancer with URL Routing
+      |
+      |----------------------|----------------------|
+      v                      v                      v
+    User Service          Order Service          Payment Service
+    Instances             Instances              Instances
+
+Explanation:
+
+    Yahan API Gateway nahi hai.
+    Load Balancer hi path based routing kar raha hai.
+
+    Modern Load Balancers, jaise AWS ALB, path based routing support karte hain.
+
+    But API Gateway ke advanced features jaise rate limiting, API keys,
+    request transformation, etc. Load Balancer me limited ho sakte hain.
+
+================================================================================
+CASE 6: Monolithic Architecture with CDN and Load Balancer
+================================================================================
+
+Suppose ek monolithic application hai.
+
+Uske multiple instances different servers par run kar rahe hain.
+In instances ke traffic ko distribute karne ke liye ek Load Balancer hai.
+
+CDN bhi present hai.
+
+Is case me DNS resolution ke baad CDN ka IP return hota hai.
+
+Flow:
+
+    User
+      |
+      v
+    DNS
+      |
+      | returns CDN IP
+      v
+    Nearby CDN Edge
+      |
+      | cache miss
+      v
+    Load Balancer
+      |
+      |------------------|------------------|
+      v                  v                  v
+    Monolith App 1     Monolith App 2     Monolith App 3
+
+Explanation:
+
+    Load Balancer ka kaam sirf monolithic application ke multiple instances ke beech
+    traffic distribute karna hai.
+
+    URL routing application ke andar hoti hai.
+
+Example in Spring Boot:
+
+    /users      -> UserController
+    /orders     -> OrderController
+    /payments   -> PaymentController
+
+    Ye sab same Spring Boot application ke andar handle hote hain.
+*/
