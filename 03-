@@ -88,13 +88,7 @@ Isliye reads ko scale karna important hota hai.
 4. Primary Database
 ================================================================================
 
-Primary DB main database hota hai jahan writes perform hoti hain.
-
-Writes means:
-
-    INSERT
-    UPDATE
-    DELETE
+Primary DB wo hota hai jahan writes perform hoti hain.
 
 Flow:
 
@@ -133,10 +127,6 @@ Flow:
     Read Replica
 
 Read Replica ka main kaam read queries handle karna hota hai.
-
-Reads means:
-
-    SELECT queries
 
 Example:
 
@@ -185,8 +175,6 @@ Benefits:
 8. Why Writes Usually Go to Primary Only
 ================================================================================
 
-Traditional setup me writes primary DB par hi bheji jaati hain.
-
 Reason:
 
     Agar multiple DB nodes par writes allow kar di,
@@ -202,7 +190,7 @@ Request A:
 Request B:
     Debit 700
 
-Agar dono writes different DB nodes/replicas par same time par ho gayi,
+Agar dono writes different DB nodes par same time par ho gayi,
 to final balance inconsistent ho sakta hai.
 
 ================================================================================
@@ -211,14 +199,22 @@ to final balance inconsistent ho sakta hai.
 
 Replication ka matlab hai:
 
-    Primary DB me jo changes hote hain, woh replicas tak copy hote hain.
+    Primary DB me jo bhi data changes hote hain,
+    un changes ko Read Replicas tak propagate/copy kiya jaata hai.
 
 Important point:
 
-    Replication usually full database copy baar-baar nahi karti.
+    Replication ka matlab ye nahi hota ki har write ke baad
+    poora database dobara copy kiya jaata hai.
 
-    Har write ke baad poora database copy karna extremely expensive hota.
-    Isliye databases incremental changes replicate karte hain.
+    Poora database baar-baar copy karna extremely expensive hoga.
+
+    Isliye databases usually incremental changes replicate karte hain.
+
+    Matlab:
+
+        Sirf wahi changes replicas tak bheje jaate hain
+        jo primary DB me naye hue hain.
 
 Example MySQL style:
 
@@ -304,7 +300,7 @@ Common strategies:
 
 2. Critical reads from Primary
 
-    Important data primary se read karo.
+    Important data primary database se read karo always.
 
     Example:
 
@@ -312,9 +308,8 @@ Common strategies:
         Payment status
         Order confirmation
 
-3. Normal reads from Replica
 
-    Non-critical or public data replicas se read kar sakte hain.
+    Non-critical or public data replicas se read karo.
 
     Example:
 
@@ -340,25 +335,15 @@ With Redis:
 
     Request -> Redis
         |
-        | Cache Hit
+        | Cache Hit (Data Redis me mil gaya.)
         v
     Return from Redis
 
     Request -> Redis
         |
-        | Cache Miss
+        | Cache Miss (Data Redis me nahi mila.)
         v
     Database -> Store result in Redis -> Return response
-
-
-Cache Hit:
-
-    Data Redis me mil gaya.
-
-Cache Miss:
-
-    Data Redis me nahi mila.
-
 
 First request:
 
@@ -392,30 +377,78 @@ TTL expire hone ke baad data Redis se delete ho jaata hai.
 Next request DB se fresh data fetch karegi.
 
 ================================================================================
-17. Cache Invalidation
+14. Cache Invalidation
 ================================================================================
 
-Cache invalidation important problem hai.
+Example:
 
 Example:
-    Suppose intially product ka price 70000 tha 
-    use bad ek read request hui us smay redis mai ye price cache ho gya also assume 10 min. ka TTL hai
-    now within 10 mins
 
-    Product price DB me update hua:
+    Suppose initially product ka price 70000 tha.
+
+    At this point:
+
+        Primary DB:
+            product:101 price = 70000
+
+        Read Replica:
+            product:101 price = 70000
+
+    Primary DB aur Read Replica dono synced hain.
+
+    Uske baad ek read request aati hai.
+
+    Read flow:
+
+        Application
+            |
+            v
+        Redis
+
+    Redis me product:101 key available nahi hai,
+    so cache miss hota hai.
+
+    Cache miss ke baad application data Read Replica se fetch karti hai.
+
+        Application
+            |
+            v
+        Read Replica
+
+    Read Replica se product ka price 70000 milta hai.
+
+    Application is data ko Redis me cache kar deti hai
+    and response return kar deti hai.
+
+    Redis:
+
+        product:101 price = 70000
+        TTL = 10 minutes
+
+    Now within these 10 minutes, product price Primary DB me update ho gaya:
 
         Old price: 70000
         New price: 65000
 
-But Redis me old price cached hai.
+    Primary DB:
 
-Agar Redis mai se old data delete nahi kiya,
-to user ko old price dikh sakta hai.
+        product:101 price = 65000
+
+    Ab agar TTL expire hone se pehle ek aur read request aati hai,
+    to Redis me abhi bhi old price cached hai:
+
+        Redis:
+            product:101 price = 70000
+
+    Agar Redis se old cached data delete/update nahi kiya gaya,
+    to user ko old price 70000 dikh sakta hai.
+
+    Isliye write/update ke baad related Redis cache key ko invalidate karna important hota hai.
 
 Common approach:
 
-    Write DB first
-    Then delete Redis cache
+    Write DB first.
+    Then delete related Redis cache key.
 
 Flow:
 
@@ -428,71 +461,55 @@ Flow:
         v
     Redis cache invalidated
         |
+        | if related cache key exists:
+        |     delete/update that key
+        |
+        | if related cache key does not exist:
+        |     no action needed
         v
     Response returned
 
 Next read:
 
-    Redis miss hoga
-    DB se fresh data aayega
-    Redis me new value store hogi
+    Redis miss hoga.
+    DB se fresh data aayega.
+    Redis me new value store hogi.
+    Fresh response return hoga.
+
+Example:
+
+    Before update:
+
+        DB:
+            product:101 price = 70000
+
+        Redis:
+            product:101 price = 70000
+            TTL = 10 minutes
+
+    After DB update:
+
+        DB:
+            product:101 price = 65000
+
+        Redis:
+            product:101 key should be deleted/updated
+
+    Next read:
+
+        Redis miss
+            |
+            v
+        Fetch fresh price 65000 from DB
+            |
+            v
+        Store fresh value in Redis
+            |
+            v
+        Return response
 
 ================================================================================
-18. Redis + Primary + Read Replica Combined Flow
-================================================================================
-
-Read flow:
-
-    Application
-        |
-        v
-    Redis Cache
-        |
-        | cache hit
-        v
-    Return response
-
-    If cache miss:
-
-    Application
-        |
-        v
-    Read Replica / Primary DB
-        |
-        v
-    Store result in Redis
-        |
-        v
-    Return response
-
-
-Write flow:
-
-    Application
-        |
-        v
-    Primary DB update
-        |
-        v
-    Redis cache invalidation
-        |
-        | if cache key exists:
-        |     delete/update key
-        |
-        | if cache key does not exist:
-        |     no action needed
-        v
-    Response returned
-
-Note:
-
-    Cache invalidation does not require the key to always exist.
-    If key exists, it is deleted/updated.
-    If key does not exist, delete operation is simply a no-op.
-
-
-================================================================================
-DB Connection Pool
+15: DB Connection Pool
 ================================================================================
 
 Application har request ke liye naya DB connection create nahi karti.
@@ -535,8 +552,17 @@ When application starts:
 
     5. Ye connections pool ke andar idle state me ready rehte hain.
 
+
+Benefits:
+
+    - Faster DB access
+    - Existing connections reuse hote hain
+    - Controlled number of DB connections
+    - DB overload prevent hota hai
+    - Application performance improve hoti hai
+
 ================================================================================
-Request Time Flow
+16: Request Time Flow
 ================================================================================
 
 When request comes:
@@ -555,58 +581,225 @@ When request comes:
 
 
 ================================================================================
-Without Connection Pool
+17: Spring Data JPA, Hibernate, JDBC, JDBC Driver - How They Are Connected
 ================================================================================
 
-Without connection pool:
+Spring Data JPA:
 
-    Every request
+    Spring Data JPA ek abstraction layer hai jo relational databases ko access
+    karne ke liye use hoti hai.
+
+    Hum repository methods call karte hain:
+
+        userRepository.findById(1L);
+        userRepository.save(user);
+
+    Spring Data JPA directly database se baat nahi karta.
+    Under the hood, ye Hibernate ko use karta hai.
+
+--------------------------------------------------------------------------------
+
+Hibernate:
+
+    Hibernate ek ORM tool hai.
+
+    ORM = Object Relational Mapping
+
+    Hibernate ka kaam hai:
+
+        Java objects/entities ko database tables se map karna.
+
+    Example:
+
+        User class  ->  users table
+
+    Hibernate repository method /JPQL ko SQL query me convert karta hai.
+
+    Example:
+
+        userRepository.findById(1L);
+
+    Internally SQL ban sakti hai:
+
+        SELECT * FROM users WHERE id = 1;
+
+    SQL execute karne ke liye Hibernate JDBC ka use karta hai.
+
+--------------------------------------------------------------------------------
+
+JDBC:
+
+    JDBC Java ka standard database API hai.
+
+    Hibernate JDBC API ke through database operations perform karta hai.
+
+    JDBC concepts:
+
+        - Connection
+        - PreparedStatement
+        - ResultSet
+
+    But JDBC khud database-specific communication nahi karta.
+
+    Actual database-specific communication JDBC Driver karta hai.
+
+--------------------------------------------------------------------------------
+
+JDBC Driver:
+
+    JDBC Driver database-specific implementation hota hai.
+
+    Example:
+
+        MySQL ke liye:
+            MySQL JDBC Driver
+
+        PostgreSQL ke liye:
+            PostgreSQL JDBC Driver
+
+    JDBC Driver ka kaam hai:
+
+        JDBC calls ko database-specific protocol me convert karna.
+
+    Example:
+
+        JDBC call:
+            executeQuery()
+
+        MySQL Driver:
+            MySQL protocol ke through query MySQL server ko bhejta hai.
+
+--------------------------------------------------------------------------------
+
+Complete Flow:
+
+    Application Code
         |
         v
-    Create new DB connection
+    Spring Data JPA Repository
         |
         v
-    Execute query
+    Hibernate ORM
         |
         v
-    Close DB connection
+    JDBC API
+        |
+        v
+    JDBC Driver
+        |
+        v
+    TCP connection + Database-specific protocol
+        |
+        v
+    Database Server
 
-Problem:
 
-    DB connection create karna costly hota hai because it may involve:
+Default ports :
 
-        - TCP connection setup
-        - Authentication
-        - SSL handshake if enabled
-        - DB session creation
-        - Resource allocation on DB server
+    MySQL:
+        Default port: 3306
 
-Isliye har request ke liye new connection banana slow and inefficient hota hai.
+    PostgreSQL:
+        Default port: 5432
+
+    Redis:
+        Default port: 6379
 
 ================================================================================
-With Connection Pool
+How DB Connection is Established
 ================================================================================
 
-With connection pool:
+Suppose Spring Boot application MySQL se connect kar rahi hai.
 
-    Request
-        |
-        v
-    Borrow existing connection from pool
-        |
-        v
-    Execute query
-        |
-        v
-    Return connection to pool
 
-Benefits:
+Step-by-step process:
 
-    - Faster DB access
-    - Existing connections reuse hote hain
-    - Controlled number of DB connections
-    - DB overload prevent hota hai
-    - Application performance improve hoti hai
+    1. Application DB connection request karti hai.
+
+        Example:
+
+            DriverManager.getConnection(url, username, password)
+
+        Ya Spring Boot me internally DataSource/HikariCP ye kaam karta hai.
+
+    2. JDBC driver JDBC URL parse karta hai.
+
+        Example:
+
+            jdbc:mysql://localhost:3306/testdb
+
+        Driver ko pata chalta hai:
+
+            Host     = localhost
+            Port     = 3306
+            Database = testdb
+
+    3. Application database server ke saath TCP connection establish karti hai.
+
+        TCP connection establish karne ke liye TCP handshake hota hai:
+
+            SYN
+            SYN-ACK
+            ACK
+
+        Iske baad application aur DB server ke beech network connection ready hota hai.
+
+    4. Agar SSL/TLS enabled hai, to TLS handshake hota hai.
+
+        TLS handshake ke baad connection encrypted ho jaata hai.
+
+        Ye step optional hai, configuration par depend karta hai.
+
+    5. Database-specific handshake hota hai.
+
+        MySQL ke case me MySQL server client ko initial handshake packet bhejta hai.
+
+        Is handshake me server information, protocol version,
+        authentication method, capabilities, etc. hoti hain.
+
+    6. Client/JDBC driver authentication details bhejta hai.
+
+        Example:
+
+            username
+            password/auth token
+            database name
+            client capabilities
+
+    7. Database server credentials validate karta hai.
+
+        Server check karta hai:
+
+            - username/password correct hai ya nahi
+            - user ko database access permission hai ya nahi
+            - host se connect karne ki permission hai ya nahi
+
+    8. Authentication successful hone ke baad DB session create hota hai.
+
+        DB session ka matlab:
+
+            Server side par ek logical context create hota hai
+            jisme user, selected database, transaction state,
+            session variables, temporary settings, etc. maintain hote hain.
+
+    9. Connection ready ho jaata hai.
+
+        Ab application SQL queries send kar sakti hai.
+
+        Example:
+
+            SELECT * FROM users WHERE id = 1;
+
+    10. Query execute hoti hai and result application ko return hota hai.
+
+    11. Without connection pool, query complete hone ke baad connection close ho jaata hai.
+
+        Close karne par:
+
+            - DB session end hota hai
+            - TCP connection close hota hai
+            - DB server resources release hote hain
+
 
 ================================================================================
 What Happens If All Connections Are Busy?
@@ -633,54 +826,4 @@ In this case:
 Example error:
 
     Connection is not available, request timed out.
-
-================================================================================
-How Pool Maintains Connections
-================================================================================
-
-Connection pool background me connections ko maintain karta hai.
-
-It can:
-
-    - Idle connections ko alive rakhna
-    - Dead/broken connections ko remove karna
-    - Need padne par new connections create karna
-    - Extra idle connections ko close karna
-    - Maximum pool size ke upar connections create na karna
-
-Important:
-
-    Application connection ko logically close karti hai,
-    but actual physical DB connection close nahi hota.
-
-    Connection pool us connection ko wapas idle state me daal deta hai.
-
-Example:
-
-    connection.close();
-
-In normal JDBC without pool:
-
-    Actual DB connection close ho jaata hai.
-
-With connection pool:
-
-    Connection pool connection ko reclaim kar leta hai
-    and future request ke liye reuse karta hai.
-
-================================================================================
-Final Summary
-================================================================================
-
-    Application startup ke time connection pool initialize hota hai.
-
-    Pool initial DB connections create karta hai based on configuration.
-
-    Request ke time application pool se connection borrow karti hai.
-
-    Query complete hone ke baad connection pool ko return hota hai.
-
-    Pool connections ko reuse, validate, create, and remove karta rehta hai.
-
-    Isse DB access fast hota hai and DB overload prevent hota hai.
 */
