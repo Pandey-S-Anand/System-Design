@@ -47,7 +47,7 @@ This setup is simple and good for small scale applications.
 
 Database operations broadly two types ke hote hain:
 
-    1. Read operations - Read ka matlab data fetch karna.
+    1. Read operations  - Read ka matlab data fetch karna.
     2. Write operations - Write ka matlab data change karna.
 
 Read operations:
@@ -59,7 +59,6 @@ Write operations:
     INSERT
     UPDATE
     DELETE
-
 
 ================================================================================
 3. Problem with Single DB for Everything
@@ -228,7 +227,6 @@ Example MySQL style:
 
     4. Replica same change apne database me apply karta hai.
 
-
 ================================================================================
 10. Is Replication Expensive?
 ================================================================================
@@ -308,7 +306,6 @@ Common strategies:
         Payment status
         Order confirmation
 
-
     Non-critical or public data replicas se read karo.
 
     Example:
@@ -321,6 +318,7 @@ Common strategies:
 ================================================================================
 13. Redis Kaha Aata Hai?
 ================================================================================
+
 Redis RAM/in-memory based hota hai, isliye DB se bahut fast hota hai.
 
 Redis generally application aur database ke beech fast cache layer ke form me use hota hai.
@@ -358,12 +356,10 @@ Second request:
     DB hit nahi hua.
     Response fast return hua.
 
-
 Most systems me:
 
     Main DB  -> Source of truth
     Redis    -> Fast temporary cache
-
 
 Redis me data temporary ho sakta hai.
 
@@ -379,8 +375,6 @@ Next request DB se fresh data fetch karegi.
 ================================================================================
 14. Cache Invalidation
 ================================================================================
-
-Example:
 
 Example:
 
@@ -520,7 +514,6 @@ Isliye connection pool use hota hai.
 
 Spring Boot me commonly HikariCP use hota hai.
 
-
 When application starts:
 
     1. Spring Boot application start hoti hai.
@@ -552,7 +545,6 @@ When application starts:
 
     5. Ye connections pool ke andar idle state me ready rehte hain.
 
-
 Benefits:
 
     - Faster DB access
@@ -578,7 +570,6 @@ When request comes:
     5. Connection pool ko wapas return kar diya jaata hai.
 
     6. Same connection future requests ke liye reuse hota hai.
-
 
 ================================================================================
 17: Spring Data JPA, Hibernate, JDBC, JDBC Driver - How They Are Connected
@@ -693,7 +684,6 @@ Complete Flow:
         v
     Database Server
 
-
 Default ports :
 
     MySQL:
@@ -706,103 +696,146 @@ Default ports :
         Default port: 6379
 
 ================================================================================
-How DB Connection is Established
+18 : How DB Connection is Established
 ================================================================================
 
-Suppose Spring Boot application MySQL se connect kar rahi hai.
+When application ko database connection chahiye hota hai:
 
-
-Step-by-step process:
-
-    1. Application DB connection request karti hai.
+    1. Application DB operation trigger karti hai.
 
         Example:
 
-            DriverManager.getConnection(url, username, password)
+            userRepository.findById(1L);
 
-        Ya Spring Boot me internally DataSource/HikariCP ye kaam karta hai.
+        Ye call Spring Data JPA repository se start hoti hai.
 
-    2. JDBC driver JDBC URL parse karta hai.
+    2. Spring Data JPA request Hibernate ko delegate karta hai.
+
+        Hibernate repository method / JPQL ko SQL query me convert karta hai.
+
+        Example SQL:
+
+            SELECT * FROM users WHERE id = 1;
+
+    3. Hibernate JDBC API ke through DB operation perform karta hai.
+
+        Hibernate ko query execute karne ke liye JDBC Connection chahiye hota hai.
+
+        Spring Boot me connection usually DataSource se milta hai.
+
+        Internally:
+
+            dataSource.getConnection();
+
+        Important:
+
+            Spring Boot me ye DataSource generally HikariCP-backed hota hai.
+
+            HikariCP ek connection pool hai.
+
+        If pool me available connection hai:
+
+            HikariCP existing JDBC Connection return kar deta hai.
+
+        If pool me connection available nahi hai
+        and maximum pool size cross nahi hua:
+
+            HikariCP JDBC Driver ka use karke new physical DB connection create karta hai.
+
+        Plain JDBC me connection directly aise create kar sakte hain:
+
+            DriverManager.getConnection(url, username, password);
+
+        But Spring Boot applications me usually HikariCP ke through connection milta hai.
+
+    4. JDBC Driver JDBC URL parse karta hai.
 
         Example:
 
             jdbc:mysql://localhost:3306/testdb
 
-        Driver ko pata chalta hai:
+        Driver ko milta hai:
 
             Host     = localhost
             Port     = 3306
             Database = testdb
 
-    3. Application database server ke saath TCP connection establish karti hai.
+    5. JDBC Driver database server ke host and port par TCP connection open karta hai.
 
-        TCP connection establish karne ke liye TCP handshake hota hai:
+        TCP handshake hota hai:
 
             SYN
             SYN-ACK
             ACK
 
-        Iske baad application aur DB server ke beech network connection ready hota hai.
+        Iske baad application server aur database server ke beech
+        network connection ready ho jaata hai.
 
-    4. Agar SSL/TLS enabled hai, to TLS handshake hota hai.
+    6. Agar SSL/TLS enabled hai, to TLS handshake hota hai.
 
-        TLS handshake ke baad connection encrypted ho jaata hai.
+        TLS ke baad connection encrypted ho jaata hai.
 
-        Ye step optional hai, configuration par depend karta hai.
+    7. Database-specific handshake hota hai.
 
-    5. Database-specific handshake hota hai.
+        MySQL server JDBC Driver ko initial handshake packet bhejta hai.
 
-        MySQL ke case me MySQL server client ko initial handshake packet bhejta hai.
+        Is packet me hota hai:
 
-        Is handshake me server information, protocol version,
-        authentication method, capabilities, etc. hoti hain.
+            - server/protocol version
+            - supported capabilities
+            - authentication method
+            - SSL support
+            - random challenge/salt
 
-    6. Client/JDBC driver authentication details bhejta hai.
+    8. JDBC Driver handshake read karke authentication response bhejta hai.
 
-        Example:
+        Driver decide karta hai:
 
-            username
-            password/auth token
-            database name
-            client capabilities
+            - protocol compatible hai ya nahi
+            - SSL use karna hai ya nahi
+            - kaunsa auth method use karna hai
+            - kaunsi capabilities enable karni hain
 
-    7. Database server credentials validate karta hai.
+        Then driver database server ko bhejta hai:
+
+            - username
+            - selected database
+            - client capabilities
+            - authentication response/password token
+
+        Note:
+
+            Usually password plain text me directly nahi bheja jaata.
+            Server ke challenge/salt ke basis par secure auth response bheja jaata hai.
+
+    9. Database server credentials and permissions validate karta hai.
 
         Server check karta hai:
 
             - username/password correct hai ya nahi
-            - user ko database access permission hai ya nahi
-            - host se connect karne ki permission hai ya nahi
+            - database access allowed hai ya nahi
+            - given host se connect karne ki permission hai ya nahi
 
-    8. Authentication successful hone ke baad DB session create hota hai.
+    10. Authentication successful hone ke baad DB session create hota hai.
 
-        DB session ka matlab:
+        DB session server-side logical context hota hai.
 
-            Server side par ek logical context create hota hai
-            jisme user, selected database, transaction state,
-            session variables, temporary settings, etc. maintain hote hain.
+        Isme maintain ho sakta hai:
 
-    9. Connection ready ho jaata hai.
+            - authenticated user
+            - selected database/schema
+            - transaction state
+            - session variables
+            - connection-specific state
+
+        Database server required memory/resources bhi allocate karta hai.
+
+    11. Connection ready ho jaata hai.
 
         Ab application SQL queries send kar sakti hai.
 
-        Example:
-
-            SELECT * FROM users WHERE id = 1;
-
-    10. Query execute hoti hai and result application ko return hota hai.
-
-    11. Without connection pool, query complete hone ke baad connection close ho jaata hai.
-
-        Close karne par:
-
-            - DB session end hota hai
-            - TCP connection close hota hai
-            - DB server resources release hote hain
-
-
 ================================================================================
-What Happens If All Connections Are Busy?
+19: What Happens If All Connections Are Busy?
 ================================================================================
 
 Suppose:
