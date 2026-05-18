@@ -1,4 +1,3 @@
-/*
 ╔═════════════════════════════════════════════════════════════════════╗
 ║                 COMPLETE INTERNET REQUEST FLOW                      ║
 ║            (DHCP → DNS → TCP → TLS → HTTPS → PAT)                   ║
@@ -1214,5 +1213,3 @@ Final delivery:
 
 
 Aur finally Chrome response receive karta hai.
-
-*/
