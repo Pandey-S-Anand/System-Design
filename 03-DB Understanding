@@ -1,4 +1,3 @@
-/*
 ================================================================================
 DATABASE, PRIMARY DB, READ REPLICA, REDIS - COMPONENT LEVEL UNDERSTANDING
 ================================================================================
@@ -859,4 +858,3 @@ In this case:
 Example error:
 
     Connection is not available, request timed out.
-*/
