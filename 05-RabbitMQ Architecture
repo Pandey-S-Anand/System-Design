@@ -1,0 +1,524 @@
+/*
+===============================================================================
+RABBITMQ
+===============================================================================
+
+RabbitMQ ek Message Broker hai jo asynchronous communication ke liye
+use hota hai between services.
+
+===============================================================================
+HIGH LEVEL RABBITMQ FLOW
+===============================================================================
+
+Producer Service
+      |
+      v
+   Exchange
+      |
+      v
+    Binding
+      |
+      v
+     Queue
+      |
+      v
+Consumer Service
+
+
+===============================================================================
+CORE COMPONENTS
+===============================================================================
+
+RabbitMQ architecture me mainly ye components hote hain:
+
+1. PRODUCER
+-------------------------------------------------------------------------------
+
+Producer wo application/service hoti hai jo message publish karti hai.
+
+Ye published message Exchange ke paas jaata hai.
+
+Producer message ke saath ek routing key bhi bhejta hai.
+
+
+2. ROUTING KEY
+-------------------------------------------------------------------------------
+
+Routing key ka use Exchange karta hai ye decide karne ke liye
+ki message kis queue/s me route kiya jayega.
+
+
+3. BINDING
+-------------------------------------------------------------------------------
+
+Exchange aur Queue ke beech ek mapping hoti hai
+jisko hum Binding bolte hain.
+
+Basically ye Exchange aur Queue ke beech ek connection/link hota hai.
+
+
+4. QUEUE
+-------------------------------------------------------------------------------
+
+Queue actual storage hoti hai.
+
+1: Messages temporarily yaha stored rehte hain jabtak ki koi consumer unhe process nahi kar leta.
+
+2: Durable Queue:
+Suppose:
+QueueBuilder.durable("payment.queue")
+
+Meaning:
+RabbitMQ crash -> RabbitMQ restart -> queue survives i.e 'payment.queue' still exists.
+
+Queue Durable ≠ Message Durable
+
+These are different things.
+
+Case 1
+
+Durable Queue
+
+✓ queue durable
+✗ message non persistent
+
+Rabbit restart -> Queue survives -> Messages may vanish.
+
+Case 2
+✓ queue durable
+✓ message persistent
+
+Rabbit restart -> Queue survives -> Messages survive.
+
+Example:
+
+public void publishOrderWithSpecificRoutingKey(String message) {
+
+    stringRabbitTemplate.convertAndSend(
+            exchange,
+            commonBindingKey,
+            message,
+            msg -> {
+                msg.getMessageProperties()
+                   .setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+                return msg;
+            }
+    );
+}
+
+
+This is production setup.
+
+3: Non Durable Queue
+
+Suppose:
+QueueBuilder.nonDurable("payment.queue")
+
+Meaning:
+RabbitMQ crash -> RabbitMQ restart -> Queue disappears -> 'payment.queue' is gone and so is the message.
+
+
+4: Auto Delete Queue
+
+Queue automatically delete ho jayegi jab uska last consumer unsubscribe/disconnect ho jaye, provided queue par kam se kam ek consumer pehle attach hua ho.
+
+Initial State:
+
+"payment.queue"
+
+Consumers:
+- Consumer1
+- Consumer2
+- Consumer3
+
+Queue exists.
+
+Consumer1 disconnect
+payment.queue
+
+Consumers:
+- Consumer2
+- Consumer3
+
+Queue still exists.
+
+Consumer2 disconnect
+Consumers:
+- Consumer3
+
+Queue still exists.
+
+Consumer3 disconnect
+Consumers:
+NONE
+
+Ab RabbitMQ dekhega:
+
+Consumer Count = 0
+autoDelete = true
+
+Result:
+payment.queue deleted
+
+
+In Production Generally: autoDelete = false
+
+This is generally used only for temporary queues.
+
+5. CONSUMER
+-------------------------------------------------------------------------------
+
+Consumer wo application/service hoti hai
+jo Queue se messages consume karti hai.
+
+
+6. EXCHANGE
+-------------------------------------------------------------------------------
+
+Exchange decide karta hai:
+
+message kis queue me jayega
+
+based on:
+
+a) Exchange type
+b) Routing key
+c) Bindings
+
+
+RabbitMQ me major Exchange types:
+
+1. Direct Exchange
+2. Fanout Exchange
+3. Topic Exchange
+4. Headers Exchange
+
+
+===============================================================================
+A: DIRECT EXCHANGE
+===============================================================================
+
+Suppose producer ne message bheja:
+
+    "Hello World"
+
+along with routing key:
+
+    "push"
+
+And there are 3 queues:
+
+-> Push Queue
+   binded to Direct Exchange with binding key = "push"
+
+-> Email Queue
+   binded to Direct Exchange with binding key = "email"
+
+-> SMS Queue
+   binded to Direct Exchange with binding key = "sms"
+
+
+Ab Direct Exchange apne saare bindings check karega.
+
+Jis queue/s ki binding key exactly:
+
+    "push"
+
+hogi, message usi queue me route kar diya jayega.
+
+Fir consumer us queue se message consume karega.
+
+Is case me message Push Queue me jayega
+because uski binding key "push" hai.
+
+Push Consumer us message:
+
+    "Hello World"
+
+ko consume karega and successful processing ke baad
+message Push Queue se remove ho jayega.
+
+
+Producer
+   |
+   | routingKey = push
+   v
+Direct Exchange
+   |
+   |---------------------------------------------------------
+   | binding = push       | binding = email   | binding = sms
+   v                      v                    v
+Push Queue             Email Queue          SMS Queue
+   |                      |                    |
+   v                      v                    v
+Push Consumer         Email Consumer      SMS Consumer
+
+
+Yaha Direct Exchange basically ek exact-match router ki tarah kaam karta hai.
+
+
+===============================================================================
+B: FANOUT EXCHANGE
+===============================================================================
+
+NOTE:
+Fanout Exchange me routing key ka koi role nahi hota.
+
+Producer routing key bhej bhi de,
+to bhi Fanout Exchange usko ignore kar deta hai.
+
+Kyuki Fanout ka purpose hota hai:
+
+    Broadcasting
+
+
+Suppose producer ne message bheja:
+
+    "Hello World"
+
+along with routing key:
+
+    "anything"
+
+And there are 3 queues:
+
+-> Push Queue
+   binded to Fanout Exchange
+
+-> Email Queue
+   binded to Fanout Exchange
+
+-> SMS Queue
+   binded to Fanout Exchange
+
+
+Is case me Fanout Exchange apne saath binded
+sabhi queues ko message ki ek independent copy bhej deta hai.
+
+Fanout Exchange routing key ko completely ignore karta hai,
+even if producer ne bheja bhi ho to.
+
+Uske liye sirf ek cheez matter karti hai:
+
+    Kaunsi queues is Exchange se bind hain
+
+
+Once message respective queues me publish ho jaata hai,
+respective consumers usko process karte hain and
+successful processing ke baad message queue se remove ho jaata hai.
+
+
+Is case me:
+
+-> Push Queue
+-> Email Queue
+-> SMS Queue
+
+teeno ko:
+
+    "Hello World"
+
+message ki ek independent copy milegi.
+
+
+Producer
+   |
+   | routingKey = anything
+   v
+Fanout Exchange
+   |
+   |---------------------------------------------------------
+   |                    |                     |
+   v                    v                     v
+Push Queue          Email Queue           SMS Queue
+   |                     |                    |
+   |-----|               |                    |
+   |     |               |                    |
+   v     v               v                    v
+Push1  Push2         Email Consumer      SMS Consumer
+Consumer Consumer
+
+
+IMPORTANT:
+
+Agar multiple consumers same Queue ko listen kar rahe hon,
+to ek particular message sirf ek hi consumer ko diya jayega.
+
+Example:
+
+Push Queue
+   |
+   |----> Push1 Consumer
+   |
+   |----> Push2 Consumer
+
+
+To koi bhi particular message:
+
+-> ya to Push1 Consumer ko milega
+-> ya Push2 Consumer ko
+
+Dono ko same message nahi milega.
+
+Queue internally consumers ke beech load balancing karti hai.
+
+
+===============================================================================
+C: TOPIC EXCHANGE
+===============================================================================
+
+Isme pattern matching hoti hai.
+
+Special characters:
+
+* = exactly one word
+# = zero or multiple words
+
+
+Suppose producer ne message bheja:
+
+    "Hello World"
+
+along with routing key:
+
+    "order.created"
+
+And there are 3 queues:
+
+-> SMS Queue
+   binded to Topic Exchange with binding:
+
+       order.*
+
+-> Email Queue
+   binded to Topic Exchange with binding:
+
+       order.*
+
+-> Payment Queue
+   binded to Topic Exchange with binding:
+
+       payment.success
+
+
+Producer
+   |
+   | routingKey = order.created
+   v
+Topic Exchange
+   |
+   |---------------------------------------------------------
+   | binding = order.*     | binding = order.*  | binding = payment.success
+   v                       v                     v
+SMS Queue              Email Queue          Payment Queue
+   |                       |                     |
+   |------|                |                     |
+   |      |                |                     |
+   v      v                v                     v
+SMS1   SMS2           Email Consumer      Payment Consumer
+Consumer Consumer
+
+
+Ab Topic Exchange incoming routing key:
+
+    order.created
+
+ko apni sabhi bindings ke saath pattern matching karega.
+
+
+routingKey = order.created
+
+
+Now:
+
+order.*         -> MATCH
+order.*         -> MATCH
+payment.success -> NO MATCH
+
+
+Isliye Topic Exchange:
+
+-> SMS Queue ko "Hello World" ki ek copy bhej dega
+-> Email Queue ko bhi "Hello World" ki ek independent copy bhej dega
+-> Payment Queue ko koi message nahi milega
+   because binding match nahi hui
+
+
+Once messages respective queues me publish ho jaate hain,
+un queues ke consumers messages consume karte hain.
+
+Successful processing ke baad consumer ACK bhejta hai,
+jiske baad RabbitMQ message ko queue se remove kar deta hai.
+
+
+IMPORTANT:
+
+Agar multiple consumers same queue ko listen kar rahe hon,
+to ek particular message sirf ek hi consumer ko diya jayega.
+
+Example:
+
+SMS Queue
+   |
+   |----> SMS1 Consumer
+   |
+   |----> SMS2 Consumer
+
+
+To:
+
+    "Hello World"
+
+message either:
+
+-> SMS1 Consumer ko milega
+-> ya SMS2 Consumer ko
+
+Dono ko nahi.
+
+RabbitMQ same queue ke consumers ke beech
+load balancing karta hai using:
+
+    Competing Consumers Pattern
+
+
+NOTE:
+
+Agar multiple queues same binding ke saath
+Exchange se bind hoti hain,
+to un sabhi queues ko message ki ek independent copy milti hai.
+
+Is example me:
+
+-> SMS Queue
+-> Email Queue
+
+dono ko:
+
+    "Hello World"
+
+message ki ek independent copy milti hai.
+
+
+===============================================================================
+D: HEADERS EXCHANGE
+===============================================================================
+
+Rarely used.
+
+Isme routing routing-key se nahi,
+headers ke basis par hoti hai.
+
+Example headers:
+
+format = pdf
+type   = invoice
+
+
+Exchange incoming message headers ko check karta hai
+aur matching bindings ke according
+message ko respective queues me route karta hai.
+
+
+
+*/
