@@ -520,5 +520,439 @@ aur matching bindings ke according
 message ko respective queues me route karta hai.
 
 
+===============================================================================
+7. MESSAGE ACKNOWLEDGEMENT
+===============================================================================
+
+Suppose there is a queue named:
+
+payment-queue
+
+which currently contains three messages:
+
+msg1
+msg2
+msg3
+
+There is a consumer named:
+
+payment-consumer
+
+which is listening to this queue.
+
+RabbitMQ delivers:
+
+msg1
+
+to the consumer.
+
+Question:
+
+How does RabbitMQ know that the consumer has successfully processed
+the message and it can now be safely removed from the queue?
+
+Answer:
+
+ACKNOWLEDGEMENT (ACK)
+
+Flow:
+
+Queue
+|
+deliver msg1
+|
+Consumer
+|
+process message
+|
+send ACK
+|
+RabbitMQ removes msg1 permanently
+
+---
+
+## RABBITMQ MESSAGE STATES
+
+A message can be in one of the following states:
+
+1. READY
+2. UNACKNOWLEDGED
+
+Example:
+
+Queue:
+
+msg1
+msg2
+msg3
+
+RabbitMQ delivers msg1 to the consumer.
+
+Now the state becomes:
+
+READY:
+msg2
+msg3
+
+UNACKNOWLEDGED:
+msg1
+
+Until RabbitMQ receives an ACK, the message remains in the
+UNACKNOWLEDGED state.
+
+---
+
+## HOW DOES SPRING BOOT HANDLE ACKNOWLEDGEMENTS?
+
+Spring Boot provides three acknowledgement modes:
+
+1. AUTO
+2. MANUAL
+3. NONE
+
+These are controlled using:
+
+spring.rabbitmq.listener.simple.acknowledge-mode
+
+Example:
+
+spring.rabbitmq.listener.simple.acknowledge-mode=auto
+
+or
+
+spring.rabbitmq.listener.simple.acknowledge-mode=manual
+
+or
+
+spring.rabbitmq.listener.simple.acknowledge-mode=none
+
+===============================================================================
+1. AUTO MODE
+===============================================================================
+
+This is the default acknowledgement mode.
+
+In AUTO mode, Spring automatically decides whether an ACK or NACK
+needs to be sent based on the outcome of listener execution.
+
+---
+
+## CASE 1: LISTENER EXECUTES SUCCESSFULLY
+
+Suppose RabbitMQ delivers:
+
+msg1
+
+Listener processes the message successfully.
+
+Internally, RabbitMQ provides the following API for acknowledging
+messages:
+
+channel.basicAck(deliveryTag, multiple);
+
+Spring uses this API internally when listener execution completes
+successfully.
+
+## UNDERSTANDING THE PARAMETERS OF basicAck()
+
+1. deliveryTag
+
+A delivery tag is a unique identifier assigned by RabbitMQ to every
+message delivered to a consumer within a channel
+
+RabbitMQ uses this tag to uniquely identify messages while processing
+ACKs.
+
+---
+
+2. multiple
+
+---
+
+If:
+
+multiple=false
+
+Only the message represented by the supplied delivery tag will be
+ACKed.
+
+Example:
+
+channel.basicNack(
+103,
+false,
+);
+
+Only message 103 is ACKed.
+
+---
+
+If:
+
+multiple=true
+
+RabbitMQ will ACK all currently unacknowledged messages up to and
+including the supplied delivery tag.
+
+Example:
+
+Suppose:
+
+msg1 -> tag=101
+msg2 -> tag=102
+msg3 -> tag=103
+
+Then:
+
+channel.basicAck(103, true);
+
+Meaning:
+
+msg1
+msg2
+msg3
+
+All three messages will be ACKed together.
+
+This is particularly useful in batch-processing scenarios.
+
+
+Flow:
+
+msg1
+|
+listener executes successfully
+|
+Spring sends ACK basicAck(101, false)
+|
+RabbitMQ removes msg1 permanently
+
+Once RabbitMQ receives this ACK, the message is permanently removed
+from the queue.
+
+---
+
+## CASE 2: LISTENER THROWS AN EXCEPTION
+
+Suppose listener execution fails:
+
+msg1
+|
+listener throws exception
+|
+Spring sends NACK / REJECT
+
+RabbitMQ provides two APIs for this:
+
+---
+
+## a) REJECT
+
+channel.basicReject( deliveryTag, requeue );
+
+Example:
+
+channel.basicReject(101,true);
+
+Limitation:
+
+basicReject() can reject only a single message.
+
+---
+
+## b) NACK
+
+channel.basicNack(deliveryTag,multiple,requeue);
+
+Example:
+
+channel.basicNack(101,false,true);
+
+Capability:
+
+basicNack() can reject either a single message or multiple messages.
+
+Because of this, NACK is essentially a more powerful version of
+REJECT.
+
+---
+
+## UNDERSTANDING THE PARAMETERS OF basicNack()
+
+1. deliveryTag
+
+A delivery tag is a unique identifier assigned by RabbitMQ to every
+message delivered to a consumer within a channel.
+
+RabbitMQ uses this tag to uniquely identify messages while processing NACKs.
+
+---
+
+2. multiple
+
+---
+
+If:
+
+multiple=false
+
+Only the message represented by the supplied delivery tag will be
+NACKed.
+
+Example:
+
+channel.basicNack(103,false,true);
+
+Only message 103 is NACKed.
+
+---
+
+If:
+
+multiple=true
+
+RabbitMQ will NACK all currently unacknowledged messages up to and
+including the supplied delivery tag.
+
+Example:
+
+Suppose:
+
+msg1 -> tag=101
+msg2 -> tag=102
+msg3 -> tag=103
+
+Then:
+
+channel.basicNack(103,true,true);
+
+Meaning:
+
+msg1
+msg2
+msg3
+
+All three messages will be NACKed together.
+
+This is particularly useful in batch-processing scenarios.
+
+---
+
+3. requeue
+
+---
+
+The requeue parameter determines whether the rejected message should
+be placed back into the queue or not.
+
+Spring decides the value of this parameter using:
+
+spring.rabbitmq.listener.simple.default-requeue-rejected
+
+===============================================================================
+CASE 1:
+spring.rabbitmq.listener.simple.default-requeue-rejected=true
+=============================================================
+
+Flow:
+
+msg1
+|
+listener throws exception
+|
+Spring sends NACK / REJECT
+|
+channel.basicNack(tag,false,true)
+
+OR
+
+channel.basicReject(tag,true)
+|
+requeue=true
+|
+RabbitMQ puts message back into queue
+
+---
+
+## WHY IS REQUEUEING NOT ALWAYS A GOOD IDEA?
+
+Consider the following malformed message:
+
+{
+"amount":"ABC"
+}
+
+Consumer code:
+
+Integer.parseInt("ABC");
+
+This will always throw an exception.
+
+If requeue=true:
+
+consume -> fail -> requeue
+consume -> fail -> requeue
+consume -> fail -> requeue
+
+The same message keeps coming back forever.
+
+This situation is known as a:
+
+POISON MESSAGE
+
+and can result in an infinite processing loop.
+
+Production systems generally try to avoid such scenarios.
+
+===============================================================================
+CASE 2:
+spring.rabbitmq.listener.simple.default-requeue-rejected=false
+==============================================================
+
+Flow:
+
+  msg1
+   |
+listener throws exception
+   |
+Spring catches exception
+   |
+Spring reads:
+spring.rabbitmq.listener.simple.default-requeue-rejected = false
+   |
+Spring sends NACK/REJECT with requeue = false
+   |
+RabbitMQ receives NACK/REJECT with requeue = false
+   |
+RabbitMQ
+      |
+DLX configured ?
+      |
+      +-- NO --> Drop Message
+      |
+      +-- YES
+              |
+              v
+      Publish to DLX
+              |
+              v
+      DLQ receives message
+
+Note:
+Message is dead-lettered to the configured DLX,
+which then routes the message to the appropriate DLQ.
+===============================================================================
+PRODUCTION RECOMMENDATION
+===============================================================================
+
+Most production systems use:
+
+spring.rabbitmq.listener.simple.default-requeue-rejected=false
+
+along with a properly configured Dead Letter Queue (DLQ).
+
+This prevents infinite poison-message loops and allows failed messages
+to be analyzed, retried, or handled separately without affecting
+normal message processing.
 
 */
