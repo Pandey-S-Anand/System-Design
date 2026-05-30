@@ -678,10 +678,7 @@ ACKed.
 
 Example:
 
-channel.basicNack(
-103,
-false,
-);
+channel.basicAck(103,false);
 
 Only message 103 is ACKed.
 
@@ -741,6 +738,7 @@ msg1
 listener throws exception
 |
 Spring sends NACK / REJECT
+
 
 RabbitMQ provides two APIs for this:
 
@@ -845,14 +843,12 @@ This is particularly useful in batch-processing scenarios.
 The requeue parameter determines whether the rejected message should
 be placed back into the queue or not.
 
-Spring decides the value of this parameter using:
+Spring decides the value of this parameter using following property:
 
 spring.rabbitmq.listener.simple.default-requeue-rejected
 
-===============================================================================
 CASE 1:
-spring.rabbitmq.listener.simple.default-requeue-rejected=true
-=============================================================
+spring.rabbitmq.listener.simple.default-requeue-rejected = true
 
 Flow:
 
@@ -860,15 +856,15 @@ msg1
 |
 listener throws exception
 |
+Spring catches exception
+|
 Spring sends NACK / REJECT
 |
-channel.basicNack(tag,false,true)
-
-OR
-
-channel.basicReject(tag,true)
+|   channel.basicNack(tag,false,true)
+|        OR
+|   channel.basicReject(tag,true)
 |
-requeue=true
+RabbitMQ receives NACK/REJECT with requeue = true
 |
 RabbitMQ puts message back into queue
 
@@ -904,24 +900,23 @@ and can result in an infinite processing loop.
 
 Production systems generally try to avoid such scenarios.
 
-===============================================================================
 CASE 2:
 spring.rabbitmq.listener.simple.default-requeue-rejected=false
-==============================================================
 
 Flow:
 
-  msg1
-   |
+msg1
+|
 listener throws exception
-   |
+|
 Spring catches exception
-   |
-Spring reads:
-spring.rabbitmq.listener.simple.default-requeue-rejected = false
-   |
-Spring sends NACK/REJECT with requeue = false
-   |
+|
+Spring sends NACK / REJECT
+|
+|   channel.basicNack(tag,false, false)
+|        OR
+|   channel.basicReject(tag, false)
+|
 RabbitMQ receives NACK/REJECT with requeue = false
    |
 RabbitMQ
@@ -941,6 +936,7 @@ DLX configured ?
 Note:
 Message is dead-lettered to the configured DLX,
 which then routes the message to the appropriate DLQ.
+
 ===============================================================================
 PRODUCTION RECOMMENDATION
 ===============================================================================
@@ -954,5 +950,35 @@ along with a properly configured Dead Letter Queue (DLQ).
 This prevents infinite poison-message loops and allows failed messages
 to be analyzed, retried, or handled separately without affecting
 normal message processing.
+
+
+## CASE 3: CONSUMER CRASHES BEFORE SENDING ACK/NACK
+
+Suppose:
+
+msg1
+|
+Queue delivers message
+|
+Message state becomes:
+UNACKNOWLEDGED
+|
+Consumer starts processing
+|
+Consumer crashes (or network connection is lost)
+|
+No ACK / NACK / REJECT  received
+|
+RabbitMQ detects that the consumer's channel/TCP connection has closed
+|
+RabbitMQ marks msg1 as READY again
+|
+RabbitMQ requeues the message
+|
+Message becomes available for redelivery
+|
+Same consumer (after restart)
+OR
+Another consumer can consume it
 
 */
