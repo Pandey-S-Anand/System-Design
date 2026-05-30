@@ -1136,4 +1136,8 @@ Message becomes available for redelivery
 Same consumer (after restart)
 OR
 Another consumer can consume it
+
+===============================================================================
+1. MANUAL MODE
+===============================================================================
 */
