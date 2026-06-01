@@ -1,4 +1,3 @@
-/*
 ===============================================================================
 RABBITMQ
 ===============================================================================
@@ -1138,6 +1137,198 @@ OR
 Another consumer can consume it
 
 ===============================================================================
-1. MANUAL MODE
+2. MANUAL MODE
 ===============================================================================
-*/
+
+In MANUAL mode, Spring does not automatically send ACK, NACK, or REJECT.
+
+Instead, the developer is responsible for deciding what should happen
+to the message after processing.
+
+Flow:
+
+Message Received by Listener
+|
+Your Listener Executes
+|
+Based on the business requirement, you decide:
+|
++-------------------+
+|                   |
+v                   v
+basicAck()      basicNack()/basicReject()
+
+---
+
+## CASE 1: basicAck()
+
+If:
+
+channel.basicAck(deliveryTag, false);
+
+is executed,
+
+RabbitMQ considers the message successfully processed and permanently
+removes it from the queue.
+
+Flow:
+
+Message Received
+|
+Business Logic Success
+|
+basicAck()
+|
+RabbitMQ removes the message from the queue
+
+---
+
+## CASE 2: basicNack() / basicReject()
+
+If:
+
+channel.basicNack(...)
+
+OR
+
+channel.basicReject(...)
+
+is executed,
+
+then the fate of the message depends on the value of the
+requeue parameter.
+
+---
+
+## A) requeue = true
+
+Flow:
+
+Message Received
+|
+Business Logic Failed
+|
+basicNack(..., true)
+
+OR
+
+basicReject(..., true)
+|
+RabbitMQ receives NACK / REJECT
+|
+requeue = true
+|
+Message is placed back into the same queue
+|
+Available for redelivery
+
+---
+
+## B) requeue = false
+
+Flow:
+
+Message Received
+|
+Business Logic Failed
+|
+basicNack(..., false)
+
+OR
+
+basicReject(..., false)
+|
+RabbitMQ receives NACK / REJECT
+|
+requeue = false
+|
+RabbitMQ checks whether a DLX is configured
+|
++------------------+
+|                  |
+v                  v
+DLX Exists         No DLX
+|                  |
+v                  v
+Message routed       Message
+to DLQ               dropped
+
+Note:
+
+RabbitMQ does not directly send messages to a DLQ.
+
+Instead, RabbitMQ first publishes the message to the configured
+Dead Letter Exchange (DLX), and the DLX then routes the message
+to the appropriate Dead Letter Queue (DLQ).
+
+---
+
+## EXAMPLE
+
+@RabbitListener(queues = "payment-queue")
+public void consume(
+String message,
+Channel channel,
+Message amqpMessage) throws IOException {
+
+try {
+
+    System.out.println(
+            "Received = " + message
+    );
+
+    // Business Logic
+
+    long deliveryTag =
+            amqpMessage
+            .getMessageProperties()
+            .getDeliveryTag();
+
+    channel.basicAck(deliveryTag, false);
+
+} catch (Exception ex) {
+
+    long deliveryTag =
+            amqpMessage
+            .getMessageProperties()
+            .getDeliveryTag();
+
+    channel.basicNack(
+            deliveryTag,
+            false, // multiple
+            false  // requeue
+    );
+
+    // OR
+
+    channel.basicReject(
+            deliveryTag,
+            true // requeue
+    );
+}
+
+===============================================================================
+3. NONE MODE
+===============================================================================
+
+In NONE mode, RabbitMQ considers a message acknowledged as soon as it
+is delivered to the consumer.
+
+No ACK, NACK, or REJECT is sent.
+
+Flow:
+
+Queue
+  |
+Deliver Message
+  |
+RabbitMQ immediately considers it consumed
+  |
+Listener executes
+
+If the consumer crashes while processing the message,
+the message is lost because RabbitMQ has already considered it
+successfully consumed.
+
+Because of this reliability issue, NONE mode is rarely used in
+production systems.
