@@ -1,0 +1,513 @@
+
+
+                ---------------------
+                |    Producer       |
+                ---------------------
+                        |
+                        V
++----------------------------------------------------------------------------+
+|                  KAFKA CLUSTER                                             |
+|  ------------------------------------------------------------------------  |                                                                    |
+| | +-------------------+   +-------------------+   +-------------------+  | |
+| | | Broker-1          |   | Broker-2          |   | Broker-3          |  | |
+| | |                   |   |                   |   |                   |  | |
+| | | Topic:            |   | Topic:            |   | Topic:            |  | |
+| | | Orders            |   | Orders            |   | Orders            |  | |
+| | | order-partition-0 |   | order-partition-1 |   | order-partition-2 |  | |
+| | +-------------------+   +-------------------+   +-------------------+  | |                                                                          |   |
+|  ------------------------------------------------------------------------- |                                                                             |
+|                                                                            |
+|                 --------------------                                       |
+|                 |    Zoo-keeper     |                                      |
+|                 ---------------------                                      |
+|                                                                            |
++----------------------------------------------------------------------------+
+                       |
+                       V
+               ---------------------
+               |   Consumer1        |
+               |   Consumer2        |
+               |   Consumer3        |
+                --------------------
+                   Consumer group
+
+
+1: Purane Kafka versions me zookeeper hua karta tha 
+
+Producer
+    |
+Kafka Cluster
+    |
+Zookeeper
+    |
+---------------------
+|   Consumer1        |
+|   Consumer2        |
+|   Consumer3        |
+|--------------------
+   consumer group
+
+
+Aajkal (Kafka 3.x+) mostly KRaft Mode use hota hai.
+
+Producer
+    |
+Kafka Cluster
+
+Zookeeper ki dependency remove kar di gayi hai.
+
+
+2: Kafka cluster is nothing but set of several brokers and brokers are nothing but kafka servers 
+
+3:Producer messages bhejta hai Topic me and consumer topic ko subsribe karta hai and data read karta hai waha se , topic is nothing but a logical category to group messages
+
+4: Topic multiple Partitions me divided hota hai,and ye Partitions kisi 1 broker mai stored ho sakte hai ya phir multiple Multiple Brokers ke across stored ho sakte hai
+
+Suppose:
+
+Orders Topic
+
+has 3 partitions.
+
+Partition-0
+Partition-1
+Partition-2
+
+Distribution:
+
+Broker-1
+  Partition-0
+
+Broker-2
+  Partition-1
+
+Broker-3
+  Partition-2
+
+Ye common scenario hai.
+
+ Agar cluster me ek hi broker hai.
+
+Ya Kafka ne waise assign kiya.
+
+Broker-1
+
+Partition-0
+Partition-1
+Partition-2
+
+Possible hai.
+
+But generally distributed rehte hain.
+
+
+5: har message ko Partition ke andar Offset milta hai. offset index ki terah hota hai aur Consumer Offset track karke wahi se reading continue karta hai jahan se last time chhoda tha.
+
+Consumer Kaise Yaad Rakhta Hai?
+
+Suppose:
+
+suppsoe producer ne 5 messages bheje hai (A,B,C,D,E) and assume karo ye same messages partition 0 mai hai
+
+Partition-0
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+
+Consumer ne A B C read kar liya.
+
+Current position:
+
+Offset = 3
+
+Kafka is offset ko store kar deta hai.
+
+Consumer restart hua.
+
+To Kafka bolega:
+
+Last committed offset = 3
+
+Consumer fir se start karega:
+
+Offset 3 -> D
+Offset 4 -> E
+
+
+Consumer can Ignore Offset and Start From Beginning Consumer bol sakta hai:
+Mujhe sab dobara padhna hai.
+Then: Offset 0 se start karo
+
+
+6:Why partions are required in the topic ?
+
+1: Scalibility :
+
+Maan lo topic me:
+
+Orders
+
+Message1
+Message2
+Message3
+...
+Message 10 Billion
+
+Sab ek broker me store hai.
+
+Broker-1
+   |
+ Orders Topic
+
+over the course of time messages badhte jaenge and ek samay broker ki storage limit reach ho jaegi 
+
+to avoid this we do partioning of topics , topic is just a logical segregation actualy data which belongs to a topic will be present in partions 
+using partioning we will be able to scale the system by storing different partions of the topic across mutliple brokers.
+
+
+2: Parallel Reading
+
+Partition bana diye, lekin usse multiple consumers parallel kaise consume kar lenge?
+
+Aur iska answer hai:
+
+Consumer Group.
+
+
+=>Sirf Consumer Samjho
+
+Maan lo topic hai: Intro
+
+Aur usme sirf 1 partition hai and Producer bhejta hai:
+"MY"
+"NAME"
+"IS"
+"ANURAG"
+
+Partition-0 mai Store hoga:
+
+"MY"
+"NAME"
+"IS"
+"ANURAG"
+
+Yaha pai sirf ek hi partition hai so sabhi messages jo producer ne bheja hai wo sequentially (order preserved) mai partition 0 mai store ho jayega.
+
+Case 1: Sirf 1 consumer hai 
+
+Consumer 1 read karega:
+
+"MY"
+"NAME"
+"IS"
+"ANURAG"
+
+100% ordering maintained. Simple.
+
+
+Case 2:  Maan lo 2 independent consumers hai
+
+Consumer-1
+Consumer-2
+
+Ab kya hoga?
+
+Dono independently read karenge.
+
+Consumer-1
+
+"MY"
+"NAME"
+"IS"
+"ANURAG"
+
+Aur
+
+Consumer-2
+
+"MY"
+"NAME"
+"IS"
+"ANURAG"
+
+Dono ko pura data milega AND ordering maintianed rahegi across both consuemrs.
+
+
+=>Consumer Group Introduce Karte Hain
+
+Ab maan lo:
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+Teeno same group me hain.
+
+Group = IntroProcessors
+
+Ab Kafka in teeno ko ek team samjhega.
+
+Important Rule
+Ek Partition ko Ek Group ke andar Sirf Ek Consumer Read Karega
+
+Example:
+
+Intro Topic with only 1 partition
+
+Partition-0
+
+Aur group: IntroProcessors
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+
+To Kafka bolega:
+
+Partition-0 -> Consumer-1
+
+Aur
+
+Consumer-2 -> Idle
+Consumer-3 -> Idle
+
+Kyun?
+
+Kyuki ek partition ko ek hi consumer milega.
+
+Ab Multiple Partitions : maan lo 3 Partitions exist karte hai 'Intro' topic mai
+
+Topic: Intro
+
+Partitions:
+
+Partition-0
+Partition-1
+Partition-2
+
+Producer bhej raha hai:
+
+MY
+NAME
+IS
+ANURAG
+
+
+Question:
+
+Kaun sa message kis partition me jayega?
+
+Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
+
+Scenario 1: No Key
+
+Producer:
+
+send("messages","MY");
+send("messages","NAME");
+send("messages","IS");
+send("messages","ANURAG");
+send("messages","Pandey");
+
+No key.
+
+and suppose hamare 5 consuemrs hai 
+
+Kafka roughly round-robin kar sakta hai.
+
+Partition-0 -> MY
+
+Partition-1 -> NAME
+
+Partition-2 -> IS
+
+Partition-0 -> ANURAG
+
+Partition-1 -> Pandey
+
+Result:
+
+Partition-0
+
+Offset 0: "MY"
+Offset 1: "ANURAG"
+
+Partition-1
+
+Offset 0: "NAME"
+offset 1: Pandey
+
+Partition-2
+
+Offset 0 : "IS"
+
+Ab Sabse Important Question
+
+Final output kya hoga? Kya mujhe MY NAME IS ANURAG milega?
+
+Answer:
+
+NO. Kafka aisa guarantee nahi karta.
+
+Kafka ko ye pata hi nahi hai ki:
+
+MY
+NAME
+IS
+ANURAG
+
+milkar ek sentence banate hain.
+
+Kafka ke liye ye sirf 4 independent messages hain.
+
+Aur 5 consumers parallel chal rahe hain to
+
+Consumer-1 read karega:
+
+MY
+ANURAG
+
+Consumer-2 read karega:
+
+NAME
+Pandey
+
+Consumer-3 read karega:
+IS
+
+Consumer-4 and Consumer-5 ideal rahenge.
+
+
+Possible execution:
+
+Consumer-1 -> MY
+
+Consumer-2 -> NAME
+
+Consumer-1 -> ANURAG
+
+Consumer-2 -> Pandey
+
+Consumer-3 -> IS
+
+
+To final result jo print ho sakta hai :
+
+MY
+NAME
+ANURAG
+Pandey
+IS
+
+Ya ho sakta hai:
+
+NAME
+MY
+Pandey
+ANURAG
+IS
+
+
+Ya ho sakta hai:
+
+IS
+MY
+NAME
+ANURAG
+Pandey
+
+
+Yahi Hai Global Ordering Problem
+
+Tum expect kar rahe ho:
+
+MY
+NAME
+IS
+ANURAG
+
+Ye kehlata hai:
+
+Global Ordering  i.e  Entire Topic ke sab messages ka order preserve rehna.
+
+Kafka multiple partitions me: Global Ordering Guarantee Nahi Karta
+
+Partition Ordering Kya Hai?
+
+Partition-0
+
+Offset 0: "MY"
+Offset 1: "ANURAG"
+
+Partition-1
+
+Offset 0: "NAME"
+Offset 0: "Pandey"
+
+Partition-2
+
+Offset 0 : "IS"
+
+
+Kafka sirf itna guarantee karta hai:
+
+"MY" hamesha "ANURAG" se pehle aayega 
+and 
+"NAME" hamesha "Pandey" se pehle aayega 
+
+
+Lekin Kafka ye guarantee nahi karta ki:
+
+MY -> NAME -> IS -> ANURAG
+
+isi order me hi mile.
+
+
+Scenario 2: With Key
+
+Jaisa ki humne dekha , global ordering (i.e ordering across partitions) maintained nhi rehta hai to is problem ko ho hum fix kar sakte hai using 'Key'
+this key will be provided by the producer along with the message
+
+Isliye Real World Me Keys Use Karte Hain
+
+Suppose Flipkart.
+
+User101 se jude hue following events:
+
+Order Created
+Payment Done
+Order Shipped
+Order Delivered
+
+Agar humne keys nhi provide ki to ye 4 messages different partitions me ja sakte hai:
+
+P0 -> Order Created
+
+P1 -> Payment Done
+
+P2 -> Order Shipped
+
+P0 -> Order Delivered
+
+To processing order bigad sakta hai.
+
+Koi service pehle:
+
+Order Delivered
+
+dekh le.
+
+Fir:
+
+Payment Done
+
+dekh le.
+
+Disaster
+
+=> Do we copy/replicate partions across mutliple brokers?
+
