@@ -648,23 +648,39 @@ Note : Kafka guarantees ordering within a partition, not across partitions.
 
 SCENARIO 2: With Key
 
-Jaisa ki humne dekha , global ordering (i.e ordering across partitions) maintained nhi rehta hai to is problem ko ho hum fix kar sakte hai using 'Key' this key will be provided by the producer along with the message
+Key ka purpose pure Topic ki Global Ordering maintain karna nahi hai.
+
+Key ka purpose hai: Same entity ke related events ko same Partition me bhejna taaki unki ordering maintain rahe.
+
+This key will be provided by the producer along with the message
+
 
 Isliye Real World Me Keys Use Karte Hain
 
-Suppose Flipkart.
+Suppose Flipkart me ek order hai:
 
-Kisi particular User ka order (Say with id : Order101) se jude hue following events:
+OrderId = Order101
+
+Aur producer is order se related following events sequentially publish karta hai:
 
 Order Created
 Payment Done
 Order Shipped
 Order Delivered
 
-Ek topic named 'OrderDetail  mai post hote hai
-Is topic mai 2 partitions hai like Partition-0, Partition-1
+Ye saare events Topic:
 
-Agar humne keys nhi provide ki to ye 4 messages different partitions me ja sakte hai (like Kafka round robin karke inki different parttions mai dal sakta hai):
+OrderDetails
+
+me publish kiye ja rahe hain.
+
+Assume karo ki Topic me 2 Partitions hain:
+Partition-0
+Partition-1
+
+Agar Producer Key provide nahi karta to Kafka in events ko different Partitions me distribute kar sakta hai.
+
+Example:
 
 Partition-0 -> Order Created
 
@@ -674,8 +690,28 @@ Partition-0 -> Order Shipped
 
 Partition-1 -> Order Delivered
 
-Suppose 2 Consuemers hai Consumer-0 and Consumer-1 jo ki listen kar rahe hai 'OrderDetail' topic ko and ye dono consumer belogn karte hai 'order-group' se
-and Consumer-0 Partition-0 ko read kar rha hai and Consumer-1 Partition-1 ko read kar raha hai (kafka will automatically decide this)
+Ab maan lo do Consumers hain:
+
+Consumer-0
+
+Consumer-1
+
+Aur dono same Consumer Group:
+
+order-group
+
+se belong karte hain.
+
+Kafka ne assignment kiya:
+
+Partition-0 -> Consumer-0
+
+Partition-1 -> Consumer-1
+
+
+Lekin dono Consumers parallel chal rahe hain.
+
+Isliye actual processing order kuch bhi ho sakta hai.
 
 Partition Ordering Hogi probably
 
@@ -691,59 +727,96 @@ Offset 0: "Order Delivered"
 
 To processing order bigad sakta hai.
 
-like 
-
+Ex:
 "Payment Done"
 "Order Created"
 "Order Delivered"
 "Order Shipped"
 
-Disaster
+Ya koi aur combination.
 
+Yeh business perspective se dangerous ho sakta hai.
 
-Isi wajah se real systems me:
-
-OrderId = Order101
-
-ke saare events same key ke saath bheje jaate hain.
-
-Suppose producer ne following events push kiye in the sequental manner in the topic = 'OrderDetails' which is having 2 partition like partition-0, partition-1 with key as 2 for each of these events
-and there are 2 consuemrs say consuemer-0 and Consumer-1 which belong to group 'order-group'
+Kyuki logically:
 
 Order Created
+↓
 Payment Done
+↓
 Order Shipped
+↓
 Order Delivered
 
-so sab events ek hi partition me chale jaate hain (using formula partition = hash(key) % number_of_partitions, result is  partiton-0) in the same sequence in which the events were published i.e OrderCreated -> Payment Done -> Order Shipped -> Order Delivered
-and suppsoe Consumer-0 is assigned to read form parttion-0 and Consuemr-1 to read from partition-1
+isi sequence me process hona chahiye.
 
-i,e partition-0 (read by Consumer-0)
- offset-0 : Order Created
- offset-1 : Payment Done
-offset-2: Order Shipped
-offset-3:Order Delivered
 
-partitition-1(read by Consumer-1)
+Isi problem ko solve karne ke liye hum Key use karte hain.
 
-Tab Kafka guarantee deta hai:
+Ab Producer har event ke saath same Key bhejega:
+
+Key = Order101
+
+Producer publish karta hai:
+
+(Key=Order101, Order Created)
+
+(Key=Order101, Payment Done)
+
+(Key=Order101, Order Shipped)
+
+(Key=Order101, Order Delivered)
+
+Kafka internally calculate karta hai:
+
+partition = hash(key) % number_of_partitions
+
+Kyuki har event ki Key same hai: Order101
+
+isliye saare events same Partition me jayenge.
+
+Suppose result aaya: Partition-0
+
+To final storage kuch aisa hoga:
+
+Partition-0
+
+Offset 0 -> Order Created
+
+Offset 1 -> Payment Done
+
+Offset 2 -> Order Shipped
+
+Offset 3 -> Order Delivered
+
+
+Kafka ne assignment kiya:
+
+Partition-0 -> Consumer-0
+
+Partition-1 -> Consumer-1
+
+
+Ab Consumer-0 ko events exactly isi order me milenge:
 
 Order Created
-   ↓
+↓
 Payment Done
-   ↓
+↓
 Order Shipped
-   ↓
+↓
 Order Delivered
 
-exact isi order me consume honge by Consuemr-0
+Ye ordering Kafka guarantee karta hai.
 
-note that agar Consumer agar internslly thrwading wagera use akr rhahai to us case mai sequence bigad sakta hai
+
+Note:
+
+Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
 
 7: Do we duplicate partions of a topic across multiple partitions ?
 
-Production mai Kafka me almost hamesha partitions ki copies (replicas) multiple brokers par rakhi jaati hain.
+Production mai Kafka almost hamesha partitions ki copies (replicas) multiple brokers par rakhi jaati hain.
 
 Ye Kafka ka Replication concept hai.
 
@@ -782,7 +855,6 @@ To:
 
 Partition-0 ka sara data gaya
 
-Aur us partition ka data temporarily unavailable / /permanently lost ho jayega.
 
 Case 1: Broker crash hua, lekin disk safe hai
 To jab broker wapas aayega: Partition-0 ka data wapas mil jayega.
@@ -805,11 +877,11 @@ With Replication
 
 Suppose:
 
-Replication Factor = 3
+Replication Factor = 2
 
 Matlab:
 
-Har partition ki total 3 copies hongi.
+Har partition ki total 2 copies hongi.
 
 Example:
 
@@ -848,7 +920,7 @@ Leader Replica
 
 Har partition ka ek leader hota hai.
 
-Producer jo bhi message publish karta hai and wo message us partion mai agar map/store hota hai to wo uske Leader parttion mai store hoga
+Producer jo bhi message publish karta hai, agar wo message kisi particular Partition me map hota hai, to sabse pehle us Partition ke **Leader Replica** me store hota hai.
 
 Baaki copies/replica  followers hoti hain.
 
@@ -863,22 +935,25 @@ Leader partion
    +----> Follower partition
 
 
+Follower partition/s continuously leader partition se data copy karti rehti hain.
 
-Ye continuously leader partition se data copy karti rehti hain.
-
-and cosmuemr hamesha jab bhi is partion se date read karna hoga to wo hamesha isi leader partion se data read karega
-
-
-Imagine karo ki :
+Consumer jab bhi kisi Partition se data read karega, to wo hamesha us Partition ke **Leader Replica** se hi data read karega.
 
 
-Broker-1 crash ho jata hai jisme ki  Partition-0 Leader tha
+Maan lo:
 
-Kafka bolega:
+Broker-1 crash ho gaya.
 
-Koi tension nahi.
+Aur Broker-1 par:
 
-Follower ko promote kar do.
+Partition-0 (Leader) present tha.
+
+
+Kafka detect karega ki Leader unavailable ho gaya hai.
+
+Ab Kafka available Followers me se kisi ek ko promote kar dega.
+
+Example:
 
 Broker-3
 
@@ -886,12 +961,20 @@ Partition-0
 
 Follower ---> Leader
 
-ab going forward producer aur consumer naye leader se baat karenge. i.e producer ka agar koi message map hot ahai partion-0 mai to broker-3 ka partion-0 mai stroe hoga and consuemr bhi yaha se consume karega.
+
+Ab going forward Producer aur Consumer dono naye Leader Replica se interact karenge.
+
+Agar koi naya message Partition-0 me map hota hai, to Producer us message ko Broker-3 par maujood Partition-0 ke Leader Replica me store karega.
+
+Similarly, Consumer bhi ab Partition-0 ka data Broker-3 par maujood naye Leader Replica se hi consume karega.
 
 
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
+
+
 Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+
 NO
 
 Kafka allow nahi karta.
