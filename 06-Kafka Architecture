@@ -962,18 +962,17 @@ Partition-0
 Follower ---> Leader
 
 
-Ab going forward Producer aur Consumer dono naye Leader Replica se interact karenge.
+- Ab going forward Producer aur Consumer dono naye Leader Replica se interact karenge.
 
-Agar koi naya message Partition-0 me map hota hai, to Producer us message ko Broker-3 par maujood Partition-0 ke Leader Replica me store karega.
+- Agar koi naya message Partition-0 me map hota hai, to Producer us message ko Broker-3 par maujood Partition-0 ke Leader Replica me store karega.
 
-Similarly, Consumer bhi ab Partition-0 ka data Broker-3 par maujood naye Leader Replica se hi consume karega.
+- Similarly, Consumer bhi ab Partition-0 ka data Broker-3 par maujood naye Leader Replica se hi consume karega.
 
 
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
 
-
-Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+=> Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
 
 NO
 
