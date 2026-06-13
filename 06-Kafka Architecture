@@ -1380,4 +1380,356 @@ man lete hai 'order-group' consumer group ke like Broker-2 will act as group coo
 Consumer Group Coordinator Kya Karta Hai?
 ------------------------------------------
 
-1: Consumer Join Karwata Hai i.e jab bhi koi naya consumer join karta hai
+1. Consumer Join Karwata Hai
+
+Jab bhi koi naya Consumer kisi Consumer Group ko join karta hai, to us Consumer ko group me register karne ka kaam Consumer Group Coordinator ka hota hai.
+
+
+2. Partition Assignment Karwata Hai
+
+Kaunsa Consumer kis Partition ko consume karega, ye decide karne ka kaam Consumer Group Coordinator ka hota hai.
+
+Example:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
+
+
+3. Heartbeats Receive Karta Hai
+
+Heartbeat ek chhota sa signal hota hai jo Consumer periodically Consumer Group Coordinator ko bhejta rehta hai.
+
+Basically Consumer bol raha hota hai:
+
+"Coordinator bhai, main zinda hoon."
+
+Heartbeats ka purpose ye verify karna hota hai ki Consumer abhi bhi active hai ya nahi.
+
+------------------------------------------
+Agar Heartbeat Band Ho Jaye To?
+------------------------------------------
+
+Assume karo:
+
+Topic = Orders
+
+Orders Topic ke 3 Partitions hain:
+
+Partition-0
+Partition-1
+Partition-2
+
+Maan lo 3 Consumers hain:
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+Aur teeno same Consumer Group se belong karte hain:
+
+Group = order-group
+
+Kafka ne Partition Assignment kiya:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
+
+Ab maan lo:
+
+Consumer-2 crash ho gaya.
+
+To Consumer-2 se Heartbeats aana band ho jayengi.
+
+Consumer Group Coordinator observe karega:
+
+Heartbeat Missing
+Heartbeat Missing
+Heartbeat Missing
+
+Agar configured timeout tak Heartbeat receive nahi hoti, to Coordinator Consumer-2 ko dead mark kar dega.
+
+Assume:
+
+Consumer-2 = DEAD
+
+------------------------------------------
+Fir Kya Hoga?
+------------------------------------------
+
+Jaise hi Consumer-2 dead declare hota hai, Consumer Group Coordinator Rebalancing trigger karega.
+
+Pehle Assignment:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
+
+Rebalancing ke baad ek possible assignment:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-3
+Partition-2 -> Consumer-3
+
+Ya koi aur valid assignment.
+
+Yahi reason hai ki Heartbeats aur Rebalancing closely related concepts hain.
+
+Heartbeats Consumer ki health monitor karti hain, aur Heartbeat fail hone par Rebalancing trigger ho sakti hai.
+
+------------------------------------------
+HEARTBEAT & SESSION TIMEOUT
+------------------------------------------
+
+1. session.timeout.ms
+
+Meaning:
+    Defines how long the Consumer Group Coordinator should wait
+    without receiving a heartbeat before considering the consumer dead.
+
+Example:
+
+    session.timeout.ms = 10000
+
+Meaning:
+
+    If no heartbeat is received for 10 seconds,
+    Coordinator assumes:
+
+        "Consumer is dead"
+
+    and triggers a rebalance.
+
+
+2. heartbeat.interval.ms
+
+Meaning:
+    Defines how frequently a consumer sends heartbeats
+    to the Consumer Group Coordinator.
+
+Example:
+
+    heartbeat.interval.ms = 3000
+
+Meaning:
+
+    t = 0 sec   -> Heartbeat
+    t = 3 sec   -> Heartbeat
+    t = 6 sec   -> Heartbeat
+    t = 9 sec   -> Heartbeat
+    ...
+
+Consumer is basically telling the coordinator:
+
+    "I am alive."
+    "I am alive."
+    "I am alive."
+
+
+------------------------------------------------------------
+HOW heartbeat.interval.ms IS RELATED TO session.timeout.ms
+------------------------------------------------------------
+
+
+Example:
+
+    heartbeat.interval.ms = 3000
+    session.timeout.ms    = 10000
+
+Flow:
+
+    t = 0 sec   -> Heartbeat
+    t = 3 sec   -> Heartbeat
+    t = 6 sec   -> Heartbeat
+
+    Consumer crashes
+
+    t = 9 sec   -> No heartbeat
+    t = 12 sec  -> No heartbeat
+    t = 15 sec  -> No heartbeat
+
+Coordinator keeps waiting.
+
+Once 10 seconds have passed since the last heartbeat
+(i.e. since t = 6 sec), session timeout is exceeded.
+
+Coordinator concludes:
+
+    "Consumer is dead"
+
+and triggers a rebalance.
+
+
+------------------------------------------
+IMPORTANT RULE
+------------------------------------------
+
+Generally:
+
+    heartbeat.interval.ms
+            <
+    session.timeout.ms
+
+should always be true.
+
+Correct Example:
+
+    heartbeat.interval.ms = 3000
+    session.timeout.ms    = 10000
+
+Reason:
+    Multiple heartbeat attempts can happen before
+    the session timeout expires.
+
+Incorrect Example:
+
+    heartbeat.interval.ms = 15000
+    session.timeout.ms    = 10000
+
+Problem:
+
+    Session timeout will be reached before
+    the next heartbeat is sent.
+
+Result:
+
+    Coordinator may mark the consumer as dead
+    even though it is actually running.
+
+
+------------------------------------------
+MAX POLL INTERVAL
+------------------------------------------
+
+1. max.poll.interval.ms
+
+Meaning:
+    Defines the maximum time allowed between
+    two consecutive poll() calls by a consumer.
+
+    If the consumer does not call poll()
+    within this configured time,
+    Kafka assumes the consumer is stuck
+    and removes it from the consumer group.
+
+Example:
+
+    max.poll.interval.ms = 300000
+
+Meaning:
+
+    Consumer must call poll() at least once
+    every 5 minutes.
+
+------------------------------------------------------------
+WHY max.poll.interval.ms IS REQUIRED
+------------------------------------------------------------
+
+Consider:
+
+    Consumer 
+        |
+        V
+      poll()
+        |
+        v
+    Message Processing Starts
+
+Suppose processing takes:
+
+    15 minutes
+
+During this time:
+
+    Heartbeats are still being sent
+
+So from Coordinator's perspective:
+
+    "Consumer is alive."
+
+However Kafka now has another concern:
+
+    "Is the consumer actually making progress?"
+
+Because:
+
+    It has not called poll() again
+    for a very long time.
+
+Kafka may assume:
+
+    "Consumer is stuck"
+
+    OR
+
+    "Consumer is taking too long"
+
+------------------------------------------------------------
+WHAT HAPPENS WHEN max.poll.interval.ms EXPIRES
+------------------------------------------------------------
+
+Example:
+
+    max.poll.interval.ms = 5 minutes
+
+Timeline:
+
+    t = 0 min  -> poll()
+    t = 1 min  -> Processing
+    t = 2 min  -> Processing
+    t = 3 min  -> Processing
+    t = 4 min  -> Processing
+    t = 5 min  -> Processing still running
+
+No new poll() received.
+
+Result:
+
+    Kafka removes the consumer
+    from the consumer group
+
+    and
+
+    triggers a rebalance.
+
+Partitions previously assigned
+to this consumer will be reassigned
+to other consumers in the group.
+
+------------------------------------------------------------
+HEARTBEAT VS MAX POLL INTERVAL
+------------------------------------------------------------
+
+heartbeat.interval.ms
+
+    Answers:
+
+        "Is the consumer alive?"
+
+max.poll.interval.ms
+
+    Answers:
+
+        "Is the consumer making progress?"
+
+A consumer may be:
+
+    Alive  -> YES
+    Sending Heartbeats -> YES
+
+but still be considered unhealthy if:
+
+    poll() is not called within
+    max.poll.interval.ms
+
+Result:
+
+    Consumer removed
+    Rebalance triggered
+
+
+===============================================================================
+13 : ISR (In Sync Replica)
+===============================================================================
+
