@@ -1340,4 +1340,44 @@ Baaki assignments disturb nahi hote.
 
 Production me ye preferred approach hai.
 
+===============================================================================
+12 : Consumer Group Coordinator
+===============================================================================
+Example:
 
+Suppose Kafka cluster mai 4 brokers hai namely Broker-1, Broker-2, Broker-3 and Broker-4
+
+also assume Topic = Orders
+
+and Orders topic has 3 Partitions:
+
+P0
+P1
+P2
+
+Maan lo 3 consumers (say C1, C2 and C3) 'Orders' topic ko listen kar rahe hain aur teeno same consumer group se belong karte hain, say 'order-group'.
+
+order-group:
+
+C1
+C2
+C3
+
+Kafka assignment:
+
+P0 -> C1
+P1 -> C2
+P2 -> C3
+
+Aur achanak: C2 crash ho gaya.
+
+Kafka ko kaise pata chalega ki C2 mar gaya aur P1 ko kisi aur consumer ko assign karna hai?
+
+Har consumer group ka Kafka cluster me ek broker hota hai jo us group ka coordinator banta hai for instance 'order-group' ke liye bhi koi ek broker out of the avaialable 4 brokers in the clusters will act as the group cordinator
+man lete hai 'order-group' consumer group ke like Broker-2 will act as group coordinator. i,e Ab group se related sab management ka kaam ye broker karega.
+
+------------------------------------------
+Consumer Group Coordinator Kya Karta Hai?
+------------------------------------------
+
+1: Consumer Join Karwata Hai i.e jab bhi koi naya consumer join karta hai
