@@ -996,7 +996,7 @@ Follower ---> Leader
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
 ===============================================================================
-Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+8: Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
 ===============================================================================
 
 
@@ -1017,7 +1017,7 @@ Replication ka purpose hi fail ho jayega.
 
 
 ===============================================================================
-CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
+9: CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
 ===============================================================================
 
 YES.
@@ -1068,7 +1068,7 @@ But:
     One Consumer can have multiple Partitions assigned to it.
 
 ===============================================================================
-CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
+10: CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
 ===============================================================================
 
 YES.
@@ -1126,9 +1126,9 @@ So a single Consumer can consume from:
     - Multiple Partitions of the same Topic
     - Multiple Partitions belonging to different Topics
 
-===============================================================================
+-------------------------------------------------------------------------------
 PARALLELISM NOTE
-===============================================================================
+-------------------------------------------------------------------------------
 
 Consumer continuously polls Kafka:
 
@@ -1155,6 +1155,189 @@ Important:
 
 Kafka allows a Consumer to read from multiple Partitions, but true
 parallel processing depends on the application's implementation.
+
+
+===============================================================================
+11 : Rebalancing
 ===============================================================================
 
-*/
+Rebalancing is the process in which Kafka redistributes partitions among consumers of a consumer group whenever the group membership changes,
+such as when a new consumer joins, an existing consumer leaves, crashes, or becomes unavailable.
+
+Maan lo:
+
+Topic = Orders
+
+Partitions:
+
+P0
+P1
+P2
+
+Maan lo 2 consumers (say C1 and C2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
+
+order-group:
+
+C1
+C2
+
+Kafka assignment:
+
+P0 -> C1
+P1 -> C2
+P2 -> C1
+
+Sab normal chal raha hai.
+
+Rebalancing Kab Hota Hai?
+
+Kafka ko jab lagta hai ki consumer group ki composition change ho gayi hai. Is case me 'order-group' ki composition change ho gayi.
+
+Case 1: Naya Consumer Join Kare
+
+Pehle:
+
+C1
+C2
+
+Ab:
+
+C1
+C2
+C3
+
+Kafka sochega:
+
+"Ab ek naya consumer aa gaya hai, kaam redistribute karna chahiye."
+
+To reassignment karega.
+
+Example:
+
+P0 -> C1
+P1 -> C2
+P2 -> C3
+
+Ye rebalancing hai.
+
+Case 2: Consumer Crash Ho Jaye
+
+Pehle:
+
+P0 -> C1
+P1 -> C2
+P2 -> C3
+
+Ab C3 crash ho gaya.
+
+Kafka sochega:
+
+"P2 ko ab kaun consume karega?"
+
+Reassignment:
+
+P0 -> C1
+P1 -> C2
+P2 -> C1
+
+Ye bhi rebalancing hai.
+
+Case 3: Consumer Restart Ho
+
+Kafka ke liye restart bhi:
+
+leave group
+join group
+
+jaisa hi hota hai.
+
+Isliye rebalance trigger ho sakta hai.
+
+-------------------------------------------------------------------------------
+Rebalancing ki problem kya hai?
+-------------------------------------------------------------------------------
+
+Classic rebalance me processing kuch time ke liye ruk sakti hai.
+
+Example:
+
+Maan lo:
+
+Topic = Orders
+
+Partitions:
+
+P0
+P1
+P2
+
+Maan lo 2 consumers (say C1 and C2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
+
+order-group:
+
+C1
+C2
+
+Kafka assignment:
+
+P0 -> C1
+P1 -> C2
+P2 -> C1
+
+Sab normal chal raha hai.
+
+Achanak:
+
+C3 join karta hai.
+
+Rebalance start ho jata hai.
+
+Thode time ke liye consumers pause ho sakte hain.
+
+Production systems me ye issue hota tha.
+
+Isliye Kafka ne later:
+
+Cooperative Rebalancing
+
+introduce ki.
+
+-------------------------------------------------------------------------------
+Cooperative Rebalancing Kya Hai?
+-------------------------------------------------------------------------------
+
+Purana approach:
+
+Sab partitions chhodo
+Sab dobara assign karo
+
+Naya approach:
+
+Sirf zaruri partitions move karo
+
+Example:
+
+Pehle:
+
+P0 -> C1
+P1 -> C2
+P2 -> C1
+
+C3 join hua.
+
+Purana rebalance:
+
+Sab revoke karo
+Sab dobara assign karo
+
+Naya cooperative rebalance:
+
+P2 -> C3
+
+Bas.
+
+Baaki assignments disturb nahi hote.
+
+Production me ye preferred approach hai.
+
+
