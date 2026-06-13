@@ -42,7 +42,11 @@
                           | Consumer-3               |
                           +---------------------------+
 
-1: Purane Kafka versions me zookeeper hua karta tha 
+===============================================================================
+1: Zookeeper
+===============================================================================
+
+Purane Kafka versions me zookeeper hua karta tha 
 
                            +------------------+
                            |     Producer     |
@@ -118,11 +122,16 @@ Aajkal (Kafka 3.x+) mostly KRaft Mode use hota hai.
 
 Zookeeper ki dependency remove kar di gayi hai.
 
-
+===============================================================================
 2: Kafka Cluster and Broker
+===============================================================================
+
    Kafka Cluster multiple Brokers ka collection hota hai. Broker basically ek Kafka Server hota hai jo messages ko store aur serve karne ka kaam karta hai.
 
+===============================================================================
 3: Producer, Consumer aur Topic 
+===============================================================================
+
    Producer messages ko Topic me publish karta hai. 
    Consumer Topic ko subscribe karta hai aur usme se messages read karta hai.
    Topic ek logical category hoti hai jisme related messages group kiye jaate hain.
@@ -133,7 +142,10 @@ Zookeeper ki dependency remove kar di gayi hai.
    Payments
    Notifications
 
+===============================================================================
 4: Topic aur Partitions 
+===============================================================================
+
    Topic Partition/s me divided hota hai.
    Example:
 
@@ -175,8 +187,10 @@ Zookeeper ki dependency remove kar di gayi hai.
 
    Lekin generally Partitions multiple Brokers me distributed rehte hain.
 
-
+===============================================================================
 5: Offset:
+===============================================================================
+
    Har Partition ke andar har message ko ek unique Offset milta hai. Offset ek index ki tarah kaam karta hai jo message ki position batata hai.
 
    Maan lo Producer ne messages A, B, C, D aur E isi sequence me publish kiye hain.
@@ -229,10 +243,13 @@ Zookeeper ki dependency remove kar di gayi hai.
 
   se reading start kar sakta hai.
 
-
+===============================================================================
 6:Why partions are required in the topic ?
+===============================================================================
 
+------------------
 1: Scalibility :
+------------------
 
 Maan lo ek Topic hai:
 
@@ -285,8 +302,9 @@ Isse Topic ka data multiple Brokers me spread ho jata hai aur system horizontall
 
 Isliye Partitions Kafka ko large amount of data handle karne aur system ko scale karne me help karte hain.
 
-
+---------------------
 2: Parallel Reading
+---------------------
 
 Partition bana diye, lekin usse multiple consumers parallel kaise consume kar lenge?
 
@@ -312,7 +330,9 @@ Offset 1 -> NAME
 Offset 2 -> IS
 Offset 3 -> ANURAG
 
+----------------------------------------
 Case 1: Sirf 1 independent consumer hai 
+----------------------------------------
 
 To Consumer-1 sequentially read karega:
 
@@ -329,8 +349,9 @@ Kafka Partition ke andar ordering maintain karta hai.
 
 Lekin agar Consumer internally multithreading use kar raha ho to final processing order change ho sakta hai.
 
-
+---------------------------------------------
 Case 2:  Maan lo 2 independent consumers hai
+---------------------------------------------
 
 Consumer-1:
 
@@ -354,8 +375,9 @@ Note:
 
 Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
 
-
+----------------------------------------
 =>Consumer Group Introduce Karte Hain
+----------------------------------------
 
 ----------------------------------------------------------
 Important Rule :
@@ -462,10 +484,11 @@ IS
 ANURAG
 Pandey
 
-
+--------------------------------------------
 Question:
 
 Kaun sa message kis partition me jayega?
+--------------------------------------------
 
 Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
 
@@ -813,8 +836,9 @@ Note:
 
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
-
+===============================================================================
 7: Do we duplicate partions of a topic across multiple partitions ?
+===============================================================================
 
 Production mai Kafka almost hamesha partitions ki copies (replicas) multiple brokers par rakhi jaati hain.
 
@@ -971,8 +995,10 @@ Follower ---> Leader
 
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
+===============================================================================
+Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+===============================================================================
 
-=> Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
 
 NO
 
@@ -988,3 +1014,147 @@ Partition-0 Follower
 Aisa nahi hoga.
 
 Replication ka purpose hi fail ho jayega.
+
+
+===============================================================================
+CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
+===============================================================================
+
+YES.
+
+A single Consumer can be assigned multiple Partitions.
+
+Example:
+
+Topic: Orders
+
+Partitions:
+    P0
+    P1
+    P2
+
+Consumer Group: order-group
+
+    Consumer-1
+    Consumer-2
+
+Kafka may assign Partitions like:
+
+    P0 -> Consumer-1
+
+    P1 -> Consumer-2
+
+    P2 -> Consumer-1
+
+Result:
+
+    Consumer-1
+        ├── P0
+        └── P2
+
+    Consumer-2
+        └── P1
+
+So Consumer-1 is consuming data from two different Partitions.
+
+Important:
+
+Within the same Consumer Group:
+
+    One Partition can be assigned to only one Consumer at a time.
+
+But:
+
+    One Consumer can have multiple Partitions assigned to it.
+
+===============================================================================
+CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
+===============================================================================
+
+YES.
+
+A Consumer can subscribe to multiple Topics and consume data from all
+assigned Partitions across those Topics.
+
+Example:
+
+Topics:
+
+    Orders
+    Payments
+
+Orders Topic Partitions:
+
+    Orders-P0
+    Orders-P1
+
+Payments Topic Partitions:
+
+    Payments-P0
+    Payments-P1
+
+Consumer:
+
+    Consumer-1
+
+Subscription:
+
+    Consumer-1 subscribes to:
+
+        Orders
+        Payments
+
+Kafka may assign:
+
+    Orders-P0   -> Consumer-1
+    Orders-P1   -> Consumer-1
+
+    Payments-P0 -> Consumer-1
+    Payments-P1 -> Consumer-1
+
+Result:
+
+    Consumer-1
+
+        ├── Orders-P0
+        ├── Orders-P1
+        ├── Payments-P0
+        └── Payments-P1
+
+So a single Consumer can consume from:
+
+    - Multiple Partitions of the same Topic
+    - Multiple Partitions belonging to different Topics
+
+===============================================================================
+PARALLELISM NOTE
+===============================================================================
+
+Consumer continuously polls Kafka:
+
+    consumer.poll(...)
+
+A poll response may contain records from multiple assigned Partitions.
+
+By default:
+
+    1 Consumer = 1 Poll Thread
+
+Therefore, a Consumer can read from multiple Partitions, but processing
+may still happen sequentially.
+
+If the application uses worker threads internally:
+
+    Partition-0 -> Worker-1
+    Partition-1 -> Worker-2
+    Partition-2 -> Worker-3
+
+then messages from different Partitions can be processed in parallel.
+
+Important:
+
+Kafka allows a Consumer to read from multiple Partitions, but true
+parallel processing depends on the application's implementation.
+===============================================================================
+
+*/
