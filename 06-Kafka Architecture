@@ -1728,8 +1728,325 @@ Result:
     Consumer removed
     Rebalance triggered
 
-
 ===============================================================================
-13 : ISR (In Sync Replica)
+13 : ISR (IN SYNC REPLICAS)
 ===============================================================================
 
+ISR (In Sync Replicas) Kafka ke fault tolerance ka core concept hai.
+
+Maan lo Kafka cluster me multiple brokers hain:
+
+Broker-1
+Broker-2
+Broker-3
+
+Topic = Alphabet
+
+Topic ke paas sirf 1 Partition hai:
+
+Partition-0
+
+Aur Replication Factor = 3 hai.
+
+Matlab Partition-0 ki total 3 copies (replicas) hongi jo different brokers
+par store hongi.
+
+Partition Distribution:
+
+Broker-1 -> Partition-0 (Leader)
+
+Broker-2 -> Partition-0 (Follower)
+
+Broker-3 -> Partition-0 (Follower)
+
+
+                 Partition-0
+
+            Leader (Broker-1)
+                   |
+          -------------------
+          |                 |
+          v                 v
+
+ Follower (Broker-2)   Follower (Broker-3)
+
+------------------------------------------------------------
+MESSAGE FLOW
+------------------------------------------------------------
+
+Producer message bhejta hai:
+
+"A"
+
+Sabse pehle message partition-0 ke Leader Replica (In Broker-1) ke paas jayega.
+
+Leader:
+
+Offset 0 -> A
+
+Uske baad Followers (In Broker-2 and Broker-3) Leader se data copy karenge.
+
+Follower-1:
+
+Offset 0 -> A
+
+Follower-2:
+
+Offset 0 -> A
+
+Ab teeno replicas same state me hain.
+
+Producer aur messages bhejta hai jo ki partition-0 ke Leader replica (In Broker-1) mai sequentially store hote hai:
+
+Leader:
+
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Uske baad Followers Leader se data copy karenge.
+
+Current State:
+
+Leader: (In Broker-1)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Follower-1: (In Broker-2)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Follower-2: (In Broker-3)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Ab teeno replicas completely synchronized hain.
+
+------------------------------------------------------------
+ISR KYA HAI?
+------------------------------------------------------------
+
+ISR (In Sync Replicas)is a set of replicas that are in sync with the leader.
+
+Current State:
+
+Leader (In Broker-1)       Offset 3
+Follower-1 (In Broker-2)   Offset 3
+Follower-2 (In Broker-3)   Offset 3
+
+ISR:
+
+ISR = {Leader, Follower-1, Follower-2}
+
+Note:
+
+ISR sirf healthy aur synchronized replicas ka set hai.
+
+Aur yaad rakho:
+
+Leader bhi partition ki ek replica copy hi hai, bas usko special role mila hua hai, isliye leader bhi ISR ka member hota hai.
+
+------------------------------------------------------------
+OUT OF SYNC REPLICA
+------------------------------------------------------------
+
+Ab Producer aur messages bhejta hai jo ki partition-0 ke Leader replica (In Broker-1) mai sequentially store hote hai:
+
+Leader: (In Broker-1)
+
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+Uske baad Followers (In Broker-2 and Broker-3) Leader se data copy karenge.
+
+Lekin maan lo Broker-3 slow ho gaya.
+
+Current State:
+
+Leader:(In Broker-1)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+Follower-1:(In Broker-2)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+Follower-2:(In Broker-3)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Replica Lag:
+
+Leader       Offset 6
+Follower-1   Offset 6
+Follower-2   Offset 3
+
+Kafka observe karega ki:
+
+Follower-2 Leader se kaafi piche chal raha hai.
+
+Isliye Kafka usse ISR se remove kar dega.
+
+New ISR:
+
+ISR = {Leader, Follower-1}
+
+Important:
+
+Follower-2 ab bhi Replica hai.
+
+Lekin ab wo ISR member nahi hai.
+
+Yaani:
+
+Total Replicas = 3
+
+But
+
+ISR Members = 2
+
+------------------------------------------------------------
+Kafka ISR Maintain Hi Kyu Karta Hai?
+------------------------------------------------------------
+
+Current State:
+
+Leader (Broker-1)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+------------------------------------------------
+
+Follower-1 (Broker-2)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+------------------------------------------------
+
+Follower-2 (Broker-3)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+------------------------------------------------
+
+Replica Status:
+
+Leader       -> Offset 6
+Follower-1   -> Offset 6
+Follower-2   -> Offset 3
+
+ISR = {Leader, Follower-1}
+
+Follower-2 leader se kaafi piche chal raha hai,
+isliye wo ISR ka part nahi hai.
+
+------------------------------------------------------------
+Ab Maan Lo Leader Crash Ho Gaya
+------------------------------------------------------------
+
+Leader Broker-1 par tha aur crash ho gaya.
+
+Ab Kafka ko naya Leader elect karna hoga.
+
+Question:
+
+Kafka kisko naya Leader banaye?
+
+------------------------------------------------------------
+Case 1: Agar Follower-2 Ko Leader Bana Diya Jaye
+------------------------------------------------------------
+
+Follower-2 ke paas sirf offset 3 tak ka data hai i.e
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Lekin purane Leader ke paas offset 6 tak ka data tha i.e
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+
+Agar Follower-2 ko Leader bana diya gaya, to:
+
+E, F aur G permanently lost ho sakte hain.
+
+Matlab data loss ho gaya.
+
+------------------------------------------------------------
+Case 2: Agar Follower-1 Ko Leader Bana Diya Jaye
+------------------------------------------------------------
+
+Follower-1 Leader ke saath fully synchronized tha.
+
+Uske paas bhi offset-6 tak ka data maujood hai.:
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+Offset 6 -> G
+
+Isliye agar Follower-1 ko Leader promote kiya jaye,
+to koi data loss nahi hoga.
+
+------------------------------------------------------------
+Conclusion
+------------------------------------------------------------
+
+Kafka ISR maintain karta hai taaki Leader failure ke time
+sirf unhi replicas me se naya Leader select kiya jaye
+jo Leader ke saath synchronized hain.
+
+To ISR koi permanent group nahi hai.
+
+Ye continuously update hota rehta hai based on replica health and lag.
