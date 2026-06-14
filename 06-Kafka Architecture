@@ -1930,6 +1930,8 @@ But
 
 ISR Members = 2
 
+Note: ISR me hone ka matlab ye nahi ki replica har moment leader ke exact same offset par hai. ISR replicas thoda lag kar sakte hain.
+
 ------------------------------------------------------------
 Kafka ISR Maintain Hi Kyu Karta Hai?
 ------------------------------------------------------------
@@ -2050,3 +2052,152 @@ jo Leader ke saath synchronized hain.
 To ISR koi permanent group nahi hai.
 
 Ye continuously update hota rehta hai based on replica health and lag.
+
+
+===============================================================================
+14 : ACKS Kya Hai?
+===============================================================================
+
+Maan lo Kafka cluster me multiple brokers hain:
+
+Broker-1
+Broker-2
+Broker-3
+
+Topic = Alphabet
+
+Topic ke paas sirf 1 Partition hai:
+
+Partition-0
+
+Aur Replication Factor = 3 hai.
+
+Matlab Partition-0 ki total 3 copies (replicas) hongi jo different brokers
+par store hongi.
+
+Partition Distribution:
+
+Broker-1 -> Partition-0 (Leader)
+
+Broker-2 -> Partition-0 (Follower)
+
+Broker-3 -> Partition-0 (Follower)
+
+Producer message bhejta hai: "A"
+
+Jo Partition-0 ke Leader Replica (Broker-1) me store hota hai.
+
+Uske baad Followers (In Broker-2 and Broker-3) Leader se data copy karenge.
+
+Question:
+
+Leader producer ko kab bolega:
+
+"Message Successfully Stored"
+
+Iska answer ACKS configuration deta hai.
+
+------------------------------------------------------------
+Case 1: ACKS = 0
+------------------------------------------------------------
+
+Producer message publish karne ke baad bina kisi confirmation
+(from Leader Replica i.e. Partition-0 in Broker-1)
+ka wait kiye aage badh jata hai i.e Producer wait hi nahi karta after publishing the message.
+
+Advantage:
+Fastest
+
+Disadvantage:
+
+Agar network issue hua:
+
+Producer ----X----> Leader
+
+To message gaya bhi ya nahi gaya,
+producer ko pata nahi.
+
+Data loss possible.
+
+------------------------------------------------------------
+Case 2: ACKS = 1
+------------------------------------------------------------
+
+Message Partition-0 ke Leader Replica (i.e. Partition-0 in Broker-1)
+ke paas jata hai.
+
+Leader receive karta hai.
+
+Leader disk par write karta hai.
+
+Fir Producer ko ACK bhej deta hai.
+
+Important:
+
+Followers ne copy kiya ya nahi,
+Producer ko koi farak nahi padta.
+
+Bas Leader ne successfully write kar liya ho.
+
+Problem
+
+Current State:
+
+Leader Offset = 100 (Broker-1)
+
+Follower-1 Offset = 100 (Broker-2)
+
+Follower-2 Offset = 100 (Broker-3)
+
+Producer ne ek naya message bheja.
+
+Leader us message ko write kar deta hai:
+
+Leader Offset = 101
+
+Aur Producer ko ACK bhej deta hai.
+
+Producer: SUCCESS
+
+Lekin ussi second Leader crash ho gaya.
+
+Followers tak Offset 101 wala message
+abhi replicate hi nahi hua tha.
+
+Current State:
+
+Follower-1 Offset = 100 (Broker-2)
+
+Follower-2 Offset = 100 (Broker-3)
+
+ISR = {Follower-1, Follower-2}
+
+Note:
+
+ISR me hone ka matlab ye nahi hai ki replica har moment
+Leader ke exact same Offset par hi ho.
+
+ISR replicas thoda lag kar sakte hain,
+lekin wo Leader ke sufficiently close aur synchronized maane jaate hain.
+
+Ab Kafka ISR me se naya Leader elect karega.
+
+Suppose:
+
+Follower-1 (Partition-0 in Broker-2)
+
+new Leader ban gaya.
+
+Result:
+
+Offset 101 wala message kisi replica tak pahucha hi nahi tha.
+
+Isliye Offset 101 wala message lost ho gaya.
+
+Data Loss.
+
+------------------------------------------------------------
+Case 3: ACKS = ALL
+------------------------------------------------------------
+
+
