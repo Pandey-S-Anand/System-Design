@@ -2108,6 +2108,12 @@ Leader producer ko kab bolega:
 
 Iska answer ACKS configuration deta hai.
 
+'acks' Producer-side setting hai.
+
+Producer decide karta hai:
+
+"Mujhe success kab maana hai?"
+
 ------------------------------------------------------------
 Case 1: ACKS = 0
 ------------------------------------------------------------
