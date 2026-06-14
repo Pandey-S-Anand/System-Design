@@ -2089,6 +2089,17 @@ Jo Partition-0 ke Leader Replica (Broker-1) me store hota hai.
 
 Uske baad Followers (In Broker-2 and Broker-3) Leader se data copy karenge.
 
+i.e
+
+Current State:
+
+Leader Offset = 0 (Broker-1)
+
+Follower-1 Offset = 0 (Broker-2)
+
+Follower-2 Offset = 0 (Broker-3)
+
+
 Question:
 
 Leader producer ko kab bolega:
@@ -2101,8 +2112,7 @@ Iska answer ACKS configuration deta hai.
 Case 1: ACKS = 0
 ------------------------------------------------------------
 
-Producer message publish karne ke baad bina kisi confirmation
-(from Leader Replica i.e. Partition-0 in Broker-1)
+Producer message publish karne ke baad bina kisi confirmation (from Leader Replica i.e. Partition-0 in Broker-1)
 ka wait kiye aage badh jata hai i.e Producer wait hi nahi karta after publishing the message.
 
 Advantage:
@@ -2122,8 +2132,7 @@ Data loss possible.
 ------------------------------------------------------------
 Case 2: ACKS = 1
 ------------------------------------------------------------
-
-Message Partition-0 ke Leader Replica (i.e. Partition-0 in Broker-1)
+Producer message publish karta hai ye message Partition-0 ke Leader Replica (i.e. Partition-0 in Broker-1)
 ke paas jata hai.
 
 Leader receive karta hai.
@@ -2143,17 +2152,18 @@ Problem
 
 Current State:
 
-Leader Offset = 100 (Broker-1)
+Leader Offset = 0 (Broker-1)
 
-Follower-1 Offset = 100 (Broker-2)
+Follower-1 Offset = 0 (Broker-2)
 
-Follower-2 Offset = 100 (Broker-3)
+Follower-2 Offset = 0 (Broker-3)
 
-Producer ne ek naya message bheja.
+Producer ne ek naya message bheja manlo "B"
 
 Leader us message ko write kar deta hai:
 
-Leader Offset = 101
+Now 
+Leader Offset = 1
 
 Aur Producer ko ACK bhej deta hai.
 
@@ -2161,14 +2171,14 @@ Producer: SUCCESS
 
 Lekin ussi second Leader crash ho gaya.
 
-Followers tak Offset 101 wala message
+Followers tak Offset 1 wala message I.E "B"
 abhi replicate hi nahi hua tha.
 
 Current State:
 
-Follower-1 Offset = 100 (Broker-2)
+Follower-1 Offset = 0 (Broker-2)
 
-Follower-2 Offset = 100 (Broker-3)
+Follower-2 Offset = 0 (Broker-3)
 
 ISR = {Follower-1, Follower-2}
 
@@ -2200,4 +2210,154 @@ Data Loss.
 Case 3: ACKS = ALL
 ------------------------------------------------------------
 
+Current State:
+
+Leader Offset      = 0 (Broker-1)
+
+Follower-1 Offset  = 0 (Broker-2)
+
+Follower-2 Offset  = 0 (Broker-3)
+
+ISR = {Leader, Follower-1, Follower-2}
+
+
+Producer message publish karta hai.
+
+Ye message Partition-0 ke Leader Replica
+(i.e. Partition-0 on Broker-1)
+ke paas jata hai.
+
+Leader receive karta hai.
+
+Leader disk par message write karta hai.
+
+Ab Leader wait karega.
+
+Jab tak ye message sabhi ISR replicas tak
+replicate nahi ho jata.
+
+Uske baad hi Producer ko ACK bheja jayega.
+
+Example:
+
+Producer ne ek naya message bheja:
+
+"B"
+
+
+Leader us message ko write kar deta hai.
+
+Updated State:
+
+Leader Offset = 1
+
+
+Ab Leader (Partition-0 on Broker-1)
+wait karega jab tak baaki ISR replicas
+(Partition-0 on Broker-2 and Broker-3)
+bhi is message ko write na kar lein.
+
+Final State:
+
+Leader Offset      = 1
+
+Follower-1 Offset  = 1
+
+Follower-2 Offset  = 1
+
+
+Ab Kafka Producer ko ACK bhej dega.
+
+------------------------------------------------------------
+Kya ACKS = ALL Matlab Sab Replicas?
+------------------------------------------------------------
+
+Nahi.
+
+Kafka bolta hai:
+
+ALL ISR REPLICAS
+
+Not:
+
+ALL REPLICAS
+
+
+Difference samjho.
+
+Example:
+
+Assume ek Topic hai jisme:
+
+Partitions           = 1
+
+Replication Factor   = 3
+
+
+Matlab Partition-0 ki total 3 copies hongi,
+jo different Brokers par stored hongi.
+
+In 3 replicas me:
+
+1 Leader Replica hoga
+
+2 Follower Replicas hongi
+
+
+Replicas:
+
+Leader
+
+Follower-1
+
+Follower-2
+
+
+Maan lo:
+
+Follower-2 bahut piche reh gaya hai.
+
+Current State:
+
+Leader      Offset = 100
+
+Follower-1  Offset = 100
+
+Follower-2  Offset = 40
+
+
+To Kafka Follower-2 ko ISR se remove kar dega.
+
+
+ISR:
+
+{Leader, Follower-1}
+
+
+Ab Producer:
+
+acks = all
+
+use kar raha hai.
+
+
+To Leader wait karega: Follower-1 ke sync hone ka.
+
+
+Follower-2 ke liye wait nahi karega.
+
+Kyun?
+
+Kyuki Follower-2 ISR ka member hi nahi hai.
+
+
+Important:
+
+acks=all ka matlab:
+
+"Wait for all ISR replicas"
+
+NOT
+
+"Wait for every replica present in the cluster"
 
