@@ -2274,9 +2274,9 @@ Follower-2 Offset  = 1
 
 Ab Kafka Producer ko ACK bhej dega.
 
-------------------------------------------------------------
-Kya ACKS = ALL Matlab Sab Replicas?
-------------------------------------------------------------
+------------------------------------------
+## Kya ACKS = ALL Matlab Sab Replicas?
+------------------------------------------
 
 Nahi.
 
@@ -2288,57 +2288,60 @@ Not:
 
 ALL REPLICAS
 
-
 Difference samjho.
 
 Example:
 
 Assume ek Topic hai jisme:
 
-Partitions           = 1
+Partitions         = 1
 
-Replication Factor   = 3
+Replication Factor = 3
 
-
-Matlab Partition-0 ki total 3 copies hongi,
-jo different Brokers par stored hongi.
+Matlab Partition-0 ki total 3 copies hongi, jo different Brokers par stored hongi.
 
 In 3 replicas me:
 
-1 Leader Replica hoga
-
-2 Follower Replicas hongi
-
+* 1 Leader Replica hoga
+* 2 Follower Replicas hongi
 
 Replicas:
 
 Leader
-
 Follower-1
-
 Follower-2
 
-
-Maan lo:
-
-Follower-2 bahut piche reh gaya hai.
+Maan lo currently dono followers completely synced hain with Leader Partition.
 
 Current State:
 
+Leader      Offset = 10
+Follower-1  Offset = 10
+Follower-2  Offset = 10
+
+Current ISR:
+
+{Leader, Follower-1, Follower-2}
+
+Ab Producer aur bhi bahut saare messages bhejta hai.
+
+Saare messages Leader tak pahunch jaate hain aur Follower-1 tak bhi successfully replicate ho jaate hain.
+
+Lekin kisi reason se Follower-2 un messages ko receive nahi kar pata aur bahut piche reh jaata hai.
+
+Updated State:
+
 Leader      Offset = 100
-
 Follower-1  Offset = 100
-
 Follower-2  Offset = 40
 
+Ab Follower-2 Leader se kaafi piche hai.
 
-To Kafka Follower-2 ko ISR se remove kar dega.
+Kafka ise Out Of Sync maanega aur ISR se remove kar dega.
 
-
-ISR:
+Updated ISR:
 
 {Leader, Follower-1}
-
 
 Ab Producer:
 
@@ -2346,16 +2349,27 @@ acks = all
 
 use kar raha hai.
 
+Question:
 
-To Leader wait karega: Follower-1 ke sync hone ka.
+Kya Leader Follower-2 ke sync hone ka bhi wait karega?
 
+Answer:
+
+No.
+
+Leader sirf ISR members ke sync hone ka wait karega.
+
+Is case me:
+
+ISR = {Leader, Follower-1}
+
+To Leader sirf Follower-1 ke sync hone ka wait karega.
 
 Follower-2 ke liye wait nahi karega.
 
 Kyun?
 
 Kyuki Follower-2 ISR ka member hi nahi hai.
-
 
 Important:
 
@@ -2367,3 +2381,249 @@ NOT
 
 "Wait for every replica present in the cluster"
 
+--------------------------
+min.insync.replicas
+--------------------------
+
+Yahi sabse important production setting hai.
+
+Example:
+
+Assume ek Topic hai jisme:
+
+Partitions         = 1
+Replication Factor = 3
+
+Matlab Partition-0 ki total 3 copies hongi, jo different Brokers par stored hongi.
+
+In 3 replicas me:
+
+* 1 Leader Replica hoga
+* 2 Follower Replicas hongi
+
+Replicas:
+
+Leader
+Follower-1
+Follower-2
+
+Maan lo currently dono followers completely synced hain with Leader.
+
+Current State:
+
+Leader      Offset = 10
+Follower-1  Offset = 10
+Follower-2  Offset = 10
+
+Current ISR:
+
+{Leader, Follower-1, Follower-2}
+
+Ab Producer:
+
+acks=all
+
+use kar raha hai.
+
+Question:
+
+"Producer ko success kab milega?"
+
+Kafka bolega:
+
+Jab ISR ke saare replicas me message aa jaye.
+
+
+
+## Scenario 1
+
+Assume:
+
+min.insync.replicas = 2
+
+Producer aur messages bhejta hai.
+
+Updated State:
+
+Leader      Offset = 15
+Follower-1  Offset = 15
+Follower-2  Offset = 15
+
+Current ISR:
+
+{Leader, Follower-1, Follower-2}
+
+Count = 3
+
+Kya Kafka ACK de dega?
+
+Yahi decision min.insync.replicas leta hai.
+
+min.insync.replicas = 2
+
+Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
+
+Current ISR Count = 3
+
+Condition satisfy ho rahi hai.
+
+Aur message saare ISR replicas tak pahunch chuka hai.
+
+Result:
+
+Kafka Producer ko ACK bhej dega.
+
+
+
+## Scenario 2
+
+Producer aur messages bhejta hai.
+
+Message Leader aur Follower-1 tak pahunch jata hai.
+
+Lekin Follower-2 bahut piche reh jata hai ya crash ho jata hai.
+
+Kafka Follower-2 ko ISR se remove kar deta hai.
+
+Updated State:
+
+Leader      Offset = 20
+Follower-1  Offset = 20
+Follower-2  Offset = 15
+
+Current ISR:
+
+{Leader, Follower-1}
+
+Count = 2
+
+Kya Kafka ACK de dega?
+
+Yahi decision min.insync.replicas leta hai.
+
+min.insync.replicas = 2
+
+Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
+
+Current ISR Count = 2
+
+Condition ab bhi satisfy ho rahi hai.
+
+Aur message saare ISR replicas tak pahunch chuka hai.
+
+Result:
+
+Kafka Producer ko ACK bhej dega.
+
+Still fine.
+
+
+## Scenario 3
+
+Current ISR:
+
+{Leader, Follower-1}
+
+Count = 2
+
+Ab Producer aur messages bhejta hai.
+
+Message Leader par write ho jata hai.
+
+Lekin Follower-1 bhi crash ho jata hai ya Leader ke saath sync nahi reh pata.
+
+Kafka Follower-1 ko bhi ISR se remove kar deta hai.
+
+Updated State:
+
+Leader      Offset = 40
+Follower-1  Offset = 20
+Follower-2  Offset = 15
+
+Current ISR:
+
+{Leader}
+
+Count = 1
+
+Kya Kafka ACK de dega?
+
+Yahi decision min.insync.replicas leta hai.
+
+min.insync.replicas = 2
+
+Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
+
+Current ISR Count = 1
+
+Condition satisfy nahi ho rahi.
+
+Result:
+
+Kafka Producer ko ACK nahi bhejega.
+
+Kafka bolega:
+
+Write Rejected
+
+Producer ko exception milega.
+
+-------------------------------------------
+Kafka Write Reject Kyu Kar Raha Hai?
+-------------------------------------------
+
+Kafka essentially bol raha hai:
+
+"Mere paas sufficient healthy replicas nahi hain. Main tumhe success nahi bol sakta."
+
+Example:
+
+min.insync.replicas = 2
+
+Lekin currently ISR me sirf:
+
+{Leader}
+
+bacha hua hai.
+
+Count = 1
+
+Agar Kafka is situation me write accept kar le aur Producer ko ACK bhej de, to Producer maan lega ki data safely store ho gaya hai.
+
+Lekin reality me message sirf Leader ke paas hai.
+
+Ab agar ACK bhejne ke turant baad Leader bhi crash ho jaye, to us message ki koi synchronized copy available nahi hogi.
+
+Result:
+
+Data Loss
+
+Isliye Kafka safety ko priority deta hai aur write reject kar deta hai.
+
+Important:
+
+Write reject karne se Leader crash hone ki possibility khatam nahi hoti.
+
+Leader phir bhi crash ho sakta hai.
+
+Kafka ka logic hai:
+
+"Jab tak mere paas required number of healthy replicas nahi hain, main write ki durability guarantee nahi kar sakta."
+
+Isliye Kafka write reject karta hai.
+
+In other words, Kafka write reject karke data loss ko impossible nahi banata, balki unsafe writes ko prevent karta hai aur durability guarantees ko maintain karta hai.
+
+-------------------------------------------
+Most Common Production Configuration
+-------------------------------------------
+
+Replication Factor = 3
+
+acks = all
+
+min.insync.replicas = 2
+
+Ye configuration high durability aur fault tolerance provide karti hai.
+
+Note : min.insync.replicas is enforced only when the producer uses acks=all.
