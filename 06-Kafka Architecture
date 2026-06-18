@@ -2815,10 +2815,13 @@ Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
 
 2. Topic Level Retention (Most Common in Production)
 
-Topic-level config broker-level config ko override kar deti hai i.e agar tumne topic level rertention apply kiya hai to to wo broker level retention ko override kar legi.
+Topic-level configuration broker-level retention ko override kar deti hai.
 
-Suppose orders topic me sirf 1 partition hai 
-Kafka internally Partition ko multiple Log Segments me divide karke store karta hai.
+Yaani agar tumne kisi specific topic par retention define ki hai, to us topic ke liye broker ki default retention settings use nahi hongi.
+
+Suppose orders topic me sirf 1 partition hai.
+
+Kafka internally partition ko multiple log segments me divide karke store karta hai.
 
 Partition-0
 
@@ -2843,7 +2846,7 @@ Offset 8 -> I
 
 Time Based Retention :
 
-Example: 
+Example:
 
 @Bean
 public NewTopic ordersTopic() {
@@ -2854,21 +2857,22 @@ public NewTopic ordersTopic() {
 
             .config(
                 TopicConfig.RETENTION_MS_CONFIG,
-                String.valueOf(7 * 24 * 60 * 60 * 1000) //in milliseconds equivalent to 7 days
+                String.valueOf(7 * 24 * 60 * 60 * 1000) // 7 days
             )
             .build();
 }
 
-
-In current example we have defined 
+In the above example:
 
 Retention = 7 days
 
-Kafka check karta hai:
+Kafka periodically check karta hai:
 
-Segment kitna purana hai?
+"Segment kitna purana hai?"
 
-Partition-0:
+Current State:
+
+Partition-0
 
 Segment-1 (10 days old)
 
@@ -2876,14 +2880,10 @@ Offset 0 -> A
 Offset 1 -> B
 Offset 2 -> C
 
---------------------------------
-
 Segment-2 (5 days old)
 
 Offset 3 -> D
 Offset 4 -> E
-
---------------------------------
 
 Segment-3 (1 day old)
 
@@ -2894,13 +2894,9 @@ Ab Kafka dekhega:
 
 Segment-1 = 10 days old
 
-Retention: 7 days
+Retention = 7 days
 
-To:
-
-DELETE Segment-1
-
-Kar dega.
+To Kafka Segment-1 ko delete kar dega.
 
 Result:
 
@@ -2911,17 +2907,10 @@ Segment-2
 Offset 3 -> D
 Offset 4 -> E
 
----------------------
-
 Segment-3
 
 Offset 5 -> F
 Offset 6 -> G
-
-
-Note:
-Kafka har segment ke saath timestamp maintain karta hai.
-Generally segment ki age us time se count ki jaati hai jab segment create hua tha.
 
 
 Size Based Retention :
@@ -2932,70 +2921,86 @@ public NewTopic ordersTopic() {
     return TopicBuilder.name("orders")
             .partitions(3)
             .replicas(3)
+
             .config(
                 TopicConfig.RETENTION_BYTES_CONFIG,
-                String.valueOf(10L * 1024 * 1024 * 1024) //in bytes equivalent to 10 GB
+                String.valueOf(10L * 1024 * 1024 * 1024) // 10 GB
             )
             .build();
 }
 
-Kafka check karta hai:
-
-Total retained data kitni ho gayi?
-
-Agar limit cross ho gayi:
+In the above example:
 
 Retention = 10 GB
 
-Current = 12 GB
+Kafka periodically check karta hai:
 
-To Kafka oldest segment delete kar deta hai.
+"Total retained data kitna ho gaya hai?"
 
+Current State:
 
+Partition-0
 
+Segment-1 (4 GB) (10 days old)
 
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
 
+Segment-2 (5 GB) (5 days old)
 
+Offset 3 -> D
+Offset 4 -> E
 
----------------------------------------------------------------
-Time Based Retention
----------------------------------------------------------------
+Segment-3 (3 GB) (1 day old)
 
-Maan lo tumhari company me 2 topics hain:
+Offset 5 -> F
+Offset 6 -> G
 
-orders-topic
-audit-topic
+Total Retained Data:
 
-Example messages:
+4 GB + 5 GB + 3 GB = 12 GB
 
-Order Created
-Payment Done
-Order Shipped
-Order Delivered
+Ab Kafka dekhega:
 
-Case1:
+Retention = 10 GB
 
-Business requirement: Order processing ke liye last 7 din ka data kaafi hai.
+Current Data = 12 GB
 
-To:
+Limit exceed ho chuki hai.
 
-retention.ms=604800000 (7 days)
+Kafka oldest segment se cleanup start karega.
 
-basically jo bhi message 7 din se jyada purana hote jata hai use kafka delete kar deta hai i.e on Day 8 : Ab Offset-0 wala message 7 din purana ho chuka hai so kafka use delete kar dega.
+Is case me:
 
+Segment-1 = 10 days old
+
+To Kafka Segment-1 delete kar dega.
+
+Result:
+
+Partition-0
+
+Segment-2 (5 GB)
+
+Offset 3 -> D
+Offset 4 -> E
+
+Segment-3 (3 GB)
+
+Offset 5 -> F
+Offset 6 -> G
+
+------------
 Important:
+------------
 
-Consumer ne read kiya ya nahi kiya,
+1: Consumer ne read kiya ya nahi kiya, koi farak nahi padta 
+     Deletion sirf time / size ke basis par ho rahi hai.
 
-koi farak nahi padta
+2: Kafka har segment ke saath timestamp maintain karta hai.
+   Generally segment ki age us time se calculate ki jaati hai jab segment create hua tha.
 
-Deletion sirf age (time) ke basis par ho rahi hai.
-
-
-Case2:
-
-Business requirement: Bas maximum 1 GB data rakho.
-
-Configuration:
-
-retention.bytes=1073741824
+3: Kafka individual messages ya offsets ko delete nahi karta.
+   Agar Kafka har message ko offset level par individually delete kare, to disk operations bahut expensive aur inefficient ho jayengi.
+   Isliye Kafka segment-level deletion use karta hai, jo high-throughput systems ke liye kaafi efficient approach hai.
