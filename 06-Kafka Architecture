@@ -244,7 +244,102 @@ Zookeeper ki dependency remove kar di gayi hai.
   se reading start kar sakta hai.
 
 ===============================================================================
-6:Why partions are required in the topic ?
+6: LOG SEGMENTS
+===============================================================================
+
+Kafka me Topics hote hain.
+
+Har Topic multiple Partitions me divide ho sakta hai.
+
+Example:
+
+Topic: Orders
+
+Partitions:
+
+Partition-0
+Partition-1
+Partition-2
+
+Har Partition ke andar messages sequentially store hote hain aur har message ko ek unique Offset milta hai.
+
+Example:
+
+Partition-0
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+
+Yahan Offset sirf message ki position batata hai.
+
+Conceptually hum Partition ko offsets ke collection ke roop me dekhte hain jaha messages store kitye jaate hai.
+
+Lekin internally Kafka Partition ko ek large append-only log file ki tarah treat karta hai.
+
+Example:
+
+Partition-0
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+
+Kafka ke perspective se ye poora structure (Partition-0) ek log file hai.
+
+Agar time ke saath aur messages aate rahein:
+
+Offset 6 -> G
+Offset 7 -> H
+Offset 8 -> I
+...
+Offset 10 Billion -> XYZ
+
+To Partition ki underlying log file bahut badi ho sakti hai.
+
+Example:
+
+partition0.log
+
+Ye file GBs ya TBs tak grow kar sakti hai, jise manage karna inefficient ho jata hai.
+
+LOG SEGMENTS
+
+Is problem ko solve karne ke liye Kafka ek Partition ko internally multiple Log Segments me divide karta hai.
+
+Example:
+
+Partition-0
+
+Segment-1
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+
+Segment-2
+
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+
+Segment-3
+
+Offset 6 -> G
+Offset 7 -> H
+Offset 8 -> I
+
+Ye Segments Kafka automatically create aur manage karta hai.
+
+Application Developer ko normally Segments ke baare me directly deal nahi karna padta.
+===============================================================================
+7:Why partions are required in the topic ?
 ===============================================================================
 
 ------------------
@@ -837,7 +932,7 @@ Note:
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
 ===============================================================================
-7: Do we duplicate partions of a topic across multiple partitions ?
+8: Do we duplicate partions of a topic across multiple partitions ?
 ===============================================================================
 
 Production mai Kafka almost hamesha partitions ki copies (replicas) multiple brokers par rakhi jaati hain.
@@ -996,7 +1091,7 @@ Follower ---> Leader
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
 ===============================================================================
-8: Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+9: Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
 ===============================================================================
 
 
@@ -1017,7 +1112,7 @@ Replication ka purpose hi fail ho jayega.
 
 
 ===============================================================================
-9: CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
+10: CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
 ===============================================================================
 
 YES.
@@ -1068,7 +1163,7 @@ But:
     One Consumer can have multiple Partitions assigned to it.
 
 ===============================================================================
-10: CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
+11: CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
 ===============================================================================
 
 YES.
@@ -1158,7 +1253,7 @@ parallel processing depends on the application's implementation.
 
 
 ===============================================================================
-11 : Rebalancing
+12 : Rebalancing
 ===============================================================================
 
 Rebalancing is the process in which Kafka redistributes partitions among consumers of a consumer group whenever the group membership changes,
@@ -1341,7 +1436,7 @@ Baaki assignments disturb nahi hote.
 Production me ye preferred approach hai.
 
 ===============================================================================
-12 : Consumer Group Coordinator
+13 : Consumer Group Coordinator
 ===============================================================================
 Example:
 
@@ -1729,7 +1824,7 @@ Result:
     Rebalance triggered
 
 ===============================================================================
-13 : ISR (IN SYNC REPLICAS)
+14 : ISR (IN SYNC REPLICAS)
 ===============================================================================
 
 ISR (In Sync Replicas) Kafka ke fault tolerance ka core concept hai.
@@ -2055,7 +2150,7 @@ Ye continuously update hota rehta hai based on replica health and lag.
 
 
 ===============================================================================
-14 : ACKS Kya Hai?
+15 : ACKS Kya Hai?
 ===============================================================================
 
 Maan lo Kafka cluster me multiple brokers hain:
@@ -2627,3 +2722,280 @@ min.insync.replicas = 2
 Ye configuration high durability aur fault tolerance provide karti hai.
 
 Note : min.insync.replicas is enforced only when the producer uses acks=all.
+
+===============================================================================
+16. Retention Policy
+===============================================================================
+
+After a consumer consumes the message from the topic that message is not deleted from the topic (technically partition's of the topic) , it stays there unlike other MQ like RabbitMQ
+i.e
+Partition-0
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Consumer ne A,B,C,D read kar liya.
+
+Partition me data fir bhi rahega.
+
+Partition-0
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+Offset 3 -> D
+
+Kuch delete nahi hua.
+
+Fir Delete Kab Hota Hai?
+
+Retention policy decide karti hai.
+
+Kafka bolta hai:
+
+Main data ko kitne time tak rakhunga before deleting? (Time based retention)
+
+Ya
+
+Main kitna storage limit tak data rakhunga before deleting? (Size Based Retention)
+
+----------------------------------
+Kafka me retention settings:
+---------------------------------
+
+=>Broker Level (Global Default)
+=>Topic Level (Override)
+--------------------------------------------
+1. Broker Level Retention (Global Default)
+--------------------------------------------
+
+Agar kisi topic ne apni retention define nahi ki, to ye broker level retention use hogi. i.e Broker-level retention acts as the default for all topics
+Note : Retention policy topic ke saare partitions par apply hoti hai, na ki kisi individual/particular partition par.
+
+Kafka broker configuration me define kar sakte ho:
+
+# Time based retention
+  log.retention.hours=170
+
+ya
+
+# Size based retention
+  log.retention.ms=604800000
+
+
+=> Default Broker Level Retention 
+
+Default Time-Based Retention:
+log.retention.hours=168 (Matlab 7 days) 
+
+
+Default size-Based Retention:
+log.retention.bytes=-1 (Matlab: No size limit)
+
+Size ki wajah se deletion nahi hogi.
+
+Deletion sirf time-based retention ke basis par hogi.
+
+Aur tumne: Topic level retention nahi di and Broker level retention bhi explicitily nahi di to Kafka broker ye default values use karta hai. 
+
+
+=> Truly Infinite Retention:
+
+Agar theoretically indefinitely retain karna ho to:
+
+log.retention.ms=-1
+log.retention.bytes=-1
+
+Dono disable karne padenge.
+
+Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
+
+
+2. Topic Level Retention (Most Common in Production)
+
+Topic-level config broker-level config ko override kar deti hai i.e agar tumne topic level rertention apply kiya hai to to wo broker level retention ko override kar legi.
+
+Suppose orders topic me sirf 1 partition hai 
+Kafka internally Partition ko multiple Log Segments me divide karke store karta hai.
+
+Partition-0
+
+Segment-1
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+
+Segment-2
+
+Offset 3 -> D
+Offset 4 -> E
+Offset 5 -> F
+
+Segment-3
+
+Offset 6 -> G
+Offset 7 -> H
+Offset 8 -> I
+
+
+Time Based Retention :
+
+Example: 
+
+@Bean
+public NewTopic ordersTopic() {
+
+    return TopicBuilder.name("orders")
+            .partitions(3)
+            .replicas(3)
+
+            .config(
+                TopicConfig.RETENTION_MS_CONFIG,
+                String.valueOf(7 * 24 * 60 * 60 * 1000) //in milliseconds equivalent to 7 days
+            )
+            .build();
+}
+
+
+In current example we have defined 
+
+Retention = 7 days
+
+Kafka check karta hai:
+
+Segment kitna purana hai?
+
+Partition-0:
+
+Segment-1 (10 days old)
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+
+--------------------------------
+
+Segment-2 (5 days old)
+
+Offset 3 -> D
+Offset 4 -> E
+
+--------------------------------
+
+Segment-3 (1 day old)
+
+Offset 5 -> F
+Offset 6 -> G
+
+Ab Kafka dekhega:
+
+Segment-1 = 10 days old
+
+Retention: 7 days
+
+To:
+
+DELETE Segment-1
+
+Kar dega.
+
+Result:
+
+Partition-0
+
+Segment-2
+
+Offset 3 -> D
+Offset 4 -> E
+
+---------------------
+
+Segment-3
+
+Offset 5 -> F
+Offset 6 -> G
+
+
+Note:
+Kafka har segment ke saath timestamp maintain karta hai.
+Generally segment ki age us time se count ki jaati hai jab segment create hua tha.
+
+
+Size Based Retention :
+
+@Bean
+public NewTopic ordersTopic() {
+
+    return TopicBuilder.name("orders")
+            .partitions(3)
+            .replicas(3)
+            .config(
+                TopicConfig.RETENTION_BYTES_CONFIG,
+                String.valueOf(10L * 1024 * 1024 * 1024) //in bytes equivalent to 10 GB
+            )
+            .build();
+}
+
+Kafka check karta hai:
+
+Total retained data kitni ho gayi?
+
+Agar limit cross ho gayi:
+
+Retention = 10 GB
+
+Current = 12 GB
+
+To Kafka oldest segment delete kar deta hai.
+
+
+
+
+
+
+
+---------------------------------------------------------------
+Time Based Retention
+---------------------------------------------------------------
+
+Maan lo tumhari company me 2 topics hain:
+
+orders-topic
+audit-topic
+
+Example messages:
+
+Order Created
+Payment Done
+Order Shipped
+Order Delivered
+
+Case1:
+
+Business requirement: Order processing ke liye last 7 din ka data kaafi hai.
+
+To:
+
+retention.ms=604800000 (7 days)
+
+basically jo bhi message 7 din se jyada purana hote jata hai use kafka delete kar deta hai i.e on Day 8 : Ab Offset-0 wala message 7 din purana ho chuka hai so kafka use delete kar dega.
+
+Important:
+
+Consumer ne read kiya ya nahi kiya,
+
+koi farak nahi padta
+
+Deletion sirf age (time) ke basis par ho rahi hai.
+
+
+Case2:
+
+Business requirement: Bas maximum 1 GB data rakho.
+
+Configuration:
+
+retention.bytes=1073741824
