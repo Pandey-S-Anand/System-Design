@@ -3794,9 +3794,7 @@ Consumer dobara process karega:
 
 ✔ Payment Deduct
 
--------------------------------------------------------------------------------
-RESULT
--------------------------------------------------------------------------------
+RESULT :
 
 Customer se 2 baar payment deduct ho gayi.
 
@@ -3948,9 +3946,7 @@ Answer:
 
 Retry + Dead Letter Topic (DLT)
 
--------------------------------------------------------------------------------
-APPROACH
--------------------------------------------------------------------------------
+APPROACH :
 
 1. Fixed number of retries karo
 
@@ -3975,42 +3971,6 @@ Message ko DLT me publish kar do
 
 
 5. Next message process karo
-
--------------------------------------------------------------------------------
-EXAMPLE
--------------------------------------------------------------------------------
-
-Orders Topic
-
-Offset 0 -> Order-101 (Poison Message)
-
-       ↓
-
-Retry-1 ❌
-
-       ↓
-
-Retry-2 ❌
-
-       ↓
-
-Retry-3 ❌
-
-       ↓
-
-Publish To DLT
-
-       ↓
-
-Ensure DLT Publish Successful
-
-       ↓
-
-Commit Offset
-
-       ↓
-
-Move To Next Message
 
 -------------------------------------------------------------------------------
 BENEFITS
