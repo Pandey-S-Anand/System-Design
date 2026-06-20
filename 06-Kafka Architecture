@@ -1,5 +1,4 @@
 
-
                              +------------------+
                              |     Producer     |
                              +------------------+
@@ -423,9 +422,9 @@ Offset 1 -> NAME
 Offset 2 -> IS
 Offset 3 -> ANURAG
 
-----------------------------------------
-Case 1: Sirf 1 independent consumer hai 
-----------------------------------------
+
+## Case 1: Sirf 1 independent consumer hai 
+
 
 To Consumer-1 sequentially read karega:
 
@@ -442,9 +441,10 @@ Kafka Partition ke andar ordering maintain karta hai.
 
 Lekin agar Consumer internally multithreading use kar raha ho to final processing order change ho sakta hai.
 
----------------------------------------------
-Case 2:  Maan lo 2 independent consumers hai
----------------------------------------------
+
+
+## Case 2:  Maan lo 2 independent consumers hai
+
 
 Consumer-1:
 
@@ -468,9 +468,8 @@ Note:
 
 Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
 
-----------------------------------------
-Consumer Group Introduce Karte Hain
-----------------------------------------
+
+## Consumer Group Introduce Karte Hain
 
 ----------------------------------------------------------
 Important Rule :
@@ -577,15 +576,15 @@ IS
 ANURAG
 Pandey
 
---------------------------------------------
-Question: Kaun sa message kis partition me jayega?
---------------------------------------------
+
+## Question: Kaun sa message kis partition me jayega?
+
 
 Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
 
--------------------------------------
-SCENARIO 1: No Key
--------------------------------------
+
+## SCENARIO 1: No Key
+
 
 Producer:
 
@@ -763,9 +762,9 @@ isi order me hi mile.
 
 Note : Kafka guarantees ordering within a partition, not across partitions.
 
--------------------------------------
-SCENARIO 2: With Key
--------------------------------------
+
+## SCENARIO 2: With Key
+
 
 Key ka purpose pure Topic ki Global Ordering maintain karna nahi hai.
 
@@ -897,6 +896,7 @@ Suppose result aaya: Partition-0
 
 To final storage kuch aisa hoga:
 
+
 Partition-0
 
 Offset 0 -> Order Created
@@ -976,10 +976,10 @@ To:
 Partition-0 ka sara data gaya
 
 
-Case 1: Broker crash hua, lekin disk safe hai
+## Case 1: Broker crash hua, lekin disk safe hai
 To jab broker wapas aayega: Partition-0 ka data wapas mil jayega.
 
-Case 2: Broker permanently gaya
+## Case 2: Broker permanently gaya
 
 Suppose:
 
@@ -1035,7 +1035,7 @@ Partition-0 (Follower)
 Important Terminology
 -------------------------------------
 
-Leader Replica
+## Leader Replica
 
 Har partition ka ek leader hota hai.
 
@@ -1054,7 +1054,7 @@ Leader partion
    +----> Follower partition
 
 
-Follower partition/s continuously leader partition se data copy karti rehti hain.
+## Follower partition/s continuously leader partition se data copy karti rehti hain.
 
 Consumer jab bhi kisi Partition se data read karega, to wo hamesha us Partition ke **Leader Replica** se hi data read karega.
 
@@ -1221,9 +1221,9 @@ So a single Consumer can consume from:
     - Multiple Partitions of the same Topic
     - Multiple Partitions belonging to different Topics
 
--------------------------------------------------------------------------------
-PARALLELISM NOTE
--------------------------------------------------------------------------------
+
+## PARALLELISM NOTE
+
 
 Consumer continuously polls Kafka:
 
@@ -1246,7 +1246,7 @@ If the application uses worker threads internally:
 
 then messages from different Partitions can be processed in parallel.
 
-Important:
+## Important:
 
 Kafka allows a Consumer to read from multiple Partitions, but true
 parallel processing depends on the application's implementation.
@@ -3390,6 +3390,7 @@ order-processors
 
 Consumer-1
 
+
 ## BUSINESS REQUIREMENT
 
 Consumer ko:
@@ -3535,7 +3536,7 @@ Lekin Offset Commit ke turant baad:
 
 ho jata hai.
 
-Important:
+## Important:
 
 Business Logic execute hi nahi hui.
 
@@ -3546,7 +3547,6 @@ Business Logic execute hi nahi hui.
 ✖ Email Send
 
 kuch bhi execute nahi hua.
-
 
 
 Kafka ko lag raha hai:
@@ -3575,9 +3575,8 @@ Problem:
 Message Loss
 
 
--------------------------------------
-DELIVERY SEMANTICS EXACTLY KYA HAI?
--------------------------------------
+
+## DELIVERY SEMANTICS EXACTLY KYA HAI?
 
 Consumer ke paas 2 kaam hain:
 
@@ -3605,24 +3604,14 @@ Kafka world me 3 guarantees hoti hain:
 AT MOST ONCE
 -------------------
 
-Guarantee:
+✔ Message will be delivered at most one time
 
-Message:
+✔ Duplicate delivery is not expected
 
-0 ya 1 baar process hoga.
-
-Never more than once.
-
-Hence Duplicate message impossible.
-
-Lekin:
-
-Message lose ho sakta hai.
+✖ Message loss is possible
 
 
--------------------------------------
-KAISE ACHIEVE KARTE HAIN?
--------------------------------------
+## KAISE ACHIEVE KARTE HAIN?
 
 Consumer pehle Offset Commit karta hai.
 
@@ -3638,7 +3627,7 @@ Business Logic
 
 
 
-EXAMPLE :
+## EXAMPLE :
 
 Current State:
 
@@ -3689,9 +3678,8 @@ kabhi process hi nahi hua.
 Message Lost.
 
 
--------------------------------------
- REAL WORLD USE CASES
--------------------------------------
+
+## REAL WORLD USE CASES
 
 Useful when:
 
@@ -3726,9 +3714,8 @@ Guarantee:
 ✔ Consumer failure ki wajah se message loss avoid karne ki
   koshish ki jaati hai
 
--------------------------------------------------------------------------------
-KAISE ACHIEVE KARTE HAIN?
--------------------------------------------------------------------------------
+
+## KAISE ACHIEVE KARTE HAIN?
 
 Consumer pehle Business Logic execute karta hai.
 
@@ -3742,9 +3729,8 @@ Business Logic
       ↓
 Commit Offset
 
--------------------------------------------------------------------------------
-EXAMPLE
--------------------------------------------------------------------------------
+
+## EXAMPLE
 
 Current State:
 
@@ -3764,9 +3750,9 @@ Important:
 
 Offset Commit abhi tak hua hi nahi tha.
 
--------------------------------------------------------------------------------
-CURRENT SITUATION
--------------------------------------------------------------------------------
+
+## CURRENT SITUATION
+
 
 Business Side:
 
@@ -3805,9 +3791,8 @@ multiple baar execute ho sakta hai.
 
 Ye dangerous ho sakta hai agar operation idempotent na ho.
 
--------------------------------------------------------------------------------
-REAL PRODUCTION SYSTEMS
--------------------------------------------------------------------------------
+
+## REAL PRODUCTION SYSTEMS
 
 Payment Deduct operation ko generally idempotent banaya jata hai.
 
@@ -3829,9 +3814,8 @@ multiple baar deduct ho sakta hai.
 Isliye production systems me business logic ko usually
 idempotent design kiya jata hai.
 
--------------------------------------------------------------------------------
-IMPORTANT OBSERVATION
--------------------------------------------------------------------------------
+
+## IMPORTANT OBSERVATION
 
 Notice karo:
 
@@ -3848,9 +3832,9 @@ Isliye:
 At-Least-Once duplicates allow karta hai,
 lekin message loss avoid karta hai.
 
--------------------------------------------------------------------------------
-AT LEAST ONCE KA ACTUAL MEANING
--------------------------------------------------------------------------------
+
+## AT LEAST ONCE KA ACTUAL MEANING
+
 
 Kafka message ko tab tak consumed nahi maanta
 jab tak uska Offset Commit na ho jaye.
@@ -3864,9 +3848,8 @@ Therefore:
 
 ✔ Message Loss avoid karne ki koshish ki jaati hai
 
--------------------------------------------------------------------------------
-VERY IMPORTANT POINT
--------------------------------------------------------------------------------
+
+## VERY IMPORTANT POINT
 
 At-Least-Once guarantee ye nahi karti ki:
 
@@ -3877,13 +3860,12 @@ Kafka par nahi.
 
 Kafka bas itni guarantee deta hai:
 
-"Jab tak Offset Commit nahi hua,
+"Jab tak message offset commit nahi hua,
 main message ko processed nahi maanunga
 aur consumer ko deta rahunga."
 
--------------------------------------------------------------------------------
-POISON MESSAGE PROBLEM
--------------------------------------------------------------------------------
+
+## POISON MESSAGE PROBLEM
 
 Example:
 
@@ -3914,9 +3896,8 @@ Retry
 Agar Business Logic baar-baar fail ho rahi hai,
 to Offset Commit kabhi nahi hoga.
 
--------------------------------------------------------------------------------
-RESULT
--------------------------------------------------------------------------------
+
+## RESULT
 
 Consumer har baar same message uthayega
 
@@ -3946,7 +3927,7 @@ Answer:
 
 Retry + Dead Letter Topic (DLT)
 
-APPROACH :
+## APPROACH :
 
 1. Fixed number of retries karo
 
@@ -3973,7 +3954,7 @@ Message ko DLT me publish kar do
 5. Next message process karo
 
 
-BENEFITS :
+## BENEFITS :
 
 ✔ Infinite retries avoid hoti hain
 
@@ -3982,3 +3963,157 @@ BENEFITS :
 ✔ Processing continue rehti hai
 
 ✔ Problematic messages ko later investigate kiya ja sakta hai
+
+Problem Statement
+
+-------------------------------------------------------------------------------
+BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
+-------------------------------------------------------------------------------
+
+Maan lo:
+
+Topic = Orders
+
+Partition-0
+
+Offset 0 -> Order-101
+
+Consumer Group:
+
+order-processors
+
+Consumer:
+
+Consumer-1
+
+
+## BUSINESS REQUIREMENT
+
+
+Order-101
+      ↓
+Payment Deduct
+      ↓
+Inventory Reduce
+      ↓
+Email Send
+      ↓
+Offset Commit
+
+
+## AT-LEAST-ONCE FLOW
+
+Consumer message read karta hai:
+
+Offset 0 -> Order-101
+
+Business Logic start hoti hai:
+
+✔ Payment Deduct
+
+✔ Inventory Reduce
+
+Lekin uske turant baad:
+
+✖ Consumer Crash
+
+Important:
+
+✖ Email Send nahi hua
+
+✖ Offset Commit nahi hua
+
+
+
+## Kafka ke hisaab se:
+
+Order-101 abhi process hi nahi hua.
+
+Kyuki Offset Commit nahi hua tha.
+
+Isliye Consumer restart hone par Kafka phir se dega:
+
+Offset 0 -> Order-101
+
+
+## PROBLEM
+
+
+Agar Consumer blindly dobara execute kare:
+
+✔ Payment Deduct
+
+✔ Inventory Reduce
+
+To:
+
+✖ Payment 2 baar deduct ho sakta hai
+
+✖ Inventory 2 baar reduce ho sakti hai
+
+
+## BUSINESS IDEMPOTENCY
+
+Definition:
+
+Same message 1 baar aaye ya multiple baar aaye,
+final business result same rehna chahiye.
+
+Business Idempotency ensure karti hai ki:
+
+Already completed operations dobara execute na hon,
+aur incomplete operations safely continue ho sakein.
+
+
+## CURRENT STATE
+
+Order-101
+
+✔ Payment Deduct
+
+✔ Inventory Reduce
+
+✖ Email Send
+
+✖ Offset Commit
+
+
+## MESSAGE REDELIVERY
+
+Kafka phir se dega:
+
+Offset 0 -> Order-101
+
+Consumer state check karega:
+
+Payment already completed?
+YES
+
+→ Payment Deduct dobara nahi karega
+
+Inventory already completed?
+YES
+
+→ Inventory Reduce dobara nahi karega
+
+Email already completed?
+NO
+
+→ Email Send execute karega
+
+
+## FINAL RESULT
+
+✔ Payment sirf ek baar deduct hua
+
+✔ Inventory sirf ek baar reduce hui
+
+✔ Email successfully send hua
+
+✔ Order Status = COMPLETED
+
+✔ Offset Commit
+
+
+
+
