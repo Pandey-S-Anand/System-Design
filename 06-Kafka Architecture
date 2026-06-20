@@ -3291,4 +3291,726 @@ Latest record preserve karo.
 
 Purane records remove kiye ja sakte hain.
 
-------------------------------------
+
+-------------------------------------
+COMPACTION + RETENTION TOGETHER
+-------------------------------------
+
+Kafka me hum Retention aur Compaction dono ek saath use kar sakte hain.
+
+RETENTION & COMPACTION ENABLE KARTE HAIN:
+
+Example:
+
+@Bean
+public NewTopic userProfileTopic() {
+
+return TopicBuilder.name("user-profile")
+        .partitions(3)
+        .replicas(3)
+        .config(
+           TopicConfig.CLEANUP_POLICY_CONFIG,
+           TopicConfig.CLEANUP_POLICY_COMPACT + "," + TopicConfig.CLEANUP_POLICY_DELETE
+         )
+        .config(
+           TopicConfig.RETENTION_MS_CONFIG,
+           String.valueOf(30L * 24 * 60 * 60 * 1000) // 30 Days
+         )
+        .build();
+}
+
+
+Meaning:
+
+1. Compaction
+
+   Same KEY ke multiple records hain:
+
+   (User1, Delhi)
+
+   (User1, Mumbai)
+
+   (User1, Bangalore)
+
+   To Kafka eventually latest value preserve karega:
+
+   (User1, Bangalore)
+
+   Purane records corresponding to the same KEY
+   eventually remove kiye ja sakte hain.
+
+
+2. Retention
+
+   Agar data retention policy violate karta hai
+   (for example 30 days se purana ho jata hai),
+   to Kafka segment level cleanup perform kar sakta hai.
+
+
+===============================================================================
+18. DELIVERY SEMANTICS
+======================
+
+Problem Statement:
+
+Maan lo:
+
+Topic = Orders
+
+Aur Topic ke paas sirf 1 Partition hai:
+
+Partition-0
+
+Ek Consumer Group hai:
+
+order-processors
+
+Aur us group me ek hi Consumer hai:
+
+Consumer-1
+
+Kafka Assignment:
+
+Partition-0 -> Consumer-1
+
+Current State:
+
+Partition-0
+
+Offset 0 -> Order-101
+Offset 1 -> Order-102
+
+Consumer Group:
+
+order-processors
+
+Consumer-1
+
+## BUSINESS REQUIREMENT
+
+Consumer ko:
+
+Order-101
+
+process karna hai.
+
+Example:
+
+Order-101
+↓
+Payment Deduct
+↓
+Database Update
+↓
+Email Send
+
+---
+
+## SCENARIO 1 : SAB KUCH PERFECT CHALA
+
+Consumer:
+
+Offset 0 -> Order-101
+
+read karta hai.
+
+Business Logic successfully execute ho jata hai:
+
+✔ Payment Deduct
+
+✔ Database Update
+
+✔ Email Send
+
+Uske baad Consumer-1 Offset Commit kar deta hai.
+
+Result:
+
+Order-101 successfully process ho gaya.
+
+Kafka ne bhi Offset Commit record kar liya.
+
+Isliye next time Consumer:
+
+Offset 1 -> Order-102
+
+read karega.
+
+Sab happy.
+
+---
+
+## SCENARIO 2 : DUPLICATE PROCESSING
+
+Consumer:
+
+Offset 0 -> Order-101
+
+read karta hai.
+
+Business Logic start hoti hai:
+
+✔ Payment Deduct
+
+Lekin uske turant baad:
+
+✖ Consumer Crash
+
+ho jata hai.
+
+Important:
+
+Offset Commit abhi tak hua hi nahi tha.
+
+## Current Situation
+
+Business Side:
+
+✔ Payment already deduct ho chuka hai.
+
+Lekin Order-101 se jude baaki operations complete nahi hue.
+
+Kafka Side:
+
+✖ Offset Commit nahi hua.
+
+Kafka ke hisaab se:
+
+Order-101 abhi process hi nahi hua.
+
+Consumer restart hota hai.
+
+Kafka check karta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka phir se dega:
+
+Offset 0 -> Order-101
+
+Consumer dobara:
+
+Payment Deduct
+
+kar deta hai.
+
+Result:
+
+Customer se 2 baar payment deduct ho gayi.
+
+Problem:
+
+Duplicate Processing
+
+---
+
+## SCENARIO 3 : MESSAGE LOSS
+
+Consumer:
+
+Offset 0 -> Order-101
+
+read karta hai.
+
+Lekin is baar Consumer pehle hi:
+
+Offset Commit
+
+kar deta hai.
+
+Kafka record kar leta hai:
+
+Offset 0 successfully processed.
+
+Lekin Offset Commit ke turant baad:
+
+✖ Consumer Crash
+
+ho jata hai.
+
+Important:
+
+Business Logic execute hi nahi hui.
+
+✖ Payment Deduct
+
+✖ Database Update
+
+✖ Email Send
+
+kuch bhi execute nahi hua.
+
+## Kafka View
+
+Kafka ko lag raha hai:
+
+Order-101 successfully process ho chuka hai.
+
+Kyunki Offset Commit ho gaya tha.
+
+## Consumer Restart
+
+Consumer restart hota hai.
+
+Kafka bolta hai:
+
+Start from next offset
+
+Aur Consumer ko de deta hai:
+
+Offset 1 -> Order-102
+
+Result:
+
+Order-101 kabhi process hi nahi hua.
+
+Problem:
+
+Message Loss
+
+---
+
+## DELIVERY SEMANTICS EXACTLY KYA HAI?
+
+Consumer ke paas 2 kaam hain:
+
+1. Message Process Karna
+
+2. Offset Commit Karna
+
+In dono operations ke beech me crash aa sakta hai.
+
+Delivery Semantics basically answer karti hai:
+
+"Failure hone par ek message kitni baar process ho sakta hai?"
+
+Delivery Semantics ek guarantee hai.
+
+Kafka world me 3 guarantees hoti hain:
+
+1. At Most Once
+
+2. At Least Once
+
+3. Exactly Once
+
+-------------------
+AT MOST ONCE
+-------------------
+
+Guarantee:
+
+Message:
+
+0 ya 1 baar process hoga.
+
+Never more than once.
+
+Hence Duplicate message impossible.
+
+Lekin:
+
+Message lose ho sakta hai.
+
+---
+
+## KAISE ACHIEVE KARTE HAIN?
+
+Consumer pehle Offset Commit karta hai.
+
+Uske baad Business Logic execute karta hai.
+
+Flow:
+
+Read Message
+↓
+Commit Offset
+↓
+Business Logic
+
+---
+
+## EXAMPLE
+
+Current State:
+
+Offset 0 -> Order-101
+
+Consumer read karta hai:
+
+Read Order-101
+
+Immediately:
+
+Commit Offset
+
+Kafka record kar leta hai:
+
+Last Committed Offset = 0
+
+Ab crash ho gaya:
+
+✖ Consumer Crash
+
+Business Logic chali hi nahi:
+
+✖ Payment Deduct
+
+✖ DB Update
+
+✖ Email
+
+Consumer restart hota hai.
+
+Kafka dekhega:
+
+Offset already committed
+
+To:
+
+Offset 1 -> Order-102
+
+de dega.
+
+Result:
+
+Order-101
+
+kabhi process hi nahi hua.
+
+Message Lost.
+
+---
+
+## REAL WORLD USE CASES
+
+Useful when:
+
+✔ Occasional data loss acceptable ho
+
+✔ Duplicate bilkul acceptable na ho
+
+Examples:
+
+* Analytics
+* Metrics
+* Monitoring
+
+Ek metric miss ho gaya?
+
+Generally chalega.
+
+Lekin duplicate metric aa gaya to reporting galat ho sakti hai.
+
+-------------------------------------------------------------------------------
+AT LEAST ONCE
+-------------------------------------------------------------------------------
+
+Guarantee:
+
+✔ Message consumer ko kam se kam ek baar deliver hoga
+
+✔ Duplicate delivery possible hai
+
+✔ Duplicate processing possible hai
+
+✔ Consumer failure ki wajah se message loss avoid karne ki
+  koshish ki jaati hai
+
+-------------------------------------------------------------------------------
+KAISE ACHIEVE KARTE HAIN?
+-------------------------------------------------------------------------------
+
+Consumer pehle Business Logic execute karta hai.
+
+Uske baad Offset Commit karta hai.
+
+Flow:
+
+Read Message
+      ↓
+Business Logic
+      ↓
+Commit Offset
+
+-------------------------------------------------------------------------------
+EXAMPLE
+-------------------------------------------------------------------------------
+
+Current State:
+
+Offset 0 -> Order-101
+
+Consumer message read karta hai.
+
+Business Logic chalta hai:
+
+✔ Payment Deduct
+
+Lekin uske turant baad:
+
+✖ Consumer Crash
+
+Important:
+
+Offset Commit abhi tak hua hi nahi tha.
+
+-------------------------------------------------------------------------------
+CURRENT SITUATION
+-------------------------------------------------------------------------------
+
+Business Side:
+
+✔ Payment already deduct ho chuka hai
+
+Kafka Side:
+
+✖ Offset Commit nahi hua
+
+Kafka ke hisaab se:
+
+Order-101 abhi process hi nahi hua.
+
+Consumer restart hota hai.
+
+Kafka check karta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka phir se dega:
+
+Offset 0 -> Order-101
+
+Consumer dobara process karega:
+
+✔ Payment Deduct
+
+-------------------------------------------------------------------------------
+RESULT
+-------------------------------------------------------------------------------
+
+Customer se 2 baar payment deduct ho gayi.
+
+Note:
+
+Duplicate message delivery ki wajah se same business operation
+multiple baar execute ho sakta hai.
+
+Ye dangerous ho sakta hai agar operation idempotent na ho.
+
+-------------------------------------------------------------------------------
+REAL PRODUCTION SYSTEMS
+-------------------------------------------------------------------------------
+
+Payment Deduct operation ko generally idempotent banaya jata hai.
+
+Kyuki At-Least-Once me duplicates expected hote hain.
+
+Example:
+
+1000 Rs Deduct
+       ↓
+Consumer Crash
+       ↓
+Kafka Redelivery
+       ↓
+1000 Rs Deduct Again
+
+Agar system duplicate-safe nahi hai to customer ka paisa
+multiple baar deduct ho sakta hai.
+
+Isliye production systems me business logic ko usually
+idempotent design kiya jata hai.
+
+-------------------------------------------------------------------------------
+IMPORTANT OBSERVATION
+-------------------------------------------------------------------------------
+
+Notice karo:
+
+✔ Message loss nahi hua
+
+✔ Message eventually consumer ko phir se mil gaya
+
+Lekin:
+
+✖ Duplicate processing ho gayi
+
+Isliye:
+
+At-Least-Once duplicates allow karta hai,
+lekin message loss avoid karta hai.
+
+-------------------------------------------------------------------------------
+AT LEAST ONCE KA ACTUAL MEANING
+-------------------------------------------------------------------------------
+
+Kafka message ko tab tak consumed nahi maanta
+jab tak uska Offset Commit na ho jaye.
+
+Kafka Offset Commit na hone par same message ko
+future consumer polls me phir se available kar dega.
+
+Therefore:
+
+✔ Duplicates Possible
+
+✔ Message Loss avoid karne ki koshish ki jaati hai
+
+-------------------------------------------------------------------------------
+VERY IMPORTANT POINT
+-------------------------------------------------------------------------------
+
+At-Least-Once guarantee ye nahi karti ki:
+
+"Message eventually successfully process ho hi jayega."
+
+Success Business Logic par depend karta hai,
+Kafka par nahi.
+
+Kafka bas itni guarantee deta hai:
+
+"Jab tak Offset Commit nahi hua,
+main message ko processed nahi maanunga
+aur consumer ko deta rahunga."
+
+-------------------------------------------------------------------------------
+POISON MESSAGE PROBLEM
+-------------------------------------------------------------------------------
+
+Example:
+
+Order-101
+      ↓
+JSON Parsing Error
+      ↓
+Exception
+      ↓
+Retry
+
+Phir:
+
+JSON Parsing Error
+      ↓
+Exception
+      ↓
+Retry
+
+Phir:
+
+JSON Parsing Error
+      ↓
+Exception
+      ↓
+Retry
+
+Agar Business Logic baar-baar fail ho rahi hai,
+to Offset Commit kabhi nahi hoga.
+
+-------------------------------------------------------------------------------
+RESULT
+-------------------------------------------------------------------------------
+
+Consumer har baar same message uthayega
+
+Har baar fail hoga
+
+Offset Commit nahi hoga
+
+Message phir se deliver hoga
+
+Phir fail hoga
+
+Phir deliver hoga
+
+...
+
+Ye infinite retry loop create kar sakta hai.
+
+Isse kehte hain:
+
+POISON MESSAGE
+
+-------------------------------------------------------------------------------
+AT LEAST ONCE ME POISON MESSAGE KO KAISE HANDLE KAROGE?
+-------------------------------------------------------------------------------
+
+Answer:
+
+Retry + Dead Letter Topic (DLT)
+
+-------------------------------------------------------------------------------
+APPROACH
+-------------------------------------------------------------------------------
+
+1. Fixed number of retries karo
+
+Example:
+
+Retry-1 ❌
+
+Retry-2 ❌
+
+Retry-3 ❌
+
+
+2. Agar fir bhi fail ho
+
+Message ko DLT me publish kar do
+
+
+3. Ensure DLT publish successful
+
+
+4. Offset Commit kar do
+
+
+5. Next message process karo
+
+-------------------------------------------------------------------------------
+EXAMPLE
+-------------------------------------------------------------------------------
+
+Orders Topic
+
+Offset 0 -> Order-101 (Poison Message)
+
+       ↓
+
+Retry-1 ❌
+
+       ↓
+
+Retry-2 ❌
+
+       ↓
+
+Retry-3 ❌
+
+       ↓
+
+Publish To DLT
+
+       ↓
+
+Ensure DLT Publish Successful
+
+       ↓
+
+Commit Offset
+
+       ↓
+
+Move To Next Message
+
+-------------------------------------------------------------------------------
+BENEFITS
+-------------------------------------------------------------------------------
+
+✔ Infinite retries avoid hoti hain
+
+✔ Consumer block nahi hota
+
+✔ Processing continue rehti hai
+
+✔ Problematic messages ko later investigate kiya ja sakta hai
