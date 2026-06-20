@@ -2856,7 +2856,10 @@ public NewTopic ordersTopic() {
     return TopicBuilder.name("orders")
             .partitions(3)
             .replicas(3)
-
+            .config(
+                TopicConfig.CLEANUP_POLICY_CONFIG,
+                TopicConfig.CLEANUP_POLICY_DELETE
+            )
             .config(
                 TopicConfig.RETENTION_MS_CONFIG,
                 String.valueOf(7 * 24 * 60 * 60 * 1000) // 7 days
@@ -2864,6 +2867,67 @@ public NewTopic ordersTopic() {
             .build();
 }
 
+Explanation:
+
+------------------------------------------------------------------------------
+TopicConfig.CLEANUP_POLICY_CONFIG
+------------------------------------------------------------------------------
+
+Purpose:
+
+-> Kafka Topic ka cleanup behavior configure karne ke liye use hota hai.
+-> Is property ke through hum Kafka ko batate hain ki purane records ka
+   cleanup kaise karna hai.
+
+Common Values:
+
+1. TopicConfig.CLEANUP_POLICY_DELETE
+2. TopicConfig.CLEANUP_POLICY_COMPACT
+
+------------------------------------------------------------------------------
+TopicConfig.CLEANUP_POLICY_DELETE
+------------------------------------------------------------------------------
+
+Purpose:
+
+-> Kafka ko batata hai ki cleanup ka method kya hoga.
+
+Meaning:
+
+-> Purana data delete karke cleanup karna hai.
+
+Note:
+
+-> Ye cleanup strategy hai.
+-> Ye decide karta hai "cleanup kaise hoga".
+
+------------------------------------------------------------------------------
+TopicConfig.RETENTION_MS_CONFIG
+------------------------------------------------------------------------------
+
+Purpose:
+
+-> Kafka ko batata hai ki records kitne time tak retain karne hain.
+
+Meaning:
+
+-> Specified time complete hone ke baad purana eligible segments delete kiya ja sakta hai.
+
+In This Example:
+
+String.valueOf(7 * 24 * 60 * 60 * 1000)
+
+-> 7 Days
+
+Meaning:
+
+-> Records ko 7 din tak retain karo.
+-> 7 din ke baad eligible segments delete kiye ja sakte hain.
+
+Note:
+-> Ye cleanup strategy nahi hai.
+
+-----------------------------------------------------
 In the above example:
 
 Retention = 7 days
