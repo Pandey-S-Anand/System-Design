@@ -591,11 +591,13 @@ SCENARIO 1: No Key
 
 Producer:
 
-send("messages","MY");
-send("messages","NAME");
-send("messages","IS");
-send("messages","ANURAG");
-send("messages","Pandey");
+Producer publish karta hai:
+
+send("MY");
+send("NAME");
+send("IS");
+send("ANURAG");
+send("Pandey");
 
 Koi Key provide nahi ki gayi.
 
@@ -3004,3 +3006,216 @@ Important:
 3: Kafka individual messages ya offsets ko delete nahi karta.
    Agar Kafka har message ko offset level par individually delete kare, to disk operations bahut expensive aur inefficient ho jayengi.
    Isliye Kafka segment-level deletion use karta hai, jo high-throughput systems ke liye kaafi efficient approach hai.
+
+===============================================================================
+17. LOG COMPACTION
+===============================================================================
+
+Retention ka Goal:
+-> Storage bachana
+-> Purana data delete karna
+
+Compaction ka Goal:
+-> Har key ki latest value bacha ke rakhna
+-> Purani history corresponding to us key delete ho sakti hai
+
+
+Log Compaction sirf tab useful hai jab messages ke paas KEY ho. Producer jab message publish karta hai to optionally ek KEY bhi pass kar sakta hai.
+
+Ye KEY do kaam karti hai:
+
+1. Partition decide karne me help karti hai
+   partition = hash(key) % number_of_partitions
+
+2. Compaction ke time Kafka isi KEY ka use karta hai ye identify karne ke liye
+   ki kaunse records same entity ko represent karte hain.
+
+
+ONE-LINE DEFINITION :
+Log Compaction is a Kafka cleanup strategy that retains the latest record
+for each key while allowing older records with the same key to be removed.
+
+
+EXAMPLE :
+
+Maan lo ek Topic hai:
+
+Topic = UserLocation
+
+Aur Topic ke paas 2 Partitions hain:
+
+Partition-0
+Partition-1
+
+Producer messages publish karta hai:
+
+(Key=User1, Value=Delhi)
+
+(Key=User1, Value=Mumbai)
+
+(Key=User1, Value=Bangalore)
+
+Meaning:
+
+User1 pehle Delhi me tha
+phir Mumbai shift hua
+phir Bangalore shift hua
+
+
+Kyuki teeno messages ki KEY same hai:
+
+Key = User1
+
+Isliye teeno messages same Partition me jayenge.
+
+Suppose: Partition-0
+
+
+Partition-0
+
+Offset 0:
+Key   = User1
+Value = Delhi
+
+
+Offset 1:
+Key   = User1
+Value = Mumbai
+
+Offset 2:
+Key   = User1
+Value = Bangalore
+
+------------------------------------
+QUESTION :
+------------------------------------
+
+Current City kya hai?
+
+Answer: Bangalore
+
+
+To Delhi aur Mumbai kyun rakhe hue hain?
+
+Answer:
+
+Historical tracking ke liye useful ho sakte hain.
+
+Lekin kai systems ko history nahi chahiye.
+
+Unhe sirf latest state chahiye.
+
+
+------------------------------------
+REAL WORLD EXAMPLE :
+------------------------------------
+
+Topic:
+
+CustomerPreferences
+
+Messages:
+
+(Key=User1, Value=Hindi)
+
+(Key=User1, Value=English)
+
+(Key=User1, Value=French)
+
+Current Preference: French
+
+Yahan Hindi aur English ki value ab business ke liye useful nahi hai.
+
+Hume sirf latest state chahiye.
+
+------------------------------------
+COMPACTION ENABLE KARTE HAIN
+------------------------------------
+
+@Bean
+public NewTopic userProfileTopic() {
+
+return TopicBuilder.name("user-profile")
+        .partitions(3)
+        .replicas(3)
+        .config(
+            TopicConfig.CLEANUP_POLICY_CONFIG,
+            TopicConfig.CLEANUP_POLICY_COMPACT
+        )
+        .build();
+}
+
+------------------------------------
+Kya Compaction instant hota hai ?
+------------------------------------
+
+Answer:
+
+Compaction instant nahi hota.
+
+Compaction ek background process hai. Kafka background me periodically cleanup run karta hai.
+
+Kafka instant cleanup ki guarantee nahi deta.
+
+
+Current State :
+
+Partition-0
+
+Offset 0:
+Key   = User1
+Value = Delhi
+
+
+Offset 1:
+Key   = User1
+Value = Mumbai
+
+
+Offset 2:
+Key   = User1
+Value = Bangalore
+
+
+KAFKA KYA DEKHEGA?
+
+Kafka observe karega: 
+
+Key = User1
+
+multiple baar aa rahi hai.
+
+To Kafka latest record preserve karega.
+
+
+
+AFTER COMPACTION :
+
+Partition-0
+
+Offset 2
+Key   = User1
+Value = Bangalore
+
+Delhi aur Mumbai wale purane records eventually remove ho sakte hain.
+
+
+------------------------------------
+MOST IMPORTANT RULE
+------------------------------------
+
+Compaction works on: KEY
+
+NOT VALUE
+
+Kafka compare karta hai:
+
+"Same Key?"
+
+Agar same key hai:
+
+Latest record preserve karo.
+
+Purane records remove kiye ja sakte hain.
+
+------------------------------------
