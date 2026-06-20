@@ -3209,6 +3209,16 @@ return TopicBuilder.name("user-profile")
         .build();
 }
 
+-------------------------------------
+TopicConfig.CLEANUP_POLICY_COMPACT
+-------------------------------------
+
+-> Log Compaction enable karta hai.
+-> Har KEY ki latest value preserve karta hai.
+-> Same KEY ke purane records eventually remove ho sakte hain.
+-> Ye cleanup strategy hai.
+
+
 ------------------------------------
 Kya Compaction instant hota hai ?
 ------------------------------------
@@ -3250,7 +3260,6 @@ Key = User1
 multiple baar aa rahi hai.
 
 To Kafka latest record preserve karega.
-
 
 
 AFTER COMPACTION :
