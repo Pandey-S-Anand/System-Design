@@ -4116,4 +4116,16 @@ NO
 
 
 
+## IMPORTANT:
 
+Business Idempotency usually requires some durable state
+(Database, Redis etc.)
+
+Without storing processing state, Consumer restart ke baad
+ye determine nahi kar sakta ki kaunsa business operation
+already execute ho chuka hai aur kaunsa pending hai.
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
