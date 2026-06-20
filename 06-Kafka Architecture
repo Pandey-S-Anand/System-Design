@@ -309,8 +309,6 @@ partition0.log
 
 Ye file GBs ya TBs tak grow kar sakti hai, jise manage karna inefficient ho jata hai.
 
-LOG SEGMENTS
-
 Is problem ko solve karne ke liye Kafka ek Partition ko internally multiple Log Segments me divide karta hai.
 
 Example:
@@ -471,7 +469,7 @@ Note:
 Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
 
 ----------------------------------------
-=>Consumer Group Introduce Karte Hain
+Consumer Group Introduce Karte Hain
 ----------------------------------------
 
 ----------------------------------------------------------
@@ -580,14 +578,14 @@ ANURAG
 Pandey
 
 --------------------------------------------
-Question:
-
-Kaun sa message kis partition me jayega?
+Question: Kaun sa message kis partition me jayega?
 --------------------------------------------
 
 Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
 
+-------------------------------------
 SCENARIO 1: No Key
+-------------------------------------
 
 Producer:
 
@@ -765,8 +763,9 @@ isi order me hi mile.
 
 Note : Kafka guarantees ordering within a partition, not across partitions.
 
-
+-------------------------------------
 SCENARIO 2: With Key
+-------------------------------------
 
 Key ka purpose pure Topic ki Global Ordering maintain karna nahi hai.
 
@@ -1019,23 +1018,22 @@ Broker-1
 Partition-0 (Leader)
 Partition-1 (Follower)
 
-------------------------------------------------
 
 Broker-2
 
 Partition-1 (Leader)
 Partition-2 (Follower)
 
-------------------------------------------------
 
 Broker-3
 
 Partition-2 (Leader)
 Partition-0 (Follower)
 
-------------------------------------------------
 
+-------------------------------------
 Important Terminology
+-------------------------------------
 
 Leader Replica
 
@@ -1092,10 +1090,10 @@ Follower ---> Leader
 
 Kafka uses replication. Each partition can have multiple replicas distributed across different brokers. One replica acts as the leader and the remaining replicas act as followers for fault tolerance and high availability.
 
-===============================================================================
-9: Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
-===============================================================================
 
+-----------------------------------------------------------------------
+Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+-----------------------------------------------------------------------
 
 NO
 
@@ -1113,9 +1111,9 @@ Aisa nahi hoga.
 Replication ka purpose hi fail ho jayega.
 
 
-===============================================================================
-10: CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
-===============================================================================
+-----------------------------------------------------------------------
+CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS?
+-----------------------------------------------------------------------
 
 YES.
 
@@ -1164,9 +1162,9 @@ But:
 
     One Consumer can have multiple Partitions assigned to it.
 
-===============================================================================
-11: CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
-===============================================================================
+-----------------------------------------------------------------------
+CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
+-----------------------------------------------------------------------
 
 YES.
 
@@ -1255,7 +1253,7 @@ parallel processing depends on the application's implementation.
 
 
 ===============================================================================
-12 : Rebalancing
+9: Rebalancing
 ===============================================================================
 
 Rebalancing is the process in which Kafka redistributes partitions among consumers of a consumer group whenever the group membership changes,
@@ -1438,7 +1436,7 @@ Baaki assignments disturb nahi hote.
 Production me ye preferred approach hai.
 
 ===============================================================================
-13 : Consumer Group Coordinator
+10 : Consumer Group Coordinator
 ===============================================================================
 Example:
 
@@ -1826,7 +1824,7 @@ Result:
     Rebalance triggered
 
 ===============================================================================
-14 : ISR (IN SYNC REPLICAS)
+11 : ISR (IN SYNC REPLICAS)
 ===============================================================================
 
 ISR (In Sync Replicas) Kafka ke fault tolerance ka core concept hai.
@@ -2045,7 +2043,7 @@ Offset 4 -> E
 Offset 5 -> F
 Offset 6 -> G
 
-------------------------------------------------
+
 
 Follower-1 (Broker-2)
 
@@ -2057,7 +2055,7 @@ Offset 4 -> E
 Offset 5 -> F
 Offset 6 -> G
 
-------------------------------------------------
+
 
 Follower-2 (Broker-3)
 
@@ -2066,7 +2064,7 @@ Offset 1 -> B
 Offset 2 -> C
 Offset 3 -> D
 
-------------------------------------------------
+
 
 Replica Status:
 
@@ -2152,7 +2150,7 @@ Ye continuously update hota rehta hai based on replica health and lag.
 
 
 ===============================================================================
-15 : ACKS Kya Hai?
+12 : ACKS Kya Hai?
 ===============================================================================
 
 Maan lo Kafka cluster me multiple brokers hain:
@@ -2372,7 +2370,7 @@ Follower-2 Offset  = 1
 Ab Kafka Producer ko ACK bhej dega.
 
 ------------------------------------------
-## Kya ACKS = ALL Matlab Sab Replicas?
+Kya ACKS = ALL Matlab Sab Replicas?
 ------------------------------------------
 
 Nahi.
@@ -2531,8 +2529,9 @@ Kafka bolega:
 Jab ISR ke saare replicas me message aa jaye.
 
 
-
-## Scenario 1
+--------------------
+Scenario 1
+--------------------
 
 Assume:
 
@@ -2570,9 +2569,9 @@ Result:
 
 Kafka Producer ko ACK bhej dega.
 
-
-
-## Scenario 2
+-------------
+Scenario 2
+-------------
 
 Producer aur messages bhejta hai.
 
@@ -2614,8 +2613,9 @@ Kafka Producer ko ACK bhej dega.
 
 Still fine.
 
-
-## Scenario 3
+--------------
+Scenario 3
+--------------
 
 Current ISR:
 
@@ -2726,7 +2726,7 @@ Ye configuration high durability aur fault tolerance provide karti hai.
 Note : min.insync.replicas is enforced only when the producer uses acks=all.
 
 ===============================================================================
-16. Retention Policy
+13 . Retention Policy
 ===============================================================================
 
 After a consumer consumes the message from the topic that message is not deleted from the topic (technically partition's of the topic) , it stays there unlike other MQ like RabbitMQ
@@ -2814,8 +2814,9 @@ Dono disable karne padenge.
 
 Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
 
-
+--------------------------------------------------------
 2. Topic Level Retention (Most Common in Production)
+--------------------------------------------------------
 
 Topic-level configuration broker-level retention ko override kar deti hai.
 
@@ -2845,8 +2846,9 @@ Offset 6 -> G
 Offset 7 -> H
 Offset 8 -> I
 
-
+------------------------
 Time Based Retention :
+------------------------
 
 Example:
 
@@ -2978,8 +2980,9 @@ Segment-3
 Offset 5 -> F
 Offset 6 -> G
 
-
+------------------------------
 Size Based Retention :
+------------------------------
 
 @Bean
 public NewTopic ordersTopic() {
@@ -3072,7 +3075,7 @@ Important:
    Isliye Kafka segment-level deletion use karta hai, jo high-throughput systems ke liye kaafi efficient approach hai.
 
 ===============================================================================
-17. LOG COMPACTION
+14. LOG COMPACTION
 ===============================================================================
 
 Retention ka Goal:
@@ -3348,8 +3351,9 @@ Meaning:
 
 
 ===============================================================================
-18. DELIVERY SEMANTICS
-======================
+15. DELIVERY SEMANTICS
+===============================================================================
+
 
 Problem Statement:
 
@@ -3404,9 +3408,10 @@ Database Update
 ↓
 Email Send
 
----
 
-## SCENARIO 1 : SAB KUCH PERFECT CHALA
+-------------------------------------
+SCENARIO 1 : SAB KUCH PERFECT CHALA
+-------------------------------------
 
 Consumer:
 
@@ -3438,9 +3443,10 @@ read karega.
 
 Sab happy.
 
----
 
-## SCENARIO 2 : DUPLICATE PROCESSING
+-------------------------------------
+SCENARIO 2 : DUPLICATE PROCESSING
+-------------------------------------
 
 Consumer:
 
@@ -3502,9 +3508,10 @@ Problem:
 
 Duplicate Processing
 
----
 
-## SCENARIO 3 : MESSAGE LOSS
+-------------------------------------
+SCENARIO 3 : MESSAGE LOSS
+-------------------------------------
 
 Consumer:
 
@@ -3540,7 +3547,7 @@ Business Logic execute hi nahi hui.
 
 kuch bhi execute nahi hua.
 
-## Kafka View
+
 
 Kafka ko lag raha hai:
 
@@ -3548,7 +3555,6 @@ Order-101 successfully process ho chuka hai.
 
 Kyunki Offset Commit ho gaya tha.
 
-## Consumer Restart
 
 Consumer restart hota hai.
 
@@ -3568,9 +3574,10 @@ Problem:
 
 Message Loss
 
----
 
-## DELIVERY SEMANTICS EXACTLY KYA HAI?
+-------------------------------------
+DELIVERY SEMANTICS EXACTLY KYA HAI?
+-------------------------------------
 
 Consumer ke paas 2 kaam hain:
 
@@ -3612,9 +3619,10 @@ Lekin:
 
 Message lose ho sakta hai.
 
----
 
-## KAISE ACHIEVE KARTE HAIN?
+-------------------------------------
+KAISE ACHIEVE KARTE HAIN?
+-------------------------------------
 
 Consumer pehle Offset Commit karta hai.
 
@@ -3628,9 +3636,9 @@ Commit Offset
 ↓
 Business Logic
 
----
 
-## EXAMPLE
+
+EXAMPLE :
 
 Current State:
 
@@ -3680,9 +3688,10 @@ kabhi process hi nahi hua.
 
 Message Lost.
 
----
 
-## REAL WORLD USE CASES
+-------------------------------------
+ REAL WORLD USE CASES
+-------------------------------------
 
 Useful when:
 
