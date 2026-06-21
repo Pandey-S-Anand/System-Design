@@ -2077,9 +2077,8 @@ ISR = {Leader, Follower-1}
 Follower-2 leader se kaafi piche chal raha hai,
 isliye wo ISR ka part nahi hai.
 
-------------------------------------------------------------
-Ab Maan Lo Leader Crash Ho Gaya
-------------------------------------------------------------
+
+## Ab Maan Lo Leader Crash Ho Gaya
 
 Leader Broker-1 par tha aur crash ho gaya.
 
@@ -2136,9 +2135,8 @@ Offset 6 -> G
 Isliye agar Follower-1 ko Leader promote kiya jaye,
 to koi data loss nahi hoga.
 
-------------------------------------------------------------
-Conclusion
-------------------------------------------------------------
+
+## Conclusion
 
 Kafka ISR maintain karta hai taaki Leader failure ke time
 sirf unhi replicas me se naya Leader select kiya jaye
@@ -2369,9 +2367,9 @@ Follower-2 Offset  = 1
 
 Ab Kafka Producer ko ACK bhej dega.
 
-------------------------------------------
-Kya ACKS = ALL Matlab Sab Replicas?
-------------------------------------------
+
+## Kya ACKS = ALL Matlab Sab Replicas?
+
 
 Nahi.
 
@@ -2711,9 +2709,8 @@ Isliye Kafka write reject karta hai.
 
 In other words, Kafka write reject karke data loss ko impossible nahi banata, balki unsafe writes ko prevent karta hai aur durability guarantees ko maintain karta hai.
 
--------------------------------------------
-Most Common Production Configuration
--------------------------------------------
+
+## Most Common Production Configuration
 
 Replication Factor = 3
 
@@ -2763,14 +2760,14 @@ Ya
 
 Main kitna storage limit tak data rakhunga before deleting? (Size Based Retention)
 
-----------------------------------
-Kafka me retention settings:
----------------------------------
 
-=>Broker Level (Global Default)
-=>Topic Level (Override)
+## Kafka me retention settings:
+
+1. Broker Level (Global Default)
+2. Topic Level (Override)
+
 --------------------------------------------
-1. Broker Level Retention (Global Default)
+Broker Level Retention (Global Default)
 --------------------------------------------
 
 Agar kisi topic ne apni retention define nahi ki, to ye broker level retention use hogi. i.e Broker-level retention acts as the default for all topics
@@ -2815,7 +2812,7 @@ Dono disable karne padenge.
 Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
 
 --------------------------------------------------------
-2. Topic Level Retention (Most Common in Production)
+Topic Level Retention (Most Common in Production)
 --------------------------------------------------------
 
 Topic-level configuration broker-level retention ko override kar deti hai.
@@ -2846,9 +2843,8 @@ Offset 6 -> G
 Offset 7 -> H
 Offset 8 -> I
 
-------------------------
-Time Based Retention :
-------------------------
+
+1: TIME BASED RETENTION:
 
 Example:
 
@@ -2871,9 +2867,7 @@ public NewTopic ordersTopic() {
 
 Explanation:
 
-------------------------------------------------------------------------------
-TopicConfig.CLEANUP_POLICY_CONFIG
-------------------------------------------------------------------------------
+## TopicConfig.CLEANUP_POLICY_CONFIG
 
 Purpose:
 
@@ -2886,9 +2880,9 @@ Common Values:
 1. TopicConfig.CLEANUP_POLICY_DELETE
 2. TopicConfig.CLEANUP_POLICY_COMPACT
 
-------------------------------------------------------------------------------
-TopicConfig.CLEANUP_POLICY_DELETE
-------------------------------------------------------------------------------
+
+## TopicConfig.CLEANUP_POLICY_DELETE
+
 
 Purpose:
 
@@ -2903,9 +2897,9 @@ Note:
 -> Ye cleanup strategy hai.
 -> Ye decide karta hai "cleanup kaise hoga".
 
-------------------------------------------------------------------------------
-TopicConfig.RETENTION_MS_CONFIG
-------------------------------------------------------------------------------
+
+## TopicConfig.RETENTION_MS_CONFIG
+
 
 Purpose:
 
@@ -2980,9 +2974,8 @@ Segment-3
 Offset 5 -> F
 Offset 6 -> G
 
-------------------------------
-Size Based Retention :
-------------------------------
+
+2: SIZE BASED RETENTION :
 
 @Bean
 public NewTopic ordersTopic() {
@@ -3060,9 +3053,8 @@ Segment-3 (3 GB)
 Offset 5 -> F
 Offset 6 -> G
 
-------------
-Important:
-------------
+
+## Important:
 
 1: Consumer ne read kiya ya nahi kiya, koi farak nahi padta 
      Deletion sirf time / size ke basis par ho rahi hai.
@@ -3153,9 +3145,8 @@ Offset 2:
 Key   = User1
 Value = Bangalore
 
-------------------------------------
-QUESTION :
-------------------------------------
+
+## QUESTION :
 
 Current City kya hai?
 
@@ -3172,10 +3163,9 @@ Lekin kai systems ko history nahi chahiye.
 
 Unhe sirf latest state chahiye.
 
-
-------------------------------------
+--------------------------
 REAL WORLD EXAMPLE :
-------------------------------------
+--------------------------
 
 Topic:
 
@@ -3195,9 +3185,8 @@ Yahan Hindi aur English ki value ab business ke liye useful nahi hai.
 
 Hume sirf latest state chahiye.
 
-------------------------------------
-COMPACTION ENABLE KARTE HAIN
-------------------------------------
+
+## COMPACTION ENABLE KARTE HAIN
 
 @Bean
 public NewTopic userProfileTopic() {
@@ -3390,9 +3379,9 @@ order-processors
 
 Consumer-1
 
-
-## BUSINESS REQUIREMENT
-
+------------------------
+BUSINESS REQUIREMENT
+------------------------
 Consumer ko:
 
 Order-101
@@ -3575,8 +3564,9 @@ Problem:
 Message Loss
 
 
-
-## DELIVERY SEMANTICS EXACTLY KYA HAI?
+--------------------------------------
+DELIVERY SEMANTICS EXACTLY KYA HAI?
+--------------------------------------
 
 Consumer ke paas 2 kaam hain:
 
@@ -3600,9 +3590,9 @@ Kafka world me 3 guarantees hoti hain:
 
 3. Exactly Once
 
--------------------
-AT MOST ONCE
--------------------
+
+1 : AT MOST ONCE
+
 
 ✔ Message will be delivered at most one time
 
@@ -3699,9 +3689,9 @@ Generally chalega.
 
 Lekin duplicate metric aa gaya to reporting galat ho sakti hai.
 
--------------------------------------------------------------------------------
-AT LEAST ONCE
--------------------------------------------------------------------------------
+
+2: AT LEAST ONCE
+
 
 Guarantee:
 
@@ -3919,9 +3909,8 @@ Isse kehte hain:
 
 POISON MESSAGE
 
--------------------------------------------------------------------------------
-AT LEAST ONCE ME POISON MESSAGE KO KAISE HANDLE KAROGE?
--------------------------------------------------------------------------------
+
+## AT LEAST ONCE ME POISON MESSAGE KO KAISE HANDLE KAROGE?
 
 Answer:
 
@@ -3966,9 +3955,8 @@ Message ko DLT me publish kar do
 
 Problem Statement
 
--------------------------------------------------------------------------------
-BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
--------------------------------------------------------------------------------
+
+## BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
 
 Maan lo:
 
@@ -4127,5 +4115,255 @@ already execute ho chuka hai aur kaunsa pending hai.
 
 
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+3 : EXACTLY ONCE
+
+Exactly-Once Semantics ka matlab hai ki ek message ka
+business impact exactly ek baar hoga.
+
+Na duplicate effect create hoga
+aur na hi message loss hoga,
+
+even if:
+
+✔ Producer Retries
+✔ Consumer Crashes
+✔ Broker Failures
+✔ Network Issues
+
+occur karen.
+
+
+----------------------------------------------------------------------------------------------------------------------
+AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI.
+FIR EXACTLY ONCE KI ZARURAT HI KYA HAI?
+----------------------------------------------------------------------------------------------------------------------
+
+Business Idempotency ek application-level workaround hai.
+
+Exactly Once Semantics (EOS) ek Kafka-level guarantee hai.
+
+Dono duplicate-related problems ko solve karte hain,
+lekin different levels par.
+
+Business Idempotency:
+
+✖ Duplicate ko PREVENT nahi karti
+
+✔ Duplicate ko TOLERATE karti hai
+
+Exactly Once:
+
+✔ Duplicate create hone se hi rokne ki koshish karta hai
+
+Ye bahut bada difference hai.
+
+
+
+## EXAMPLE
+
+Maan lo ek Topic hai:
+
+Topic = order-topic
+
+Aur Topic ke paas sirf 1 Partition hai:
+
+Partition-0
+
+Current State:
+
+Offset 0 -> Order-101
+
+
+Ek Consumer Group hai:
+
+order-group
+
+Aur us group me ek hi Consumer hai:
+
+Consumer-1
+
+Kafka Assignment:
+
+Partition-0 -> Consumer-1
+
+
+Consumer-1 "order-topic" ko subscribe kiya hua hai.
+
+Saath hi ek aur Topic hai:
+
+Topic = payment-topic
+
+Consumer-1 order process karne ke baad payment-topic me
+ek naya event publish karta hai.
+
+
+## BUSINESS REQUIREMENT
+
+Consumer-1 ko:
+
+1. order-topic se Order-101 read karna hai
+
+2. Inventory reduce karni hai
+
+3. Baaki business validations/processes perform karni hain
+
+4. payment-topic me Payment-101 event publish karna hai
+
+5. Offset Commit karna hai
+
+
+
+## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY
+
+
+At-Least-Once me:
+
+Order-101
+
+multiple baar deliver ho sakta hai.
+
+Business Idempotency bolti hai:
+
+"Aane do, main duplicate processing handle kar lunga."
+
+Question:
+
+Duplicate message aaya tha?
+
+Answer:
+
+YES
+
+Question:
+
+System ne duplicate processing safely handle kar li?
+
+Answer:
+
+YES
+
+Lekin Exactly Once ka goal isse bhi bada hai.
+
+Kafka bolta hai:
+
+"Duplicate event create hi mat hone do."
+
+
+## REAL PROBLEM JAHAN BUSINESS IDEMPOTENCY KAFFI NAHI HOTI
+
+Consumer-1 ko:
+
+Offset 0 -> Order-101
+
+milta hai.
+
+Consumer business processing karta hai:
+
+✔ Inventory Reduce
+
+✔ Other Business Logic
+
+Uske baad Consumer:
+
+Payment-101
+
+event ko payment-topic me publish kar deta hai.
+
+
+Current Situation:
+
+payment-topic
+
+Offset 0 -> Payment-101
+
+
+Lekin publish successful hone ke turant baad:
+
+✖ Consumer-1 Crash
+
+Important:
+
+✔ Payment-101 event publish ho chuka hai
+
+✖ Offset Commit abhi tak nahi hua
+
+
+## Kafka ke hisaab se:
+
+Order-101 abhi process hi nahi hua.
+
+Kyuki Offset Commit nahi hua tha.
+
+Consumer restart hota hai.
+
+Kafka check karta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka phir se dega:
+
+Offset 0 -> Order-101
+
+
+
+## PROBLEM
+
+Consumer phir se wahi processing karega.
+
+Aur dobara publish karega:
+
+Payment-101
+
+payment-topic me.
+
+
+Result:
+
+payment-topic
+
+Offset 0 -> Payment-101
+
+Offset 1 -> Payment-101
+
+
+Ab payment-topic me duplicate event create ho gaya.
+
+
+## WHY IS THIS DANGEROUS?
+
+Downstream Payment Service ko:
+
+Payment-101
+
+do baar milega.
+
+Agar Payment Service idempotent nahi hai to:
+
+✔ First Event  -> ₹1000 Deduct
+
+✔ Second Event -> ₹1000 Deduct Again
+
+
+Result:
+
+Customer se ₹2000 deduct ho sakte hain.
+
+
+
+## IMPORTANT OBSERVATION
+
+Yahan problem duplicate processing ki nahi hai.
+
+Consumer side business logic already idempotent hai.
+
+Actual problem ye hai ki:
+
+Kafka ke payment-topic me hi duplicate event create ho gaya.
+
+Aur isi problem ko solve karne ke liye Kafka provide karta hai:
+
+1. Idempotent Producer
+
+2. Kafka Transactions
+
+Jinke combination se Exactly Once Semantics achieve ki ja sakti hai.
