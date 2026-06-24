@@ -4134,8 +4134,7 @@ occur karen.
 
 
 ----------------------------------------------------------------------------------------------------------------------
-AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI.
-FIR EXACTLY ONCE KI ZARURAT HI KYA HAI?
+AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY ONCE KI ZARURAT HI KYA HAI?
 ----------------------------------------------------------------------------------------------------------------------
 
 Business Idempotency ek application-level workaround hai.
@@ -4169,32 +4168,54 @@ Aur Topic ke paas sirf 1 Partition hai:
 
 Partition-0
 
+Producer ne ek event publish kiya:
+
+Order-101
+
+Ye event order-topic ke Partition-0 me store ho gaya.
+
 Current State:
 
 Offset 0 -> Order-101
 
 
-Ek Consumer Group hai:
-
-order-group
-
-Aur us group me ek hi Consumer hai:
+Ek Consumer hai:
 
 Consumer-1
 
+Jisne order-topic ko subscribe kiya hua hai.
+
 Kafka Assignment:
 
+order-topic
+    |
 Partition-0 -> Consumer-1
 
-
-Consumer-1 "order-topic" ko subscribe kiya hua hai.
 
 Saath hi ek aur Topic hai:
 
 Topic = payment-topic
 
-Consumer-1 order process karne ke baad payment-topic me
-ek naya event publish karta hai.
+Consumer-1 ka kaam hai:
+
+1. order-topic se Order-101 consume karna
+
+2. Required business processing perform karna
+
+3. payment-topic me ek naya event publish karna
+
+
+Ek aur Consumer hai:
+
+Consumer-2
+
+Jisne payment-topic ko subscribe kiya hua hai.
+
+Kafka Assignment:
+
+payment-topic
+      |
+Partition-0 -> Consumer-2
 
 
 ## BUSINESS REQUIREMENT
@@ -4372,4 +4393,5 @@ Jinke combination se Exactly Once Semantics achieve ki ja sakti hai.
 ----------------------
 IDEMPOTENT PRODUCER
 ----------------------
+
 
