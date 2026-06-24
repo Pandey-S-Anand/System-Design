@@ -4257,13 +4257,13 @@ Offset 0 -> Order-101
 
 milta hai.
 
-Consumer business processing karta hai:
+Consumer-1 business processing karta hai:
 
 ✔ Inventory Reduce
 
 ✔ Other Business Logic
 
-Uske baad Consumer:
+Uske baad Consumer-1:
 
 Payment-101
 
@@ -4294,7 +4294,7 @@ Order-101 abhi process hi nahi hua.
 
 Kyuki Offset Commit nahi hua tha.
 
-Consumer restart hota hai.
+Consumer-1 restart hota hai.
 
 Kafka check karta hai:
 
@@ -4308,7 +4308,7 @@ Offset 0 -> Order-101
 
 ## PROBLEM
 
-Consumer phir se wahi processing karega.
+Consumer-1 phir se wahi processing karega.
 
 Aur dobara publish karega:
 
@@ -4367,3 +4367,9 @@ Aur isi problem ko solve karne ke liye Kafka provide karta hai:
 2. Kafka Transactions
 
 Jinke combination se Exactly Once Semantics achieve ki ja sakti hai.
+
+
+----------------------
+IDEMPOTENT PRODUCER
+----------------------
+
