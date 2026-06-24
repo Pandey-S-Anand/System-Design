@@ -340,7 +340,7 @@ Application Developer ko normally Segments ke baare me directly deal nahi karna 
 ===============================================================================
 
 ------------------
-1: Scalibility :
+1: SCALIBILITY :
 ------------------
 
 Maan lo ek Topic hai:
@@ -369,7 +369,8 @@ Broker ki hardware limits (CPU, Memory, Disk) bottleneck ban sakti hain
 
 Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide karta hai.
 
-Important:
+## Important:
+--------------
 
 Topic sirf ek logical entity hoti hai.
 Actual data Partitions ke andar store hota hai.
@@ -395,14 +396,15 @@ Isse Topic ka data multiple Brokers me spread ho jata hai aur system horizontall
 Isliye Partitions Kafka ko large amount of data handle karne aur system ko scale karne me help karte hain.
 
 ---------------------
-2: Parallel Reading
+2: PARALLEL READING
 ---------------------
 
 Partition bana diye, lekin usse multiple consumers parallel kaise consume kar lenge?
 
 Aur iska answer hai: Consumer Group.
 
-=>Sirf Consumer Samjho
+## SIRF CONSUMER SAMJHO
+------------------------
 
 Maan lo topic hai: Intro
 
@@ -423,8 +425,8 @@ Offset 2 -> IS
 Offset 3 -> ANURAG
 
 
-## Case 1: Sirf 1 independent consumer hai 
-
+## Case 1: SIRF 1 INDEPENDENT CONSUMER HAI 
+-------------------------------------------
 
 To Consumer-1 sequentially read karega:
 
@@ -443,8 +445,8 @@ Lekin agar Consumer internally multithreading use kar raha ho to final processin
 
 
 
-## Case 2:  Maan lo 2 independent consumers hai
-
+## Case 2:  MAN LO 2 INDEPENDENT CONSUMER HAI
+----------------------------------------------
 
 Consumer-1:
 
@@ -469,10 +471,10 @@ Note:
 Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
 
 
-## Consumer Group Introduce Karte Hain
+##  CONSUMER GROUP INTRODUCE KARTE HAIN
+----------------------------------------------
 
-----------------------------------------------------------
-Important Rule :
+IMPORTANT RULE :
 
 Ek Partition ko Ek Group ke andar Sirf Ek Consumer Read Karega
 
@@ -578,13 +580,13 @@ Pandey
 
 
 ## Question: Kaun sa message kis partition me jayega?
-
+-------------------------------------------------------
 
 Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
 
 
-## SCENARIO 1: No Key
-
+## SCENARIO 1: NO KEY
+-------------------------------------------------------
 
 Producer:
 
@@ -763,8 +765,8 @@ isi order me hi mile.
 Note : Kafka guarantees ordering within a partition, not across partitions.
 
 
-## SCENARIO 2: With Key
-
+## SCENARIO 2: WITH KEY
+-------------------------------------------------------
 
 Key ka purpose pure Topic ki Global Ordering maintain karna nahi hai.
 
@@ -940,7 +942,8 @@ Production mai Kafka almost hamesha partitions ki copies (replicas) multiple bro
 
 Ye Kafka ka Replication concept hai.
 
-Without Replication
+## Without Replication
+-----------------------
 
 Maan lo:
 
@@ -976,10 +979,12 @@ To:
 Partition-0 ka sara data gaya
 
 
-## Case 1: Broker crash hua, lekin disk safe hai
+## CASE 1: BROKER CRASH HUA, LEKIN DISK SAFE HAI
+--------------------------------------------------
 To jab broker wapas aayega: Partition-0 ka data wapas mil jayega.
 
-## Case 2: Broker permanently gaya
+## Case 2: BROKER PERMANENTLY GAYA
+------------------------------------
 
 Suppose:
 
@@ -1035,7 +1040,8 @@ Partition-0 (Follower)
 Important Terminology
 -------------------------------------
 
-## Leader Replica
+## LEADER REPLICA
+------------------
 
 Har partition ka ek leader hota hai.
 
@@ -1055,6 +1061,7 @@ Leader partion
 
 
 ## Follower partition/s continuously leader partition se data copy karti rehti hain.
+------------------------------------------------------------------------------------
 
 Consumer jab bhi kisi Partition se data read karega, to wo hamesha us Partition ke **Leader Replica** se hi data read karega.
 
@@ -1152,7 +1159,8 @@ Result:
 
 So Consumer-1 is consuming data from two different Partitions.
 
-Important:
+## IMPORTANT:
+--------------
 
 Within the same Consumer Group:
 
@@ -1223,7 +1231,7 @@ So a single Consumer can consume from:
 
 
 ## PARALLELISM NOTE
-
+----------------------
 
 Consumer continuously polls Kafka:
 
@@ -1246,7 +1254,8 @@ If the application uses worker threads internally:
 
 then messages from different Partitions can be processed in parallel.
 
-## Important:
+## IMPORTANT:
+--------------
 
 Kafka allows a Consumer to read from multiple Partitions, but true
 parallel processing depends on the application's implementation.
@@ -1288,7 +1297,9 @@ Rebalancing Kab Hota Hai?
 
 Kafka ko jab lagta hai ki consumer group ki composition change ho gayi hai. Is case me 'order-group' ki composition change ho gayi.
 
-Case 1: Naya Consumer Join Kare
+---------------------------------
+CASE 1: NAYA CONSUMER JOIN KARE
+---------------------------------
 
 Pehle:
 
@@ -1315,7 +1326,9 @@ P2 -> C3
 
 Ye rebalancing hai.
 
-Case 2: Consumer Crash Ho Jaye
+---------------------------------
+Case 2: CONSUMER CRASH HO JAYE
+---------------------------------
 
 Pehle:
 
@@ -1475,12 +1488,14 @@ man lete hai 'order-group' consumer group ke like Broker-2 will act as group coo
 Consumer Group Coordinator Kya Karta Hai?
 ------------------------------------------
 
-1. Consumer Join Karwata Hai
+## 1. CONSUMER JOIN KARWATA HAI
+--------------------------------
 
 Jab bhi koi naya Consumer kisi Consumer Group ko join karta hai, to us Consumer ko group me register karne ka kaam Consumer Group Coordinator ka hota hai.
 
 
-2. Partition Assignment Karwata Hai
+##2. PARTITION ASSIGNMENT KARWATA HAI
+-------------------------------------
 
 Kaunsa Consumer kis Partition ko consume karega, ye decide karne ka kaam Consumer Group Coordinator ka hota hai.
 
@@ -1491,7 +1506,8 @@ Partition-1 -> Consumer-2
 Partition-2 -> Consumer-3
 
 
-3. Heartbeats Receive Karta Hai
+##3. HEARTBEATS RECEIVE KARTA HAI
+-----------------------------------
 
 Heartbeat ek chhota sa signal hota hai jo Consumer periodically Consumer Group Coordinator ko bhejta rehta hai.
 
@@ -1501,9 +1517,8 @@ Basically Consumer bol raha hota hai:
 
 Heartbeats ka purpose ye verify karna hota hai ki Consumer abhi bhi active hai ya nahi.
 
-------------------------------------------
-Agar Heartbeat Band Ho Jaye To?
-------------------------------------------
+
+## AGAR HEARTBEAT BAND HO JAYE TO?
 
 Assume karo:
 
@@ -1549,9 +1564,8 @@ Assume:
 
 Consumer-2 = DEAD
 
-------------------------------------------
-Fir Kya Hoga?
-------------------------------------------
+
+## FIR KYA HOGA?
 
 Jaise hi Consumer-2 dead declare hota hai, Consumer Group Coordinator Rebalancing trigger karega.
 
@@ -1577,7 +1591,8 @@ Heartbeats Consumer ki health monitor karti hain, aur Heartbeat fail hone par Re
 HEARTBEAT & SESSION TIMEOUT
 ------------------------------------------
 
-1. session.timeout.ms
+##1. SESSION.TIMEOUT.MS
+--------------------------
 
 Meaning:
     Defines how long the Consumer Group Coordinator should wait
@@ -1597,7 +1612,8 @@ Meaning:
     and triggers a rebalance.
 
 
-2. heartbeat.interval.ms
+##2. HEARTBEAT.INTERVAL.MS
+----------------------------
 
 Meaning:
     Defines how frequently a consumer sends heartbeats
@@ -1622,9 +1638,9 @@ Consumer is basically telling the coordinator:
     "I am alive."
 
 
-------------------------------------------------------------
-HOW heartbeat.interval.ms IS RELATED TO session.timeout.ms
-------------------------------------------------------------
+
+## HOW HEARTBEAT.INTERVAL.MS  IS RELATED TO  SESSION.TIMEOUT.MS
+----------------------------------------------------------------
 
 
 Example:
@@ -1656,9 +1672,9 @@ Coordinator concludes:
 and triggers a rebalance.
 
 
-------------------------------------------
-IMPORTANT RULE
-------------------------------------------
+
+## IMPORTANT RULE
+------------------
 
 Generally:
 
@@ -1697,7 +1713,8 @@ Result:
 MAX POLL INTERVAL
 ------------------------------------------
 
-1. max.poll.interval.ms
+##1. MAX.POLL.INTERVAL.MS
+------------------------------------------
 
 Meaning:
     Defines the maximum time allowed between
@@ -1717,9 +1734,9 @@ Meaning:
     Consumer must call poll() at least once
     every 5 minutes.
 
-------------------------------------------------------------
-WHY max.poll.interval.ms IS REQUIRED
-------------------------------------------------------------
+
+## WHY MAX.POLL.INTERVAL.MS  IS REQUIRED
+-----------------------------------------
 
 Consider:
 
@@ -1760,8 +1777,9 @@ Kafka may assume:
 
     "Consumer is taking too long"
 
-------------------------------------------------------------
-WHAT HAPPENS WHEN max.poll.interval.ms EXPIRES
+
+
+## WHAT HAPPENS WHEN  MAX.POLL.INTERVAL.MS  EXPIRES
 ------------------------------------------------------------
 
 Example:
@@ -2011,7 +2029,8 @@ New ISR:
 
 ISR = {Leader, Follower-1}
 
-Important:
+## IMPORTANT:
+--------------
 
 Follower-2 ab bhi Replica hai.
 
@@ -2078,7 +2097,8 @@ Follower-2 leader se kaafi piche chal raha hai,
 isliye wo ISR ka part nahi hai.
 
 
-## Ab Maan Lo Leader Crash Ho Gaya
+## Ab MAAN LO LEADER CRASH HO GAYA
+-----------------------------------
 
 Leader Broker-1 par tha aur crash ho gaya.
 
@@ -2088,8 +2108,8 @@ Question:
 
 Kafka kisko naya Leader banaye?
 
-------------------------------------------------------------
-Case 1: Agar Follower-2 Ko Leader Bana Diya Jaye
+
+## CASE 1: AGAR FOLLOWER-2 KO LEADER BANA DIYA JAYE
 ------------------------------------------------------------
 
 Follower-2 ke paas sirf offset 3 tak ka data hai i.e
@@ -2116,8 +2136,9 @@ E, F aur G permanently lost ho sakte hain.
 
 Matlab data loss ho gaya.
 
-------------------------------------------------------------
-Case 2: Agar Follower-1 Ko Leader Bana Diya Jaye
+
+
+## CASE 2: AGAR FOLLOWER-1 KO LEADER BANA DIYA JAYE
 ------------------------------------------------------------
 
 Follower-1 Leader ke saath fully synchronized tha.
@@ -2136,7 +2157,8 @@ Isliye agar Follower-1 ko Leader promote kiya jaye,
 to koi data loss nahi hoga.
 
 
-## Conclusion
+## CONCLUSION
+---------------
 
 Kafka ISR maintain karta hai taaki Leader failure ke time
 sirf unhi replicas me se naya Leader select kiya jaye
@@ -2281,7 +2303,8 @@ Follower-2 Offset = 0 (Broker-3)
 
 ISR = {Follower-1, Follower-2}
 
-Note:
+NOTE:
+------
 
 ISR me hone ka matlab ye nahi hai ki replica har moment
 Leader ke exact same Offset par hi ho.
@@ -2297,7 +2320,8 @@ Follower-1 (Partition-0 in Broker-2)
 
 new Leader ban gaya.
 
-Result:
+RESULT:
+-------
 
 Offset 101 wala message kisi replica tak pahucha hi nahi tha.
 
@@ -2368,8 +2392,8 @@ Follower-2 Offset  = 1
 Ab Kafka Producer ko ACK bhej dega.
 
 
-## Kya ACKS = ALL Matlab Sab Replicas?
-
+## KYA ACKS = ALL MATLAB SAB REPLICAS?
+----------------------------------------
 
 Nahi.
 
@@ -2442,7 +2466,8 @@ acks = all
 
 use kar raha hai.
 
-Question:
+## QUESTION:
+--------------
 
 Kya Leader Follower-2 ke sync hone ka bhi wait karega?
 
@@ -2474,8 +2499,8 @@ NOT
 
 "Wait for every replica present in the cluster"
 
---------------------------
-min.insync.replicas
+
+## MIN.INSYNC.REPLICAS
 --------------------------
 
 Yahi sabse important production setting hai.
@@ -2527,9 +2552,9 @@ Kafka bolega:
 Jab ISR ke saare replicas me message aa jaye.
 
 
---------------------
-Scenario 1
---------------------
+
+## SCENARIO 1
+----------------
 
 Assume:
 
@@ -2567,8 +2592,8 @@ Result:
 
 Kafka Producer ko ACK bhej dega.
 
--------------
-Scenario 2
+
+## SCENARIO 2
 -------------
 
 Producer aur messages bhejta hai.
@@ -2611,9 +2636,9 @@ Kafka Producer ko ACK bhej dega.
 
 Still fine.
 
---------------
-Scenario 3
---------------
+
+## SCENARIO 3
+----------------
 
 Current ISR:
 
@@ -2663,8 +2688,9 @@ Write Rejected
 
 Producer ko exception milega.
 
--------------------------------------------
-Kafka Write Reject Kyu Kar Raha Hai?
+
+
+## KAFKA WRITE REJECT KYU KAR RAHA HAI?
 -------------------------------------------
 
 Kafka essentially bol raha hai:
@@ -2695,7 +2721,8 @@ Data Loss
 
 Isliye Kafka safety ko priority deta hai aur write reject kar deta hai.
 
-Important:
+IMPORTANT:
+-----------
 
 Write reject karne se Leader crash hone ki possibility khatam nahi hoti.
 
@@ -2710,7 +2737,8 @@ Isliye Kafka write reject karta hai.
 In other words, Kafka write reject karke data loss ko impossible nahi banata, balki unsafe writes ko prevent karta hai aur durability guarantees ko maintain karta hai.
 
 
-## Most Common Production Configuration
+## MOST COMMON PRODUCTION CONFIGURATION
+-----------------------------------------
 
 Replication Factor = 3
 
@@ -2760,14 +2788,15 @@ Ya
 
 Main kitna storage limit tak data rakhunga before deleting? (Size Based Retention)
 
-
-## Kafka me retention settings:
+---------------------------------
+KAFKA ME RETENTION SETTINGS:
+----------------------------------
 
 1. Broker Level (Global Default)
 2. Topic Level (Override)
 
---------------------------------------------
-Broker Level Retention (Global Default)
+
+1: BROKER LEVEL RETENTION (Global Default)
 --------------------------------------------
 
 Agar kisi topic ne apni retention define nahi ki, to ye broker level retention use hogi. i.e Broker-level retention acts as the default for all topics
@@ -2784,7 +2813,8 @@ ya
   log.retention.ms=604800000
 
 
-=> Default Broker Level Retention 
+## DEFAULT BROKER LEVEL RETENTION 
+----------------------------------
 
 Default Time-Based Retention:
 log.retention.hours=168 (Matlab 7 days) 
@@ -2800,7 +2830,8 @@ Deletion sirf time-based retention ke basis par hogi.
 Aur tumne: Topic level retention nahi di and Broker level retention bhi explicitily nahi di to Kafka broker ye default values use karta hai. 
 
 
-=> Truly Infinite Retention:
+## TRULY INFINITE RETENTION:
+-----------------------------
 
 Agar theoretically indefinitely retain karna ho to:
 
@@ -2811,8 +2842,8 @@ Dono disable karne padenge.
 
 Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
 
---------------------------------------------------------
-Topic Level Retention (Most Common in Production)
+
+2: TOPIC LEVEL RETENTION (Most Common in Production)
 --------------------------------------------------------
 
 Topic-level configuration broker-level retention ko override kar deti hai.
@@ -2845,6 +2876,7 @@ Offset 8 -> I
 
 
 1: TIME BASED RETENTION:
+---------------------------
 
 Example:
 
@@ -2868,6 +2900,7 @@ public NewTopic ordersTopic() {
 Explanation:
 
 ## TopicConfig.CLEANUP_POLICY_CONFIG
+-------------------------------------
 
 Purpose:
 
@@ -2882,7 +2915,7 @@ Common Values:
 
 
 ## TopicConfig.CLEANUP_POLICY_DELETE
-
+-------------------------------------
 
 Purpose:
 
@@ -2899,7 +2932,7 @@ Note:
 
 
 ## TopicConfig.RETENTION_MS_CONFIG
-
+-------------------------------------
 
 Purpose:
 
@@ -2923,7 +2956,8 @@ Meaning:
 Note:
 -> Ye cleanup strategy nahi hai.
 
------------------------------------------------------
+
+
 In the above example:
 
 Retention = 7 days
@@ -2976,6 +3010,7 @@ Offset 6 -> G
 
 
 2: SIZE BASED RETENTION :
+---------------------------
 
 @Bean
 public NewTopic ordersTopic() {
@@ -3054,7 +3089,8 @@ Offset 5 -> F
 Offset 6 -> G
 
 
-## Important:
+## IMPORTANT:
+----------------
 
 1: Consumer ne read kiya ya nahi kiya, koi farak nahi padta 
      Deletion sirf time / size ke basis par ho rahi hai.
@@ -3095,7 +3131,8 @@ Log Compaction is a Kafka cleanup strategy that retains the latest record
 for each key while allowing older records with the same key to be removed.
 
 
-EXAMPLE :
+## EXAMPLE :
+-------------
 
 Maan lo ek Topic hai:
 
@@ -3147,6 +3184,7 @@ Value = Bangalore
 
 
 ## QUESTION :
+-------------
 
 Current City kya hai?
 
@@ -3163,8 +3201,8 @@ Lekin kai systems ko history nahi chahiye.
 
 Unhe sirf latest state chahiye.
 
---------------------------
-REAL WORLD EXAMPLE :
+
+## REAL WORLD EXAMPLE :
 --------------------------
 
 Topic:
@@ -3187,6 +3225,7 @@ Hume sirf latest state chahiye.
 
 
 ## COMPACTION ENABLE KARTE HAIN
+---------------------------------
 
 @Bean
 public NewTopic userProfileTopic() {
@@ -3201,8 +3240,8 @@ return TopicBuilder.name("user-profile")
         .build();
 }
 
--------------------------------------
-TopicConfig.CLEANUP_POLICY_COMPACT
+
+## TopicConfig.CLEANUP_POLICY_COMPACT
 -------------------------------------
 
 -> Log Compaction enable karta hai.
@@ -3290,9 +3329,10 @@ COMPACTION + RETENTION TOGETHER
 
 Kafka me hum Retention aur Compaction dono ek saath use kar sakte hain.
 
-RETENTION & COMPACTION ENABLE KARTE HAIN:
+## RETENTION & COMPACTION ENABLE KARTE HAIN:
+-----------------------------------------------
 
-Example:
+##EXAMPLE:
 
 @Bean
 public NewTopic userProfileTopic() {
@@ -3314,7 +3354,7 @@ return TopicBuilder.name("user-profile")
 
 Meaning:
 
-1. Compaction
+##1. COMPACTION
 
    Same KEY ke multiple records hain:
 
@@ -3332,7 +3372,7 @@ Meaning:
    eventually remove kiye ja sakte hain.
 
 
-2. Retention
+##2. RETENTION
 
    Agar data retention policy violate karta hai
    (for example 30 days se purana ho jata hai),
@@ -3400,7 +3440,7 @@ Email Send
 
 
 -------------------------------------
-SCENARIO 1 : SAB KUCH PERFECT CHALA
+SAB KUCH PERFECT CHALA
 -------------------------------------
 
 Consumer:
@@ -3435,7 +3475,7 @@ Sab happy.
 
 
 -------------------------------------
-SCENARIO 2 : DUPLICATE PROCESSING
+DUPLICATE PROCESSING
 -------------------------------------
 
 Consumer:
@@ -3454,19 +3494,24 @@ Lekin uske turant baad:
 
 ho jata hai.
 
-Important:
+## IMPORTANT:
+--------------
 
 Offset Commit abhi tak hua hi nahi tha.
 
-## Current Situation
+## CURRENT SITUATION
+---------------------
 
-Business Side:
+## BUSINESS SIDE:
+------------------
 
 ✔ Payment already deduct ho chuka hai.
 
 Lekin Order-101 se jude baaki operations complete nahi hue.
 
-Kafka Side:
+
+## KAFKA SIDE:
+----------------
 
 ✖ Offset Commit nahi hua.
 
@@ -3490,17 +3535,19 @@ Payment Deduct
 
 kar deta hai.
 
-Result:
+## RESULT:
+-----------
 
 Customer se 2 baar payment deduct ho gayi.
 
-Problem:
+## PROBLEM:
+------------
 
 Duplicate Processing
 
 
 -------------------------------------
-SCENARIO 3 : MESSAGE LOSS
+MESSAGE LOSS
 -------------------------------------
 
 Consumer:
@@ -3525,7 +3572,9 @@ Lekin Offset Commit ke turant baad:
 
 ho jata hai.
 
-## Important:
+
+## IMPORTANT:
+--------------
 
 Business Logic execute hi nahi hui.
 
@@ -3591,8 +3640,8 @@ Kafka world me 3 guarantees hoti hain:
 3. Exactly Once
 
 
-1 : AT MOST ONCE
-
+1: AT MOST ONCE
+-----------------
 
 ✔ Message will be delivered at most one time
 
@@ -3602,6 +3651,7 @@ Kafka world me 3 guarantees hoti hain:
 
 
 ## KAISE ACHIEVE KARTE HAIN?
+------------------------------
 
 Consumer pehle Offset Commit karta hai.
 
@@ -3616,8 +3666,8 @@ Commit Offset
 Business Logic
 
 
-
 ## EXAMPLE :
+---------------
 
 Current State:
 
@@ -3670,6 +3720,7 @@ Message Lost.
 
 
 ## REAL WORLD USE CASES
+-------------------------
 
 Useful when:
 
@@ -3691,7 +3742,7 @@ Lekin duplicate metric aa gaya to reporting galat ho sakti hai.
 
 
 2: AT LEAST ONCE
-
+--------------------
 
 Guarantee:
 
@@ -3706,6 +3757,7 @@ Guarantee:
 
 
 ## KAISE ACHIEVE KARTE HAIN?
+-----------------------------
 
 Consumer pehle Business Logic execute karta hai.
 
@@ -3721,6 +3773,7 @@ Commit Offset
 
 
 ## EXAMPLE
+------------
 
 Current State:
 
@@ -3742,13 +3795,14 @@ Offset Commit abhi tak hua hi nahi tha.
 
 
 ## CURRENT SITUATION
+----------------------
 
-
-Business Side:
+## BUSINESS SIDE:
 
 ✔ Payment already deduct ho chuka hai
 
-Kafka Side:
+
+## KAFKA SIDE:
 
 ✖ Offset Commit nahi hua
 
@@ -3770,11 +3824,13 @@ Consumer dobara process karega:
 
 ✔ Payment Deduct
 
-RESULT :
+## RESULT :
+------------
 
 Customer se 2 baar payment deduct ho gayi.
 
-Note:
+## NOTE :
+---------
 
 Duplicate message delivery ki wajah se same business operation
 multiple baar execute ho sakta hai.
@@ -3783,6 +3839,7 @@ Ye dangerous ho sakta hai agar operation idempotent na ho.
 
 
 ## REAL PRODUCTION SYSTEMS
+-----------------------------
 
 Payment Deduct operation ko generally idempotent banaya jata hai.
 
@@ -3806,6 +3863,7 @@ idempotent design kiya jata hai.
 
 
 ## IMPORTANT OBSERVATION
+-----------------------------
 
 Notice karo:
 
@@ -3824,7 +3882,7 @@ lekin message loss avoid karta hai.
 
 
 ## AT LEAST ONCE KA ACTUAL MEANING
-
+-----------------------------------
 
 Kafka message ko tab tak consumed nahi maanta
 jab tak uska Offset Commit na ho jaye.
@@ -3840,6 +3898,7 @@ Therefore:
 
 
 ## VERY IMPORTANT POINT
+---------------------------
 
 At-Least-Once guarantee ye nahi karti ki:
 
@@ -3856,6 +3915,7 @@ aur consumer ko deta rahunga."
 
 
 ## POISON MESSAGE PROBLEM
+-----------------------------
 
 Example:
 
@@ -3888,6 +3948,7 @@ to Offset Commit kabhi nahi hoga.
 
 
 ## RESULT
+-----------
 
 Consumer har baar same message uthayega
 
@@ -3911,6 +3972,7 @@ POISON MESSAGE
 
 
 ## AT LEAST ONCE ME POISON MESSAGE KO KAISE HANDLE KAROGE?
+------------------------------------------------------------
 
 Answer:
 
@@ -3944,6 +4006,7 @@ Message ko DLT me publish kar do
 
 
 ## BENEFITS :
+--------------
 
 ✔ Infinite retries avoid hoti hain
 
@@ -3957,6 +4020,7 @@ Problem Statement
 
 
 ## BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
+-------------------------------------------------------------
 
 Maan lo:
 
@@ -3976,7 +4040,7 @@ Consumer-1
 
 
 ## BUSINESS REQUIREMENT
-
+-------------------------
 
 Order-101
       ↓
@@ -3990,6 +4054,7 @@ Offset Commit
 
 
 ## AT-LEAST-ONCE FLOW
+------------------------
 
 Consumer message read karta hai:
 
@@ -4025,7 +4090,7 @@ Offset 0 -> Order-101
 
 
 ## PROBLEM
-
+------------
 
 Agar Consumer blindly dobara execute kare:
 
@@ -4041,6 +4106,7 @@ To:
 
 
 ## BUSINESS IDEMPOTENCY
+------------------------
 
 Definition:
 
@@ -4054,6 +4120,7 @@ aur incomplete operations safely continue ho sakein.
 
 
 ## CURRENT STATE
+-----------------
 
 Order-101
 
@@ -4091,6 +4158,7 @@ NO
 
 
 ## FINAL RESULT
+-----------------
 
 ✔ Payment sirf ek baar deduct hua
 
@@ -4105,6 +4173,7 @@ NO
 
 
 ## IMPORTANT:
+-----------------
 
 Business Idempotency usually requires some durable state
 (Database, Redis etc.)
@@ -4114,8 +4183,9 @@ ye determine nahi kar sakta ki kaunsa business operation
 already execute ho chuka hai aur kaunsa pending hai.
 
 
-
-3 : EXACTLY ONCE
+-------------------------
+3: EXACTLY ONCE
+-------------------------
 
 Exactly-Once Semantics ka matlab hai ki ek message ka
 business impact exactly ek baar hoga.
@@ -4133,10 +4203,9 @@ even if:
 occur karen.
 
 
-----------------------------------------------------------------------------------------------------------------------
-AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI.
-FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
-----------------------------------------------------------------------------------------------------------------------
+
+## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
+-----------------------------------------------------------------------------------------------------------------------
 
 Business Idempotency ek application-level workaround hai.
 
@@ -4159,6 +4228,7 @@ Ye bahut bada difference hai.
 
 
 ## EXAMPLE
+-------------
 
 Maan lo ek Topic hai:
 
@@ -4219,6 +4289,7 @@ Partition-0 -> Consumer-2
 
 
 ## BUSINESS REQUIREMENT
+--------------------------
 
 Consumer-1 ko:
 
@@ -4234,6 +4305,7 @@ Consumer-1 ko:
 
 
 ## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY
+-------------------------------------------
 
 At-Least-Once me:
 
@@ -4245,24 +4317,13 @@ Business Idempotency bolti hai:
 
 "Aane do, main duplicate processing handle kar lunga."
 
-Question:
-
-Duplicate message aaya tha?
-
-Answer: YES
-
-Question:
-
-System ne duplicate processing safely handle kar li?
-
-Answer: YES
-
 Lekin Exactly-Once ka goal isse bhi bada hai.
 
 Kafka bolta hai: "Duplicate event create hi mat hone do."
 
 
 ## REAL PROBLEM JAHAN BUSINESS IDEMPOTENCY KAFFI NAHI HOTI
+-------------------------------------------------------------
 
 Consumer-1 ko:
 
@@ -4318,6 +4379,7 @@ Offset 0 -> Order-101
 
 
 ## PROBLEM
+------------
 
 Consumer-1 phir se wahi message process karega.
 
@@ -4353,6 +4415,7 @@ Ab payment-topic me duplicate event create ho gaya.
 
 
 ## WHY IS THIS DANGEROUS?
+-----------------------------
 
 Downstream Payment Service ko:
 
@@ -4372,6 +4435,7 @@ Customer se ₹2000 deduct ho sakte hain.
 
 
 ## IMPORTANT OBSERVATION
+------------------------------
 
 Yahan problem duplicate processing ki nahi hai.
 
@@ -4398,6 +4462,7 @@ Consider the previous example where Consumer-1 publishes events to payment-topic
 In this scenario, Consumer-1 is acting as a Producer because it is producing messages to payment-topic.
 
 ## PROBLEM
+------------
 
 Maan lo Consumer-1 publish karta hai:
 
@@ -4416,7 +4481,7 @@ payment-topic
 Lekin ACK network issue ki wajah se Consumer-1 tak pahunch hi nahi pata.
 
 
-Ab Consumer-1 sochta hai:
+After timeout Ab Consumer-1 sochta hai:
 
 "Shayad message publish nahi hua."
 
@@ -4431,6 +4496,7 @@ publish kar diya jata hai.
 Is baar Broker ACK successfully Consumer-1 tak pahucha deta hai.
 
 ## RESULT
+-----------
 
 payment-topic
 
@@ -4438,7 +4504,9 @@ Offset 0 -> Payment-101
 
 Offset 1 -> Payment-101
 
+
 ## OBSERVATION
+---------------
 
 Yahan:
 
@@ -4458,7 +4526,9 @@ Result:
 
 payment-topic me duplicate event create ho gaya.
 
+
 ## SOLUTION
+---------------
 
 Isi Producer-Retry wale duplicate problem ko solve karne ke liye Kafka provide karta hai:
 
@@ -4466,3 +4536,194 @@ Isi Producer-Retry wale duplicate problem ko solve karne ke liye Kafka provide k
 
 Idempotent Producer ensure karta hai ki Producer retries ki wajah se
 same message broker par multiple baar store na ho.
+
+
+## How Idempotent Producer is implemented
+-------------------------------------------
+
+Question:
+
+Broker ko kaise pata chalega ki:
+
+Payment-101
+
+ek completely naya event hai
+
+ya
+
+Producer Retry ki wajah se dobara aaya hua wahi event hai?
+
+Kafka message content compare nahi karta.
+
+Isliye Kafka ek alag mechanism use karta hai.
+
+## KAFKA INTERNALLY USE KARTA HAI:
+---------------------------------
+1: Producer ID (PID)
+2: Sequence Number
+
+
+1: PRODUCER ID (PID)
+---------------------
+
+Jab Producer Idempotency enable karta hai:
+
+enable.idempotence=true
+
+to Kafka us Producer ko ek unique Producer ID assign karta hai.
+
+Example:
+
+Producer ID = 5001
+
+Ab Kafka ko pata hai ki:
+
+Ye saare messages Producer-5001 se aa rahe hain.
+
+2: SEQUENCE NUMBER
+-------------------
+
+Kafka Producer har message ke saath ek sequence number bhi bhejta hai.
+
+Example:
+
+Producer ID = 5001
+
+----------------
+First Message:
+
+Payment-101
+PID = 5001
+Sequence = 0
+
+-----------------
+Second Message:
+
+Payment-102
+PID = 5001
+Sequence = 1
+
+-----------------
+Third Message:
+
+Payment-103
+PID = 5001
+Sequence = 2
+
+
+## NORMAL FLOW
+----------------
+
+Producer send karta hai:
+
+Payment-101
+PID = 5001
+Sequence = 0
+
+Broker message receive karta hai.
+
+Message successfully store kar diya jata hai.
+
+Current State:
+
+payment-topic
+ |
+ Offset 0 -> Payment-101
+
+Saath hi Broker internally yaad rakhta hai:
+
+Producer ID = 5001
+Last Sequence Number = 0
+
+
+## ACK LOST SCENARIO
+---------------------
+
+Producer send karta hai:
+
+Payment-101
+PID = 5001
+Sequence = 0
+
+Broker successfully message receive kar leta hai
+aur topic me store bhi kar deta hai.
+
+Current State:
+
+payment-topic
+  |
+  Offset 0 -> Payment-101
+
+Lekin ACK network issue ki wajah se Producer tak pahunch nahi pata.
+
+Producer ko lagta hai:
+
+"Message publish fail ho gaya."
+
+Isliye Producer same message dobara send karta hai.
+
+## IMPORTANT:
+---------------
+
+Retry ke time Producer:
+
+Same PID
+Same Sequence Number
+
+bhejta hai.
+
+Retry Request:
+
+Payment-101
+PID = 5001
+Sequence = 0
+
+
+## BROKER DUPLICATE DETECTION
+------------------------------
+
+Broker retry request receive karta hai.
+
+Broker check karta hai:
+
+Producer ID = 5001
+Sequence Number = 0
+
+Broker ke paas already record hai:
+
+Producer ID = 5001
+Sequence Number = 0
+
+Isliye Broker samajh jata hai ki:
+
+Ye koi naya message nahi hai.
+
+Ye pehle wale message ka retry hai.
+
+Result:
+
+Store Again ❌
+
+Ignore Retry ✔
+
+ACK Send ✔
+
+
+## FINAL RESULT
+-----------------
+
+payment-topic
+  |
+  Offset 0 -> Payment-101
+
+Sirf ek hi record present rahega.
+
+Producer ne retry kiya tha,
+lekin Broker ne duplicate detect karke
+message ko dobara store nahi kiya.
+
+Isi mechanism ki wajah se Idempotent Producer
+Producer-Retry ki wajah se hone wale duplicate events ko
+prevent karta hai.
+
+
