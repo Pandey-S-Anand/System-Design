@@ -4134,14 +4134,15 @@ occur karen.
 
 
 ----------------------------------------------------------------------------------------------------------------------
-AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY ONCE KI ZARURAT HI KYA HAI?
+AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI.
+FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
 ----------------------------------------------------------------------------------------------------------------------
 
 Business Idempotency ek application-level workaround hai.
 
-Exactly Once Semantics (EOS) ek Kafka-level guarantee hai.
+Exactly-Once Semantics (EOS) ek Kafka-level guarantee hai.
 
-Dono duplicate-related problems ko solve karte hain,
+Dono duplicate-related problems ko address karte hain,
 lekin different levels par.
 
 Business Idempotency:
@@ -4150,12 +4151,11 @@ Business Idempotency:
 
 ✔ Duplicate ko TOLERATE karti hai
 
-Exactly Once:
+Exactly-Once Semantics:
 
-✔ Duplicate create hone se hi rokne ki koshish karta hai
+✔ Duplicate create hone se hi rokne ki koshish karti hai
 
 Ye bahut bada difference hai.
-
 
 
 ## EXAMPLE
@@ -4233,9 +4233,7 @@ Consumer-1 ko:
 5. Offset Commit karna hai
 
 
-
 ## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY
-
 
 At-Least-Once me:
 
@@ -4251,23 +4249,17 @@ Question:
 
 Duplicate message aaya tha?
 
-Answer:
-
-YES
+Answer: YES
 
 Question:
 
 System ne duplicate processing safely handle kar li?
 
-Answer:
+Answer: YES
 
-YES
+Lekin Exactly-Once ka goal isse bhi bada hai.
 
-Lekin Exactly Once ka goal isse bhi bada hai.
-
-Kafka bolta hai:
-
-"Duplicate event create hi mat hone do."
+Kafka bolta hai: "Duplicate event create hi mat hone do."
 
 
 ## REAL PROBLEM JAHAN BUSINESS IDEMPOTENCY KAFFI NAHI HOTI
@@ -4290,26 +4282,25 @@ Payment-101
 
 event ko payment-topic me publish kar deta hai.
 
-
-Current Situation:
+Current State:
 
 payment-topic
-
+     |
 Offset 0 -> Payment-101
 
 
-Lekin publish successful hone ke turant baad:
+Lekin event publish hone ke turant baad:
 
 ✖ Consumer-1 Crash
 
 Important:
 
-✔ Payment-101 event publish ho chuka hai
+✔ Payment-101 event successfully publish ho chuka hai
 
 ✖ Offset Commit abhi tak nahi hua
 
 
-## Kafka ke hisaab se:
+## Kafka KE HISAAB SE
 
 Order-101 abhi process hi nahi hua.
 
@@ -4326,17 +4317,28 @@ Isliye Kafka phir se dega:
 Offset 0 -> Order-101
 
 
-
 ## PROBLEM
 
-Consumer-1 phir se wahi processing karega.
+Consumer-1 phir se wahi message process karega.
 
-Aur dobara publish karega:
+Kyuki Business Idempotency implement ki gayi hai,
+isliye:
+
+Inventory Reduce ✖
+
+Other Business Logic ✖
+
+dobara execute nahi honge.
+
+Lekin Consumer-1 ko ye nahi pata ki:
+
+Payment-101 event successfully publish hua tha ya nahi.
+
+Isliye safety ke liye Consumer-1 dobara publish karega:
 
 Payment-101
 
 payment-topic me.
-
 
 Result:
 
@@ -4364,11 +4366,9 @@ Agar Payment Service idempotent nahi hai to:
 
 ✔ Second Event -> ₹1000 Deduct Again
 
-
 Result:
 
 Customer se ₹2000 deduct ho sakte hain.
-F
 
 
 ## IMPORTANT OBSERVATION
@@ -4387,11 +4387,82 @@ Aur isi problem ko solve karne ke liye Kafka provide karta hai:
 
 2. Kafka Transactions
 
-Jinke combination se Exactly Once Semantics achieve ki ja sakti hai.
-
+Jinke combination se Exactly-Once Semantics achieve ki ja sakti hai.
 
 ----------------------
 IDEMPOTENT PRODUCER
 ----------------------
 
+Consider the previous example where Consumer-1 publishes events to payment-topic.
 
+In this scenario, Consumer-1 is acting as a Producer because it is producing messages to payment-topic.
+
+## PROBLEM
+
+Maan lo Consumer-1 publish karta hai:
+
+Payment-101
+
+payment-topic me.
+
+Broker successfully message receive kar leta hai aur store bhi kar deta hai.
+
+Current State:
+
+payment-topic
+  |
+  Offset 0 -> Payment-101
+
+Lekin ACK network issue ki wajah se Consumer-1 tak pahunch hi nahi pata.
+
+
+Ab Consumer-1 sochta hai:
+
+"Shayad message publish nahi hua."
+
+Aur safety ke liye retry kar deta hai.
+
+Dobara:
+
+Payment-101
+
+publish kar diya jata hai.
+
+Is baar Broker ACK successfully Consumer-1 tak pahucha deta hai.
+
+## RESULT
+
+payment-topic
+
+Offset 0 -> Payment-101
+
+Offset 1 -> Payment-101
+
+## OBSERVATION
+
+Yahan:
+
+✖ Consumer Crash nahi hua
+
+✖ Offset Commit ka bhi koi issue nahi tha
+
+Problem sirf Producer Retry ki wajah se hui.
+
+Producer ko ACK nahi mila,
+isliye usne same message dobara bhej diya.
+
+Aur Broker ne usse ek naya message samajh kar
+phir se store kar liya.
+
+Result:
+
+payment-topic me duplicate event create ho gaya.
+
+## SOLUTION
+
+Isi Producer-Retry wale duplicate problem ko solve karne ke liye Kafka provide karta hai:
+
+✔ Idempotent Producer
+
+Idempotent Producer ensure karta hai ki Producer retries ki wajah se
+same message broker par multiple baar store na ho.
