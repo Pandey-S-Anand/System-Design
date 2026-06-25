@@ -4783,6 +4783,26 @@ Saath hi ek aur Topic hai:
 
 payment-topic
 
+Jiske paas bhi sirf 1 Partition hai:
+
+payment-topic
+|
+Partition-0
+
+Ek aur Consumer hai:
+
+Payment-Consumer-1
+
+Jo payment-topic ko subscribe kiye hua hai.
+
+Kafka Assignment:
+
+payment-topic
+|
+Partition-0 -> Payment-Consumer-1
+
+
+
 Consumer-1 ka kaam hai:
 
 1. Order-101 consume karna
@@ -4910,9 +4930,6 @@ uske liye naya Producer ID generate hota hai.
 
 Isliye Broker duplicate identify nahi kar pata.
 
-## KAFKA TRANSACTIONS :
--------------------------
-
 Yahi problem Kafka Transactions solve karta hain.
 
 Kafka Transactions ensure karta hain ki:
@@ -4946,8 +4963,12 @@ alone enough nahi hai.
 Hume Kafka Transactions ki bhi zarurat padti hai.
 
 
+
+## KAFKA TRANSACTIONS :
+-------------------------
+
 ## FLOW WITH KAFKA TRANSACTION:
--------------------------------
+
 
 Consumer-1 Begins Transaction
        |
@@ -4961,7 +4982,10 @@ Reduces Inventory and Updates Order status
 Publish event : Payment-101
        |
        v
-After receiving ACK from Broker i.e From Leader partition in which Payment-101 event is stored
+Leader Replica receives the message
+       |
+       V
+Leader sends ACK (according to acks configuration)
        |
        V
 Add Offset To Transaction
@@ -4976,9 +5000,24 @@ Add Offset To Transaction hai.
 
 Iska matlab sirf itna hai:
 
-"Kafka, jab ye transaction commit hogi tab ye offset bhi commit kar dena."
+"Kafka, jab ye transaction successfully commit hogi, tab is Consumer Offset ko bhi commit kar dena."
 
-Matlab offset ab transaction ka member ban gaya.
+
+Is step ke baad:
+
+-> Payment-101 event
+-> Consumer Offset
+
+dono ek hi Kafka Transaction ke members ban jaate hain.
+
+Transaction successfully commit hone par hi:
+
+✔ Payment-101 event committed hoga
+
+✔ Consumer Offset commit hoga
+
+permanently visible honge.
+
 
 ##IMPORTANT
 ------------
@@ -4995,7 +5034,7 @@ Maan lo Consumer-1 ye kaam karta hai:
 
 4. Publish Payment-101 (Kafka)
 
-5. Commit Consumer Offset (Kafka)
+5. Commit Offset (Kafka)
 
 Question:
 
@@ -5015,16 +5054,239 @@ Ye transaction ka part ban sakte hain.
 
 Lekin:
 
+✖ Database Update
 
-✖ Database update
+✖ REST API Calls
 
-✖ REST API Call
+✖ Kisi bhi external system ke operations
 
-Inhe Kafka transaction control nahi karta.
+Inhe Kafka Transaction rollback nahi kar sakta.
 
 
-## SAB KUCH SUCCESSFUL RAHA
-------------------------------
+## SCENARIO-1 : SAB KUCH SUCCESSFUL RAHA
+------------------------------------------
+
+Consumer-1 :
+
+Begin Transaction
+      |
+      v
+Read Order-101 from Offset-0
+      |
+      v
+Inventory Reduce ✔
+      |
+      v
+Update Order Status ✔
+      |
+      v
+Publish Payment-101 ✔
+      |
+      v
+Leader Replica receives the message ✔
+       |
+       V
+Leader sends ACK (according to acks configuration) ✔
+      |
+      v
+Add Offset To Transaction ✔
+      |
+      v
+Commit Transaction ✔
+
+
+
+- Payment-101 payment-topic me permanently visible ho gaya.
+
+- Offset bhi commit ho gaya.
+
+- Kafka ke hisaab se:
+
+  Order-101 successfully process ho chuka hai.
+
 
 ## AB CRASH SCENARIO
 ------------------------------
+
+Consumer-1
+
+Begin Transaction
+      |
+      v
+Read Order-101 from Offset-0
+      |
+      v
+Inventory Reduce ✔
+      |
+      v
+Update Order Status ✔
+      |
+      v
+Publish Payment-101 ✔
+      |
+      v
+Leader Replica receives the message ✔
+      |
+      V
+Leader sends ACK (according to acks configuration) ✔
+      |
+      v
+Add Offset To Transaction ✔
+      |
+      v
+Consumer-1 Crash ❌
+
+
+Notice karo.
+
+Transaction commit hi nahi hua
+
+
+Ab :
+
+Consumer Group Coordinator
+       ↓
+Detect karta hai ki Consumer-1 heartbeats bhejna band kar chuka hai.
+       ↓       
+Triggers Rebalancing
+       ↓
+Partition-0 reassigned 
+
+
+Suppose:
+
+Partition-0 → Consumer-2
+
+
+## KAFKA KE HISSAB SE
+
+
+Order-101 abhi process hi nahi hua.
+
+Kyuki Offset Commit nahi hua tha.
+
+
+Kafka check karta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka phir se Consuemr-2 ko dega:
+
+order-topic
+ |
+ partition-0
+  |
+  Offset 0 -> Order-101
+
+
+## Question 1:
+
+Kya 'Payment-Consumer-1' (jo payment-topic ko consume kar raha hai) Payment-101 event ko dekh aur process kar payega?
+
+Answer:
+
+NO, agar uske consumer par:
+
+isolation.level=read_committed
+
+configured hai.
+
+Kyuki Kafka is message ko abhi bhi:
+
+UNCOMMITTED TRANSACTIONAL RECORD
+
+maanta hai.
+
+Message physically Broker ki disk par present ho sakta hai,
+
+lekin logically abhi committed nahi hai.
+
+Isliye read_committed consumers ke liye
+ye message transaction commit hone tak visible nahi hota.
+
+
+## Question 2:
+
+Consumer-1 to Payment-101 publish kar chuka tha.
+
+Ab Consumer-2 jab Order-101 dobara process karega, to kya payment-topic me duplicate Payment-101 create ho jayega?
+
+Answer: NO.
+
+
+Payment-101 Broker me physically store ho chuka tha.
+
+Lekin transaction abhi commit nahi hui thi.
+
+Isliye Kafka us message ko:
+
+UNCOMMITTED
+
+state me rakhta hai.
+
+Transaction commit hone se pehle:
+
+✔ Message disk par physically store ho sakta hai.
+
+Lekin:
+
+✖ Wo committed nahi hota.
+
+✖ Wo transactional visibility rules follow karta hai.
+
+Consumer-1 crash hone ke baad,
+
+Transaction Coordinator
+
+us incomplete transaction ko:
+
+ABORT
+
+kar deta hai.
+
+## RESULT
+----------
+
+✖ Payment-101 discard ho jata hai.
+
+✖ Consumer Offset bhi commit nahi hota.
+
+Ab Consumer-2
+
+Order-101
+
+dobara process karega.
+
+Is baar naya transaction successfully commit hoga.
+
+Tabhi:
+
+✔ Payment-101 payment-topic me visible hoga.
+
+✔ Consumer Offset commit hoga.
+
+Dono operations ek saath complete honge.
+
+Isi atomicity ki wajah se Kafka Exactly-Once Semantics provide kar pata hai.
+
+
+## IMPORTANT NOTE
+-------------------
+
+Kafka sirf Kafka resources ko rollback kar sakta hai.
+
+Agar transaction commit hone se pehle:
+
+✔ Database Update
+
+✔ Inventory Reduce
+
+✔ REST API Call
+
+already execute ho chuke hain,
+
+to Kafka unhe rollback nahi kar sakta.
+
+Isliye non-Kafka operations ko safely handle karne ke liye
+Business Idempotency, Saga Pattern ya Compensating Transactions
+jaise application-level approaches ka use kiya jata hai.
