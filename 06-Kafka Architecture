@@ -4245,7 +4245,9 @@ Ye event order-topic ke Partition-0 me store ho gaya.
 
 Current State:
 
-Offset 0 -> Order-101
+Partition-0
+ |
+ Offset 0 -> Order-101
 
 
 Ek Consumer hai:
@@ -4269,9 +4271,11 @@ Consumer-1 ka kaam hai:
 
 1. order-topic se Order-101 consume karna
 
-2. Required business processing perform karna
+2. Inventory reduce and Update Order Status
 
 3. payment-topic me ek naya event publish karna
+
+4. Offset commit karna
 
 
 Ek aur Consumer hai:
@@ -4283,7 +4287,7 @@ Jisne payment-topic ko subscribe kiya hua hai.
 Kafka Assignment:
 
 payment-topic
-      |
+|
 Partition-0 -> Consumer-2
 
 
@@ -4296,7 +4300,7 @@ Consumer-1 ko:
 
 2. Inventory reduce karni hai
 
-3. Baaki business validations/processes perform karni hain
+3. Order status update karna
 
 4. payment-topic me Payment-101 event publish karna hai
 
@@ -4334,7 +4338,7 @@ Consumer-1 business processing karta hai:
 
 ✔ Inventory Reduce
 
-✔ Other Business Logic
+✔ Order status update 
 
 Uske baad Consumer-1:
 
@@ -4346,7 +4350,9 @@ Current State:
 
 payment-topic
      |
-Offset 0 -> Payment-101
+  Partition-0
+     |
+     Offset 0 -> Payment-101
 
 
 Lekin event publish hone ke turant baad:
@@ -4387,7 +4393,7 @@ isliye:
 
 Inventory Reduce ✖
 
-Other Business Logic ✖
+Order status update ✖
 
 dobara execute nahi honge.
 
@@ -4403,11 +4409,12 @@ payment-topic me.
 
 Result:
 
-payment-topic
-
-Offset 0 -> Payment-101
-
-Offset 1 -> Payment-101
+ payment-topic
+ |
+ Partition-0
+  |
+  |- Offset 0 -> Payment-101
+  |- Offset 1 -> Payment-101
 
 
 Ab payment-topic me duplicate event create ho gaya.
@@ -4477,7 +4484,7 @@ payment-topic
   |
   Offset 0 -> Payment-101
 
-Lekin ACK network issue ki wajah se Consumer-1 tak pahunch hi nahi pata.
+Lekin ACK (from Leader partition ) network issue ki wajah se Consumer-1 tak pahunch hi nahi pata.
 
 
 After timeout Ab Consumer-1 sochta hai:
@@ -4500,8 +4507,8 @@ Is baar Broker ACK successfully Consumer-1 tak pahucha deta hai.
 
 payment-topic
  |
- Offset 0 -> Payment-101
- Offset 1 -> Payment-101
+ |- Offset 0 -> Payment-101
+ |- Offset 1 -> Payment-101
 
 
 ## OBSERVATION
@@ -4627,7 +4634,9 @@ Current State:
 
 payment-topic
  |
- Offset 0 -> Payment-101
+ Partition-0
+  |
+  Offset 0 -> Payment-101
 
 Saath hi Broker internally yaad rakhta hai:
 
@@ -4651,7 +4660,9 @@ Current State:
 
 payment-topic
   |
-  Offset 0 -> Payment-101
+ Partition-0
+   |
+   Offset 0 -> Payment-101
 
 Lekin ACK network issue ki wajah se Producer tak pahunch nahi pata.
 
@@ -4776,7 +4787,7 @@ Consumer-1 ka kaam hai:
 
 1. Order-101 consume karna
 
-2. Inventory reduce karna
+2. Inventory reduce karna and Order status update karna
 
 3. payment-topic me Payment-101 publish karna
 
@@ -4793,6 +4804,7 @@ Consumer-1 ek Consumer hai.
 Lekin payment-topic ke perspective se:
 
 Consumer-1 ek Producer bhi hai,
+
 kyuki wahi payment event publish kar raha hai payment-topic mai.
 
 
@@ -4801,6 +4813,8 @@ kyuki wahi payment event publish kar raha hai payment-topic mai.
 
 Consumer-1:
 
+order-topic
+|
 Offset 0 -> Order-101
 
 read karta hai.
@@ -4832,6 +4846,8 @@ Ab Kafka Partition-0 ko kisi aur Consumer ko assign karega.
 
 Suppose:
 
+order-topic
+|
 Partition-0 -> Consumer-2
 
 Ab Consumer-2 Offset 0 se dubara Order-101 read karega.
@@ -4850,8 +4866,10 @@ Ye Producer Retry nahi hai.
 
 Ye ek completely naya Producer hai.
 
-Consumer-2 jab payment-topic me publish karega,
-to Kafka uske liye ek naya Producer ID (PID) assign karega.
+Consumer-2 payment-topic me publish karte waqt
+ek naye Producer instance ka use karega.
+
+Kafka us Producer instance ko ek naya Producer ID (PID) assign karega.
 
 Example:
 
@@ -4873,8 +4891,10 @@ Result:
 
 payment-topic
  |
- Offset 0 -> Payment-101
- Offset 1 -> Payment-101
+ partition-0
+ |
+ |- Offset 0 -> Payment-101
+ |- Offset 1 -> Payment-101
 
 Duplicate event create ho jayega.
 
@@ -4890,9 +4910,12 @@ uske liye naya Producer ID generate hota hai.
 
 Isliye Broker duplicate identify nahi kar pata.
 
-Yahi problem Kafka Transactions solve karti hain.
+## KAFKA TRANSACTIONS :
+-------------------------
 
-Kafka Transactions ensure karti hain ki:
+Yahi problem Kafka Transactions solve karta hain.
+
+Kafka Transactions ensure karta hain ki:
 
 1. payment-topic me event publish karna
 
@@ -4923,6 +4946,85 @@ alone enough nahi hai.
 Hume Kafka Transactions ki bhi zarurat padti hai.
 
 
-## KAFKA TRANSACTIONS :
-------------------------
+## FLOW WITH KAFKA TRANSACTION:
+-------------------------------
 
+Consumer-1 Begins Transaction
+       |
+       v
+Reads Order-101
+       |
+       v
+Reduces Inventory and Updates Order status  
+       |
+       v
+Publish event : Payment-101
+       |
+       v
+After receiving ACK from Broker i.e From Leader partition in which Payment-101 event is stored
+       |
+       V
+Add Offset To Transaction
+       |
+       v
+Commit Transaction
+
+
+Ye jo:
+
+Add Offset To Transaction hai.
+
+Iska matlab sirf itna hai:
+
+"Kafka, jab ye transaction commit hogi tab ye offset bhi commit kar dena."
+
+Matlab offset ab transaction ka member ban gaya.
+
+##IMPORTANT
+------------
+
+BUSINESS TRANSACTION ≠ KAFKA TRANSACTION
+
+Maan lo Consumer-1 ye kaam karta hai:
+
+1. Read Order-101
+
+2. Reduce Inventory (Database)
+
+3. Update Order Status (Database)
+
+4. Publish Payment-101 (Kafka)
+
+5. Commit Consumer Offset (Kafka)
+
+Question:
+
+Kya ye paanchon Kafka Transaction ke part hain?
+
+Answer: NO
+
+Kafka sirf Kafka resources ko transaction me daal sakta hai.
+
+Matlab:
+
+✔ Kafka Topic me Produce
+
+✔ Kafka Consumer Offset Commit
+
+Ye transaction ka part ban sakte hain.
+
+Lekin:
+
+
+✖ Database update
+
+✖ REST API Call
+
+Inhe Kafka transaction control nahi karta.
+
+
+## SAB KUCH SUCCESSFUL RAHA
+------------------------------
+
+## AB CRASH SCENARIO
+------------------------------
