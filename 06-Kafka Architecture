@@ -2233,7 +2233,7 @@ Producer decide karta hai:
 Case 1: ACKS = 0
 ------------------------------------------------------------
 
-Producer message publish karne ke baad bina kisi confirmation (from Leader Replica i.e. Partition-0 in Broker-1)
+Producer message publish karne ke baad bina kisi confirmation from Leader Replica (i.e. Partition-0 in Broker-1)
 ka wait kiye aage badh jata hai i.e Producer wait hi nahi karta after publishing the message.
 
 Advantage:
@@ -3018,7 +3018,6 @@ public NewTopic ordersTopic() {
     return TopicBuilder.name("orders")
             .partitions(3)
             .replicas(3)
-
             .config(
                 TopicConfig.RETENTION_BYTES_CONFIG,
                 String.valueOf(10L * 1024 * 1024 * 1024) // 10 GB
@@ -4622,7 +4621,7 @@ Sequence = 0
 
 Broker message receive karta hai.
 
-Message successfully store kar diya jata hai.
+Message successfully store kar diya jata hai respective partition mai.
 
 Current State:
 
@@ -4727,3 +4726,20 @@ Producer-Retry ki wajah se hone wale duplicate events ko
 prevent karta hai.
 
 
+----------------------
+KAFKA TRANSACTIONS
+----------------------
+
+Let's revisit the example:
+
+Consumer-1 reads:
+
+1. Order-101 from order-topic
+
+2. Inventory reduce karta hai
+
+3. Baaki business validations/processes perform karta hai
+
+4. payment-topic me Payment-101 event publish karta hai
+
+5. Ab crash ho jata hai bina offset commit kiye hue
