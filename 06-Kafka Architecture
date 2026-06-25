@@ -4454,7 +4454,7 @@ Jinke combination se Exactly-Once Semantics achieve ki ja sakti hai.
 
 
 ## IDEMPOTENT PRODUCER :
-----------------------
+------------------------
 
 Consider the previous example where Consumer-1 publishes events to payment-topic.
 
@@ -4921,3 +4921,8 @@ Isliye Exactly-Once Semantics achieve karne ke liye:
 alone enough nahi hai.
 
 Hume Kafka Transactions ki bhi zarurat padti hai.
+
+
+## KAFKA TRANSACTIONS :
+------------------------
+
