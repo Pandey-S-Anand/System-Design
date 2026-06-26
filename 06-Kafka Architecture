@@ -5453,3 +5453,126 @@ jaise application-level approaches ka use kiya jata hai.
 15. HIGH WATERMARK
 ===============================================================================
 
+High Watermark ka purpose hai:
+
+Consumer ko sirf wahi messages dikhana
+jo safely replicated ho chuke hain.
+
+High Watermark ka concept tab meaningful hota hai
+jab replication enabled ho.
+
+Agar Replication Factor = 1 hai,
+matlab sirf ek hi replica (Leader Replica) exist karta hai,
+to practically:
+
+    High Watermark = Last Offset
+
+Kyunki synchronize karne ke liye
+koi follower replica hai hi nahi.
+
+Iska matlab:
+
+Leader Replica me jo bhi messages successfully persist
+ho jaate hain,
+
+wo saare messages Consumer ko visible ho jaate hain.
+
+Yaani Replication Factor = 1 ke case me,
+High Watermark practically Leader ke Last Offset ke barabar hota hai.
+
+-------------------------------------------------------------------------------
+
+IMPORTANT:
+
+High Watermark cluster ke sabhi replicas ko consider nahi karta.
+
+High Watermark sirf CURRENT ISR (In-Sync Replicas)
+ke basis par calculate hota hai.
+
+Example:
+
+Current ISR:
+
+    ISR = {Leader, Follower-1, Follower-2}
+
+Aur maan lo:
+
+Leader       Offset = 10
+Follower-1   Offset = 10
+Follower-2   Offset = 10
+
+To:
+
+    High Watermark = 10
+
+Ab Producer ek aur message bhejta hai:
+
+    Offset 11 -> D
+
+Current State:
+
+Leader       Offset = 11
+Follower-1   Offset = 10
+Follower-2   Offset = 10
+
+Question:
+
+Kya Consumer ko D dikh jayega?
+
+Answer:
+
+NO.
+
+Kyuki D abhi tak saare CURRENT ISR replicas
+tak replicate nahi hua hai.
+
+Isliye:
+
+    High Watermark = 10
+
+hi rahega.
+
+Consumer sirf:
+
+    Offset <= High Watermark
+
+tak ke messages hi read kar sakta hai.
+
+-------------------------------------------------------------------------------
+
+Agar koi replica bahut slow ho jaye aur Kafka use ISR se
+remove kar de:
+
+Old ISR:
+
+    {Leader, Follower-1, Follower-2}
+
+New ISR:
+
+    {Leader, Follower-1}
+
+Aur:
+
+Leader       Offset = 11
+Follower-1   Offset = 11
+
+To:
+
+    High Watermark = 11
+
+ho jayega.
+
+Ab Consumer ko:
+
+    Offset 11 -> D
+
+visible ho jayega.
+
+-------------------------------------------------------------------------------
+
+One Line Definition:
+
+High Watermark is the highest offset that has been
+successfully replicated to all CURRENT ISR replicas
+and is therefore safe to expose to consumers.
+===============================================================================
