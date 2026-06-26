@@ -335,6 +335,8 @@ Offset 8 -> I
 Ye Segments Kafka automatically create aur manage karta hai.
 
 Application Developer ko normally Segments ke baare me directly deal nahi karna padta.
+
+
 ===============================================================================
 7:Why partions are required in the topic ?
 ===============================================================================
@@ -369,7 +371,7 @@ Broker ki hardware limits (CPU, Memory, Disk) bottleneck ban sakti hain
 
 Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide karta hai.
 
-## Important:
+## IMPORTANT:
 --------------
 
 Topic sirf ek logical entity hoti hai.
@@ -474,7 +476,7 @@ Yahan bhi agar Consumer internally multithreading use kare to final processing o
 ##  CONSUMER GROUP INTRODUCE KARTE HAIN
 ----------------------------------------------
 
-IMPORTANT RULE :
+## IMPORTANT RULE :
 
 Ek Partition ko Ek Group ke andar Sirf Ek Consumer Read Karega
 
@@ -518,7 +520,7 @@ Baaki Consumers idle rahenge.
 
 Important :
 
-Agar do alag Consumer Groups hain to dono same Partition ko consume kar sakte hain.
+Agar do consumers alag consumer groups se hai to dono same Partition ko consume kar sakte hain.
 
 Example:
 
@@ -546,7 +548,6 @@ Kafka khud decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
 Normally hum manually assignment nahi karte.
 Kafka ka Group Coordinator automatically assignment karta hai.
 
------------------------------------------------
 
 Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
 
@@ -582,10 +583,10 @@ Pandey
 ## Question: Kaun sa message kis partition me jayega?
 -------------------------------------------------------
 
-Kafka decide karta hai using: KEY (Note that this key is optional, producer may or may not provide this key)
+Kafka me Partition Selection ke total 3 major mechanisms hote hain:
 
 
-## SCENARIO 1: NO KEY
+1: NO KEY PARTITIONING
 -------------------------------------------------------
 
 Producer:
@@ -600,7 +601,7 @@ send("Pandey");
 
 Koi Key provide nahi ki gayi.
 
-Kafka roughly round-robin kar sakta hai. (Implementation versions ke hisab se sticky partitioner (Kafka ki ek partitioning strategy hai) bhi use ho sakta hai.)
+Kafka roughly round-robin kar sakta hai. (Old Kafka : Round Robin, Modern Kafka : Sticky Partitioner)
 
 Partition-0 -> MY
 Partition-1 -> NAME
@@ -641,9 +642,9 @@ Ab Sabse Important Question
 
 Final output kya hoga? Kya mujhe "MY NAME IS ANURAG" milega?
 
-Answer:
+Answer: NO. 
 
-NO. Kafka aisa guarantee nahi karta.
+Kafka aisa guarantee nahi karta.
 
 Kafka ko ye pata hi nahi hai ki:
 
@@ -732,7 +733,8 @@ Kafka multiple Partitions ke across Global Ordering guarantee nahi karta.
 
 Kafka sirf Partition ke andar ordering guarantee karta hai.
 
-Partition Ordering Kya Hai?
+
+## Partition Ordering Kya Hai?
 
 Partition-0
 
@@ -765,8 +767,152 @@ isi order me hi mile.
 Note : Kafka guarantees ordering within a partition, not across partitions.
 
 
-## SCENARIO 2: WITH KEY
--------------------------------------------------------
+
+## ROUND ROBIN vs STICKY PARTITIONER
+---------------------------------------
+
+Suppose:
+
+Topic = Orders
+
+Partitions:
+
+Partition-0
+Partition-1
+Partition-2
+
+Producer publish karta hai:
+
+send("A");
+send("B");
+send("C");
+send("D");
+send("E");
+send("F");
+
+
+1. ROUND ROBIN (Older Kafka Style)
+-------------------------------------
+
+Idea:
+
+Har naya message next partition me bhej do.
+
+Distribution:
+
+Partition-0 -> A
+Partition-1 -> B
+Partition-2 -> C
+Partition-0 -> D
+Partition-1 -> E
+Partition-2 -> F
+
+## RESULT:
+
+Partition-0
+|
+Offset-0: A
+Offset-1: D
+
+----------------
+
+Partition-1
+|
+Offset-0: B
+Offset-1: E
+
+----------------
+
+Partition-2
+|
+Offset-0: C
+Offset-1: F
+
+
+## OBSERVATION:
+
+- Messages evenly distribute ho gaye.
+- Lekin Producer ko har message ke liye
+  different partitions (possibly in different brokers) se interact karna pada.
+- Isse batching kam hoti hai.
+- Network calls zyada hoti hain.
+- Throughput comparatively kam ho sakta hai.
+
+
+
+2. STICKY PARTITIONER (Modern Kafka Default)
+-------------------------------------------------
+
+Idea:
+
+Kafka ek partition choose karta hai aur
+kuch time tak usi partition ko use karta rehta hai.
+
+Suppose Kafka ne pehle:
+
+Partition-1 choose kiya.
+
+To:
+
+Partition-1 
+ |
+ Offset-0: A
+ Offset-1: B
+ Offset-2: C
+
+Ab batch send ho gayi.
+
+Kafka kisi aur partition par switch karega.
+
+Suppose: 
+
+Partition-0 choose hua.
+
+To:
+
+Partition-0 
+ |
+ Offset-0: D
+ Offset-1: E
+ Offset-2: F
+
+
+## FINAL RESULT:
+
+Partition-0 
+ |
+ Offset-0: D
+ Offset-1: E
+ Offset-2: F
+
+----------------
+
+Partition-1 
+ |
+ Offset-0: A
+ Offset-1: B
+ Offset-2: C
+
+----------------
+
+Partition-2
+
+(empty)
+
+
+Observation:
+
+- Messages temporarily ek hi partition me
+  "stick" karte hain.
+- Isse large batches ban paate hain.
+- Network calls kam hoti hain.
+- Throughput improve hota hai.
+- Isi wajah se Kafka 2.4+ me Sticky Partitioner
+  default strategy hai for messages without keys.
+
+
+2: KEY BASED PARTIONING 
+--------------------------
 
 Key ka purpose pure Topic ki Global Ordering maintain karna nahi hai.
 
@@ -803,17 +949,14 @@ Agar Producer Key provide nahi karta to Kafka in events ko different Partitions 
 Example:
 
 Partition-0 -> Order Created
-
 Partition-1 -> Payment Done
-
 Partition-0 -> Order Shipped
-
 Partition-1 -> Order Delivered
+
 
 Ab maan lo do Consumers hain:
 
 Consumer-0
-
 Consumer-1
 
 Aur dono same Consumer Group:
@@ -825,7 +968,6 @@ se belong karte hain.
 Kafka ne assignment kiya:
 
 Partition-0 -> Consumer-0
-
 Partition-1 -> Consumer-1
 
 
@@ -843,7 +985,7 @@ Offset 1: "Order Shipped"
 Partition-1 (read by Consumer-1)
 
 Offset 0: "Payment Done"
-Offset 0: "Order Delivered"
+Offset 1: "Order Delivered"
 
 To processing order bigad sakta hai.
 
@@ -902,18 +1044,14 @@ To final storage kuch aisa hoga:
 Partition-0
 
 Offset 0 -> Order Created
-
 Offset 1 -> Payment Done
-
 Offset 2 -> Order Shipped
-
 Offset 3 -> Order Delivered
 
 
 Kafka ne assignment kiya:
 
 Partition-0 -> Consumer-0
-
 Partition-1 -> Consumer-1
 
 
@@ -933,6 +1071,25 @@ Ye ordering Kafka guarantee karta hai.
 Note:
 
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
+
+
+3:  EXPLICIT PARTITION 
+--------------------------
+
+Producer khud decide karta hai ki message kis partition me jayega.
+
+producer.send(
+    new ProducerRecord<>(
+        "orders",      // Topic jisme message publish karna hai
+        2,             // Kis partition me message store hoga (explicitly provided)
+        null,          // Message key
+        "Order-101"    // Actual business data/message
+    )
+);
+
+Result:
+
+Partition-2 -> Order-101
 
 ===============================================================================
 8: Do we duplicate partions of a topic across multiple partitions ?
