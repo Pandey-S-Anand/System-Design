@@ -1348,17 +1348,19 @@ Partition-0 -> Consumer-2
 Partition-1 -> Consumer-2
 Partition-2 -> Consumer-2
 
+Dono independent Consumers ko Topic ke saare messages ki apni-apni copy consume karne ko milegi.
 
 ## NOTE:
 --------------
 
 Within the same Consumer Group:
 
-    One Partition can be assigned to only one Consumer at a time.
+    A Partition can be assigned to only one Consumer at a time.
 
-But:
+However:
 
-    One Consumer can have multiple Partitions assigned to it.
+    A single Consumer can be assigned multiple Partitions
+    of the same Topic.
 
 
 -----------------------------------------------------------------------
@@ -1367,55 +1369,108 @@ CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
 
 YES.
 
-A Consumer can subscribe to multiple Topics and consume data from all
-assigned Partitions across those Topics.
+A single Consumer can subscribe to multiple Topics and consume data
+from all assigned Partitions across those Topics.
 
-Example:
+This is true for both:
 
-Topics:
+    ✔ Independent Consumers
+    ✔ Consumers inside a Consumer Group
+
+
+Suppose there are two Topics:
+
+Orders
+|
+|- Partition-0
+|- Partition-1
+
+
+Payments
+|
+|- Partition-0
+|- Partition-1
+
+
+## CASE 1 : INDEPENDENT CONSUMERS
+--------------------------------------
+
+Consumer-1 independently subscribes to following topics:
 
     Orders
     Payments
 
-Orders Partitions:
-   |
-   |-Orders-Partition-0
-   |-Orders-Partition-1
+Kafka may assign Partitions like:
 
+Orders-Partition-0 -> Consumer-1
+Orders-Partition-1 -> Consumer-1
+Payments-Partition-0 -> Consumer-1
+Payments-Partition-1 -> Consumer-1
 
-Payments Topic Partitions:
-   |
-   |-Payments-Partition-0
-   |-Payments-Partition-1
-
-
-Maan lo Consumer-1 subscribes to:
-   |
-   |- Orders
-   |- Payments
-
-
-Kafka may assign:
-
-    Orders-Partition-0   -> Consumer-1
-    Orders-Partition-1   -> Consumer-1
-
-    Payments-Partition-0 -> Consumer-1
-    Payments-Partition-1 -> Consumer-1
 
 Result:
 
     Consumer-1
 
-        ├── Orders-P0
-        ├── Orders-P1
-        ├── Payments-P0
-        └── Payments-P1
+        ├── Orders-Partition-0
+        ├── Orders-Partition-1
+        ├── Payments-Partition-0
+        └── Payments-Partition-1
 
-So a single Consumer can consume from:
 
-    - Multiple Partitions of the same Topic
-    - Multiple Partitions belonging to different Topics
+
+## CASE 2 : CONSUMER GROUP
+--------------------------------------
+
+Suppose there is a Consumer Group:
+
+order-payment-group
+   |
+   |- Consumer-1
+   |- Consumer-2
+
+
+Both Consumers subscribe to:
+
+    Orders
+    Payments
+
+
+Kafka may assign partitions as:
+
+    Orders-Partition-0    -> Consumer-1
+    Orders-Partition-1    -> Consumer-2
+
+    Payments-Partition-0 -> Consumer-1
+    Payments-Partition-1 -> Consumer-2
+
+
+Result:
+
+    Consumer-1
+
+        ├── Orders-Partition-0 
+        └── Payments-Partition-0
+
+
+    Consumer-2
+
+        ├── Orders-Partition-1
+        └── Payments-Partition-1
+
+
+## IMPORTANT:
+---------------
+
+Within the same Consumer Group:
+
+    A Partition can be assigned to only one Consumer at a time.
+
+However:
+
+    A single Consumer can be assigned Partitions
+    belonging to multiple Topics.
+
 
 
 ## PARALLELISM NOTE
