@@ -5447,3 +5447,9 @@ to Kafka unhe rollback nahi kar sakta.
 Isliye non-Kafka operations ko safely handle karne ke liye
 Business Idempotency, Saga Pattern ya Compensating Transactions
 jaise application-level approaches ka use kiya jata hai.
+
+
+===============================================================================
+15. HIGH WATERMARK
+===============================================================================
+
