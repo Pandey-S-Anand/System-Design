@@ -520,6 +520,7 @@ Baaki Consumers idle rahenge.
 
 
 ## IMPORTANT :
+-----------------
 
 Agar do consumers alag consumer groups se hai to dono same Partition ko consume kar sakte hain.
 
@@ -546,7 +547,7 @@ Consumer-2 bhi consume kar sakta hai
 Kyuki dono alag Consumer Groups se belong karte hain.
 
 
-## IMPORTANT
+## NOTE
 -------------
 Consumer Group ka Group Coordinator decide karta hai ki
 kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
@@ -597,14 +598,14 @@ ANURAG
 Pandey
 
 
-## Question: Kaun sa message kis partition me jayega?
--------------------------------------------------------
+## PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
+------------------------------------------------------------------------------
 
 Kafka me Partition Selection ke total 3 major mechanisms hote hain:
 
 
 1: NO KEY PARTITIONING
--------------------------------------------------------
+-------------------------
 
 Producer:
 
@@ -928,6 +929,7 @@ Observation:
   default strategy hai for messages without keys.
 
 
+
 2: KEY BASED PARTIONING 
 --------------------------
 
@@ -1090,6 +1092,7 @@ Note:
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
 
+
 3:  EXPLICIT PARTITION 
 --------------------------
 
@@ -1107,6 +1110,13 @@ producer.send(
 Result:
 
 Partition-2 -> Order-101
+
+
+
+## PARTITION ASSIGNMENT STRATEGIES - CONSUMER GROUP KE ANDAR KAUNSI PARTITION KIS CONSUMER KO ASSIGN HOGI?
+--------------------------------------------------------------------------------------------------------------
+
+
 
 ===============================================================================
 8: REPLICATION
