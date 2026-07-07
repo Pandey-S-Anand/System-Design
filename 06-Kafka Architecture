@@ -546,9 +546,24 @@ Consumer-2 bhi consume kar sakta hai
 Kyuki dono alag Consumer Groups se belong karte hain.
 
 
-Consumer group ka Group Coordinator decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
-The Consumer Group Coordinator using a partition assignment strategy.
-Partition Assignment Strategy decides how partitions are distributed among consumers within the same consumer group.
+## IMPORTANT
+-------------
+Consumer Group ka Group Coordinator decide karta hai ki
+kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
+
+Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
+
+Partition Assignment Strategy decide karti hai ki
+Consumer Group ke available Consumers ke beech
+Partitions ko kaise distribute kiya jayega.
+
+Partition Assignment Strategies :
+
+1. Range Assignor
+2. Round Robin Assignor
+3. Sticky Assignor
+4. Cooperative Sticky Assignor
+
 
 
 Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
