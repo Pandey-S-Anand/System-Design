@@ -549,7 +549,7 @@ Consumer-2 bhi consume kar sakta hai
 Kyuki dono alag Consumer Groups se belong karte hain.
 
 
-## NOTE
+## NOTE :
 -------------
 Consumer Group ka Group Coordinator decide karta hai ki
 kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
@@ -1118,7 +1118,247 @@ Partition-2 -> Order-101
 ## PARTITION ASSIGNMENT STRATEGIES - CONSUMER GROUP KE ANDAR KAUNSI PARTITION KIS CONSUMER KO ASSIGN HOGI?
 --------------------------------------------------------------------------------------------------------------
 
+## IMPORTANT
+-------------
 
+- Partition Assignment Strategies sirf Consumer Groups ke liye hoti hain.
+
+- Independent Consumers ke liye Kafka automatically decide nahi karta ki
+  kaunsa Consumer kisi Topic ki kaunsi Partition consume karega.
+
+- Independent Consumers khud manually decide karte hain ki unhe kis
+  Partition se read karna hai using the Consumer API (consumer.assign(...)).
+
+- Ek Independent Consumer chahe to sirf ek hi Partition consume kare
+  ya multiple Partitions consume kare, ye decision Consumer khud leta hai.
+
+
+## EXAMPLE :
+
+Topic = Orders
+
+Partitions:
+
+Partition-0
+Partition-1
+Partition-2
+
+Maan lo 3 Independent Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+Consumer-1 agar sirf Partition-0 consume karna chahta hai:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0)
+));
+
+Ya sirf Partition-1:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 1)
+));
+
+Ya saari Partitions:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0),
+    new TopicPartition("orders", 1),
+    new TopicPartition("orders", 2)
+));
+
+Yaani Independent Consumers khud manually Partitions assign karte hain.
+
+Kafka is assignment me interfere nahi karta.
+
+---------------------
+
+Consumer Group ka Group Coordinator decide karta hai ki
+Consumer Group ke kis Consumer ko kaunsi Partition assign hogi.
+
+Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
+
+Partition Assignment Strategy decide karti hai ki
+Consumer Group ke available Consumers ke beech
+Partitions ko kaise distribute kiya jayega.
+
+
+Partition Assignment Strategies:
+
+1. Range Assignor
+2. Round Robin Assignor
+3. Sticky Assignor
+4. Cooperative Sticky Assignor
+
+
+Maan lo Topic hai:
+
+Orders
+
+Aur isme 4 Partitions hain:
+
+Orders
+|
+├── Partition-0
+├── Partition-1
+├── Partition-2
+└── Partition-3
+
+
+Ab maan lo 2 Consumers hain jo 'Orders' Topic ko subscribe kiye hue hain:
+
+Consumer-1
+Consumer-2
+
+Aur ye dono same Consumer Group me hain:
+
+Group = OrderProcessors
+
+
+1. Range Assignor
+-----------------
+
+Assigns a continuous range of partitions to each consumer.
+
+Assignment:
+
+Consumer-1
+
+Partition-0
+Partition-1
+
+----------------
+
+Consumer-2
+
+Partition-2
+Partition-3
+
+
+2. Round Robin Assignor
+------------------------
+
+Partitions ko consumers ke across relatively evenly distribute karta hai.
+
+Assignment:
+
+Consumer-1
+
+Partition-0
+Partition-2
+
+----------------
+
+Consumer-2
+
+Partition-1
+Partition-3
+
+
+3. Sticky Assignor
+------------------
+
+Tries to keep the existing partition assignments unchanged
+as much as possible to minimize partition movement during rebalancing.
+
+Example:
+
+Current Assignment:
+
+Consumer-1
+
+Partition-0
+Partition-2
+
+----------------
+
+Consumer-2
+
+Partition-1
+Partition-3
+
+
+Ab Consumer-3 join karta hai.
+
+Isliye Rebalancing trigger hogi.
+
+Agar Round Robin Assignor use ho,
+to kaafi partitions dobara reassign ho sakti hain.
+
+Sticky Assignor jitna possible ho existing assignment ko preserve
+karne ki koshish karta hai.
+
+Suppose new assignment becomes:
+
+Consumer-1
+|
+Partition-0
+
+
+Consumer-2
+|
+|- Partition-1
+|- Partition-3
+
+
+
+Consumer-3
+|
+|- Partition-2
+
+
+Yaani jitna kam partition movement ho sake utna.
+
+
+IMPORTANT:
+
+Sticky Assignor Eager Rebalancing use karta hai.
+
+Isliye final assignment me bhale hi sirf Partition-2 move ho,
+lekin rebalance ke dauran pehle existing Consumers se
+assigned Partitions temporarily revoke ki jaati hain.
+
+Uske baad nayi assignment perform hoti hai.
+
+Is wajah se rebalance ke dauran processing temporarily pause
+ho sakti hai.
+
+
+Benefits:
+
+- Existing partition assignments ko maximum preserve karta hai.
+- Unnecessary partition movement ko reduce karta hai.
+
+
+4. Cooperative Sticky Assignor
+-------------------------------
+
+Ye Sticky Assignor ka improved version hai.
+
+Ye incremental rebalancing perform karta hai,
+jisme sirf required partitions hi move ki jaati hain.
+
+Baaki consumers apna processing continue kar sakte hain,
+jisse rebalance ka impact aur downtime dono reduce ho jaate hain.
+
+
+## IMPORTANT
+------------
+
+Modern Kafka me generally:
+
+partition.assignment.strategy
+
+property use hoti hai.
+
+Isme configure kar sakte ho:
+
+- RangeAssignor
+- RoundRobinAssignor
+- StickyAssignor
+- CooperativeStickyAssignor
 
 ===============================================================================
 8: REPLICATION
