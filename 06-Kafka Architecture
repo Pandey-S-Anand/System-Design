@@ -554,20 +554,6 @@ Kyuki dono alag Consumer Groups se belong karte hain.
 Consumer Group ka Group Coordinator decide karta hai ki
 kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
 
-Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
-
-Partition Assignment Strategy decide karti hai ki
-Consumer Group ke available Consumers ke beech
-Partitions ko kaise distribute kiya jayega.
-
-Partition Assignment Strategies :
-
-1. Range Assignor
-2. Round Robin Assignor
-3. Sticky Assignor
-4. Cooperative Sticky Assignor
-
-
 
 Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
 
@@ -1285,7 +1271,7 @@ Ab Consumer-3 join karta hai.
 Isliye Rebalancing trigger hogi.
 
 Agar Round Robin Assignor use ho,
-to kaafi partitions dobara reassign ho sakti hain.
+to sabhi partitions dobara reassign honge.
 
 Sticky Assignor jitna possible ho existing assignment ko preserve
 karne ki koshish karta hai.
@@ -1303,7 +1289,6 @@ Consumer-2
 |- Partition-3
 
 
-
 Consumer-3
 |
 |- Partition-2
@@ -1312,7 +1297,8 @@ Consumer-3
 Yaani jitna kam partition movement ho sake utna.
 
 
-IMPORTANT:
+## IMPORTANT :
+---------------
 
 Sticky Assignor Eager Rebalancing use karta hai.
 
@@ -1337,11 +1323,16 @@ Benefits:
 
 Ye Sticky Assignor ka improved version hai.
 
-Ye incremental rebalancing perform karta hai,
-jisme sirf required partitions hi move ki jaati hain.
+Unlike Sticky Assignor, Cooperative Sticky Assignor
+Incremental Rebalancing use karta hai.
 
-Baaki consumers apna processing continue kar sakte hain,
-jisse rebalance ka impact aur downtime dono reduce ho jaate hain.
+Isme sirf required Partitions hi revoke/move ki jaati hain.
+
+Baaki Consumers apni existing Partitions par processing
+continue rakhte hain.
+
+Isliye processing interruption aur rebalance pause
+kaafi kam ho jata hai.
 
 
 ## IMPORTANT
