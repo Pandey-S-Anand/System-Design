@@ -226,7 +226,7 @@ Zookeeper ki dependency remove kar di gayi hai.
 
   To Consumer dubara start hote hi:
 
-   Offset 3 -> D
+   Offset 4 -> E
 
   se reading continue karega.
 
@@ -518,7 +518,8 @@ Aur ek Partition ko Group ke andar ek hi Consumer consume kar sakta hai.
 
 Baaki Consumers idle rahenge.
 
-Important :
+
+## IMPORTANT :
 
 Agar do consumers alag consumer groups se hai to dono same Partition ko consume kar sakte hain.
 
@@ -544,9 +545,10 @@ Consumer-2 bhi consume kar sakta hai
 
 Kyuki dono alag Consumer Groups se belong karte hain.
 
-Kafka khud decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
-Normally hum manually assignment nahi karte.
-Kafka ka Group Coordinator automatically assignment karta hai.
+
+Consumer group ka Group Coordinator decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
+The Consumer Group Coordinator using a partition assignment strategy.
+Partition Assignment Strategy decides how partitions are distributed among consumers within the same consumer group.
 
 
 Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
