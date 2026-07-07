@@ -170,7 +170,7 @@ Zookeeper ki dependency remove kar di gayi hai.
 
    Ye sabse common scenario hai.
 
-   Topic multiple Partitions me divided hota hai,and ye Partitions kisi 1 broker mai stored ho sakte hai ya phir multiple Multiple Brokers ke across stored ho sakte hai
+   Topic multiple Partitions me divided ho sakte hai,and ye Partitions kisi 1 broker mai stored ho sakte hai ya phir multiple Multiple Brokers ke across stored ho sakte hai
 
    Agar cluster me sirf ek hi Broker ho ya Kafka ne waise assign kiya ho, to saare Partitions ek hi Broker par bhi store ho sakte hain.
 
