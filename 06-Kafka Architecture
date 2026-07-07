@@ -170,7 +170,7 @@ Zookeeper ki dependency remove kar di gayi hai.
 
    Ye sabse common scenario hai.
 
-   Topic multiple Partitions me divided ho sakte hai,and ye Partitions kisi 1 broker mai stored ho sakte hai ya phir multiple Multiple Brokers ke across stored ho sakte hai
+   Topic multiple Partitions me divided ho sakte hai and ye Partitions kisi 1 broker mai stored ho sakte hai ya phir multiple Multiple Brokers ke across stored ho sakte hai
 
    Agar cluster me sirf ek hi Broker ho ya Kafka ne waise assign kiya ho, to saare Partitions ek hi Broker par bhi store ho sakte hain.
 
@@ -185,6 +185,12 @@ Zookeeper ki dependency remove kar di gayi hai.
    Ye bhi possible hai.
 
    Lekin generally Partitions multiple Brokers me distributed rehte hain.
+
+   --------------
+   ## IMPORTANT:
+   --------------
+   Topic sirf ek logical entity hoti hai.
+   Actual data Partitions ke andar store hota hai.
 
 ===============================================================================
 5: Offset:
@@ -241,6 +247,7 @@ Zookeeper ki dependency remove kar di gayi hai.
   Offset 0 -> A
 
   se reading start kar sakta hai.
+
 
 ===============================================================================
 6: LOG SEGMENTS
@@ -371,13 +378,8 @@ Broker ki hardware limits (CPU, Memory, Disk) bottleneck ban sakti hain
 
 Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide karta hai.
 
-## IMPORTANT:
---------------
 
-Topic sirf ek logical entity hoti hai.
-Actual data Partitions ke andar store hota hai.
-
-Example:
+## EXAMPLE:
 
 Orders Topic
 
