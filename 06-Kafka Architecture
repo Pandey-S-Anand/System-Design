@@ -357,6 +357,11 @@ Application Developer ko normally Segments ke baare me directly deal nahi karna 
 
 Consumer Group Consumers ka ek logical group hota hai jo milkar kisi Kafka Topic ke Partitions ko aapas me divide karke messages consume karta hai.
 
+----------
+## NOTE :
+----------
+Har consumer group ka Kafka cluster me ek broker hota hai jo us group ka coordinator banta hai
+
 ---------------------
 ## IMPORTANT RULE :
 ---------------------
