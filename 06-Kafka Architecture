@@ -192,45 +192,73 @@ Zookeeper ki dependency remove kar di gayi hai.
    Topic sirf ek logical entity hoti hai.
    Actual data Partitions ke andar store hota hai.
 
-===============================================================================
-5: Offset:
-===============================================================================
-
-   Har Partition ke andar har message ko ek unique Offset milta hai. Offset ek index ki tarah kaam karta hai jo message ki position batata hai.
-
-   Maan lo Producer ne messages A, B, C, D aur E isi sequence me publish kiye hain.
-
-   Suppose:
-   Topic : "my-topic"
-   It has only 1 partition
-
-   Partition-0
-
-   Offset 0 -> A
-   Offset 1 -> B
-   Offset 2 -> C
-   Offset 3 -> D
-   Offset 4 -> E
-
-   Kyuki Topic me sirf ek hi Partition hai, isliye saare messages sequentially isi Partition me store honge.
-
- 
-  Consumer chahe to committed Offset ignore karke beginning se bhi read kar sakta hai.
-
-  Example:
-
-  "Mujhe saare messages dobara process karne hain."
-
-  To Consumer:
-
-  Offset 0 -> A
-
-  se reading start kar sakta hai.
-
 
 ===============================================================================
+5: OFFSET
+===============================================================================
+
+Har Partition ke andar har message ko ek unique Offset milta hai.
+
+Offset ek continuously increasing number (index) hota hai jo us Partition
+ke andar message ki position ko uniquely identify karta hai.
+
+--------------
+## IMPORTANT:
+--------------
+
+Offset sirf apne Partition ke andar unique hota hai.
+
+Alag-alag Partitions me same Offset number exist kar sakta hai.
+
+------------
+## EXAMPLE:
+------------
+
+Maan lo Producer ne messages:
+
+A, B, C, D aur E
+
+isi sequence me publish kiye hain.
+
+Suppose:
+
+Topic : "my-topic"
+
+Is Topic ke paas sirf 1 Partition hai.
+
+Partition-0
+|
+|- Offset 0 -> A
+|- Offset 1 -> B
+|- Offset 2 -> C
+|- Offset 3 -> D
+|- Offset 4 -> E
+
+Kyuki Topic me sirf ek hi Partition hai, isliye saare messages
+sequentially isi Partition me store honge.
+
+Jaise-jaise naye messages publish hote jayenge, Kafka unhe
+Partition ke end me append karta jayega aur har naye message ko
+agla Offset assign karta jayega.
+
+Example:
+
+Sabse pehle A publish hua, isliye usse Offset 0 mila.
+
+A ke baad B publish hua, isliye usse Offset 1 mila.
+
+B ke baad C publish hua, isliye usse Offset 2 mila.
+
+Aur isi tarah:
+
+D -> Offset 3
+
+E -> Offset 4
+
+
+===================
 6: LOG SEGMENTS
-===============================================================================
+===================
 
 Kafka me Topics hote hain.
 
@@ -251,13 +279,13 @@ Har Partition ke andar messages sequentially store hote hain aur har message ko 
 Example:
 
 Partition-0
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
+|
+|- Offset 0 -> A
+|- Offset 1 -> B
+|- Offset 2 -> C
+|- Offset 3 -> D
+|- Offset 4 -> E
+|- Offset 5 -> F
 
 Yahan Offset sirf message ki position batata hai.
 
@@ -268,13 +296,13 @@ Lekin internally Kafka Partition ko ek large append-only log file ki tarah treat
 Example:
 
 Partition-0
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
+|
+|- Offset 0 -> A
+|- Offset 1 -> B
+|- Offset 2 -> C
+|- Offset 3 -> D
+|- Offset 4 -> E
+|- Offset 5 -> F
 
 Kafka ke perspective se ye poora structure (Partition-0) ek log file hai.
 
@@ -299,169 +327,44 @@ Is problem ko solve karne ke liye Kafka ek Partition ko internally multiple Log 
 Example:
 
 Partition-0
-
-Segment-1
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-
-Segment-2
-
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
-
-Segment-3
-
-Offset 6 -> G
-Offset 7 -> H
-Offset 8 -> I
+|
+--Segment-1
+|  |
+|  |- Offset 0 -> A
+|  |- Offset 1 -> B
+|  |- Offset 2 -> C
+|
+--Segment-2
+|   |
+|   |- Offset 3 -> D
+|   |- Offset 4 -> E
+|   |- Offset 5 -> F
+|
+--Segment-3
+   |
+   |- Offset 6 -> G
+   |- Offset 7 -> H
+   |- Offset 8 -> I
 
 Ye Segments Kafka automatically create aur manage karta hai.
 
 Application Developer ko normally Segments ke baare me directly deal nahi karna padta.
 
 
-===============================================================================
-7:Why partions are required in the topic ?
-===============================================================================
+====================
+7: CONSUMER GROUP
+====================
 
-------------------
-1: SCALIBILITY :
-------------------
-
-Maan lo ek Topic hai:
-
-Orders
-
-Aur usme continuously messages aa rahe hain:
-
-Message-1
-Message-2
-Message-3
-...
-Message-10 Billion
-
-Agar Topic ka saara data sirf ek hi Broker par store ho raha ho:
-
-Broker-1
-|
-Orders Topic
-
-To time ke saath messages badhte jaayenge aur ek point par:
-
-Broker ki storage limit reach ho sakti hai
-Broker ki processing capacity limit reach ho sakti hai
-Broker ki hardware limits (CPU, Memory, Disk) bottleneck ban sakti hain
-
-Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide karta hai.
-
-
-## EXAMPLE:
-
-Orders Topic
-
-Partition-0
-Partition-1
-Partition-2
-
-Ab in Partitions ko alag-alag Brokers par distribute kiya ja sakta hai:
-
-Broker-1 -> Partition-0
-
-Broker-2 -> Partition-1
-
-Broker-3 -> Partition-2
-
-Isse Topic ka data multiple Brokers me spread ho jata hai aur system horizontally scale kar pata hai.
-
-Isliye Partitions Kafka ko large amount of data handle karne aur system ko scale karne me help karte hain.
+Consumer Group Consumers ka ek logical group hota hai jo milkar kisi Kafka Topic ke Partitions ko aapas me divide karke messages consume karta hai.
 
 ---------------------
-2: PARALLEL READING
----------------------
-
-Partition bana diye, lekin usse multiple consumers parallel kaise consume kar lenge?
-
-Aur iska answer hai: Consumer Group.
-
-## SIRF CONSUMER SAMJHO
-------------------------
-
-Maan lo topic hai: Intro
-
-Aur usme sirf 1 partition hai i.e partition-0 and Producer sequentially messages bhejta hai::
-"MY"
-"NAME"
-"IS"
-"ANURAG"
-
-
-Kyuki Topic me sirf ek hi Partition hai, saare messages isi Partition me sequentially store honge.
-
-Partition-0
-
-Offset 0 -> MY
-Offset 1 -> NAME
-Offset 2 -> IS
-Offset 3 -> ANURAG
-
-
-## Case 1: SIRF 1 INDEPENDENT CONSUMER HAI 
--------------------------------------------
-
-To Consumer-1 sequentially read karega:
-
-MY
-NAME
-IS
-ANURAG
-
-Is case me ordering 100% maintain rahegi.
-
-Note:
-
-Kafka Partition ke andar ordering maintain karta hai.
-
-Lekin agar Consumer internally multithreading use kar raha ho to final processing order change ho sakta hai.
-
-
-
-## Case 2:  MAN LO 2 INDEPENDENT CONSUMER HAI
-----------------------------------------------
-
-Consumer-1:
-
-MY
-NAME
-IS
-ANURAG
-
-Consumer-2:
-
-MY
-NAME
-IS
-ANURAG
-
-Matlab dono ko complete copy of data milegi.
-
-Ordering dono ke liye maintain rahegi.
-
-Note:
-
-Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
-
-
-##  CONSUMER GROUP INTRODUCE KARTE HAIN
-----------------------------------------------
-
 ## IMPORTANT RULE :
+---------------------
 
 Ek Partition ko Ek consumer-group ke andar Sirf Ek Consumer Read Karega
 
 ## Example:
+------------
 
 Maan lo topic hai: Intro
 
@@ -501,13 +404,13 @@ Baaki Consumers idle rahenge.
 
 
 ## NOTE :
--------------
+----------
 Consumer Group ka Group Coordinator decide karta hai ki
 kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
 
 
 ## IMPORTANT :
------------------
+---------------
 
 Agar do consumers alag consumer groups se hai to dono same Partition ko consume kar sakte hain.
 
@@ -534,9 +437,259 @@ Consumer-2 bhi consume kar sakta hai
 Kyuki dono alag Consumer Groups se belong karte hain.
 
 
+--------------------------------------------------------------------------------------------------------------
+## PARTITION ASSIGNMENT STRATEGIES - CONSUMER GROUP KE ANDAR KAUNSI PARTITION KIS CONSUMER KO ASSIGN HOGI?
+--------------------------------------------------------------------------------------------------------------
 
-## PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
-------------------------------------------------------------------------------
+## IMPORTANT
+-------------
+
+- Partition Assignment Strategies sirf Consumer Groups ke liye hoti hain.
+
+- Independent Consumers ke liye Kafka automatically decide nahi karta ki
+  kaunsa Consumer kisi Topic ki kaunsi Partition consume karega.
+
+- Independent Consumers khud manually decide karte hain ki unhe kis
+  Partition se read karna hai using the Consumer API (consumer.assign(...)).
+
+- Ek Independent Consumer chahe to sirf ek hi Partition consume kare
+  ya multiple Partitions consume kare, ye decision Consumer khud leta hai.
+
+
+## EXAMPLE :
+
+Topic = Orders
+
+Partitions:
+
+Partition-0
+Partition-1
+Partition-2
+
+Maan lo 3 Independent Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+Consumer-1 agar sirf Partition-0 consume karna chahta hai:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0)
+));
+
+Ya sirf Partition-1:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 1)
+));
+
+Ya saari Partitions:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0),
+    new TopicPartition("orders", 1),
+    new TopicPartition("orders", 2)
+));
+
+Yaani Independent Consumers khud manually Partitions assign karte hain.
+
+Kafka is assignment me interfere nahi karta.
+
+---------------------
+
+Consumer Group ka Group Coordinator decide karta hai ki
+Consumer Group ke kis Consumer ko kaunsi Partition assign hogi.
+
+Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
+
+Partition Assignment Strategy decide karti hai ki
+Consumer Group ke available Consumers ke beech
+Partitions ko kaise distribute kiya jayega.
+
+
+Partition Assignment Strategies:
+
+1. Range Assignor
+2. Round Robin Assignor
+3. Sticky Assignor
+4. Cooperative Sticky Assignor
+
+
+Maan lo Topic hai:
+
+Orders
+
+Aur isme 4 Partitions hain:
+
+Orders
+|
+├── Partition-0
+├── Partition-1
+├── Partition-2
+└── Partition-3
+
+
+Ab maan lo 2 Consumers hain jo 'Orders' Topic ko subscribe kiye hue hain:
+
+Consumer-1
+Consumer-2
+
+Aur ye dono same Consumer Group me hain:
+
+Group = OrderProcessors
+
+
+1. Range Assignor
+-----------------
+
+Assigns a continuous range of partitions to each consumer.
+
+Assignment:
+
+Consumer-1
+|
+Partition-0
+Partition-1
+
+
+Consumer-2
+|
+Partition-2
+Partition-3
+
+
+2. Round Robin Assignor
+------------------------
+
+Partitions ko consumers ke across relatively evenly distribute karta hai.
+
+Assignment:
+
+Consumer-1
+|
+Partition-0
+Partition-2
+
+
+Consumer-2
+|
+Partition-1
+Partition-3
+
+
+3. Sticky Assignor
+------------------
+
+Tries to keep the existing partition assignments unchanged
+as much as possible to minimize partition movement during rebalancing.
+
+Example:
+
+Current Assignment:
+
+Consumer-1
+|
+Partition-0
+Partition-2
+
+----------------
+
+Consumer-2
+|
+Partition-1
+Partition-3
+
+
+Ab Consumer-3 join karta hai.
+
+Isliye Rebalancing trigger hogi.
+
+Agar Round Robin Assignor use ho,
+to sabhi partitions dobara reassign honge.
+
+Sticky Assignor jitna possible ho existing assignment ko preserve
+karne ki koshish karta hai.
+
+Suppose new assignment becomes:
+
+Consumer-1
+|
+Partition-0
+
+
+Consumer-2
+|
+|- Partition-1
+|- Partition-3
+
+
+Consumer-3
+|
+|- Partition-2
+
+
+Yaani jitna kam partition movement ho sake utna.
+
+
+## IMPORTANT :
+---------------
+
+Sticky Assignor Eager Rebalancing use karta hai.
+
+Isliye final assignment me bhale hi sirf Partition-2 move ho,
+lekin rebalance ke dauran pehle existing Consumers se
+assigned Partitions temporarily revoke ki jaati hain.
+
+Uske baad nayi assignment perform hoti hai.
+
+Is wajah se rebalance ke dauran processing temporarily pause
+ho sakti hai.
+
+
+Benefits:
+
+- Existing partition assignments ko maximum preserve karta hai.
+- Unnecessary partition movement ko reduce karta hai.
+
+
+4. Cooperative Sticky Assignor
+-------------------------------
+
+Ye Sticky Assignor ka improved version hai.
+
+Unlike Sticky Assignor, Cooperative Sticky Assignor
+Incremental Rebalancing use karta hai.
+
+Isme sirf required Partitions hi revoke/move ki jaati hain.
+
+Baaki Consumers apni existing Partitions par processing
+continue rakhte hain.
+
+Isliye processing interruption aur rebalance pause
+kaafi kam ho jata hai.
+
+
+## IMPORTANT
+------------
+
+Modern Kafka me generally:
+
+partition.assignment.strategy
+
+property use hoti hai.
+
+Isme configure kar sakte ho:
+
+- RangeAssignor
+- RoundRobinAssignor
+- StickyAssignor
+- CooperativeStickyAssignor
+
+
+==============================================================================================================
+8: PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
+==============================================================================================================
 
 Kafka me Partition Selection ke total 3 major mechanisms hote hain:
 
@@ -544,7 +697,7 @@ Kafka me Partition Selection ke total 3 major mechanisms hote hain:
 1: NO KEY PARTITIONING
 -------------------------
 
-Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
+Maan lo topic hai: 'Intro' and it has 3 partition. 
 
 Topic: Intro
 
@@ -1095,253 +1248,137 @@ Partition-2 -> Order-101
 
 
 
-## PARTITION ASSIGNMENT STRATEGIES - CONSUMER GROUP KE ANDAR KAUNSI PARTITION KIS CONSUMER KO ASSIGN HOGI?
---------------------------------------------------------------------------------------------------------------
+===============================================================================
+7:Why partions are required in the topic ?
+===============================================================================
 
-## IMPORTANT
--------------
-
-- Partition Assignment Strategies sirf Consumer Groups ke liye hoti hain.
-
-- Independent Consumers ke liye Kafka automatically decide nahi karta ki
-  kaunsa Consumer kisi Topic ki kaunsi Partition consume karega.
-
-- Independent Consumers khud manually decide karte hain ki unhe kis
-  Partition se read karna hai using the Consumer API (consumer.assign(...)).
-
-- Ek Independent Consumer chahe to sirf ek hi Partition consume kare
-  ya multiple Partitions consume kare, ye decision Consumer khud leta hai.
-
-
-## EXAMPLE :
-
-Topic = Orders
-
-Partitions:
-
-Partition-0
-Partition-1
-Partition-2
-
-Maan lo 3 Independent Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
-
-Consumer-1
-Consumer-2
-Consumer-3
-
-Consumer-1 agar sirf Partition-0 consume karna chahta hai:
-
-consumer.assign(Arrays.asList(
-    new TopicPartition("orders", 0)
-));
-
-Ya sirf Partition-1:
-
-consumer.assign(Arrays.asList(
-    new TopicPartition("orders", 1)
-));
-
-Ya saari Partitions:
-
-consumer.assign(Arrays.asList(
-    new TopicPartition("orders", 0),
-    new TopicPartition("orders", 1),
-    new TopicPartition("orders", 2)
-));
-
-Yaani Independent Consumers khud manually Partitions assign karte hain.
-
-Kafka is assignment me interfere nahi karta.
-
----------------------
-
-Consumer Group ka Group Coordinator decide karta hai ki
-Consumer Group ke kis Consumer ko kaunsi Partition assign hogi.
-
-Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
-
-Partition Assignment Strategy decide karti hai ki
-Consumer Group ke available Consumers ke beech
-Partitions ko kaise distribute kiya jayega.
-
-
-Partition Assignment Strategies:
-
-1. Range Assignor
-2. Round Robin Assignor
-3. Sticky Assignor
-4. Cooperative Sticky Assignor
-
-
-Maan lo Topic hai:
-
-Orders
-
-Aur isme 4 Partitions hain:
-
-Orders
-|
-├── Partition-0
-├── Partition-1
-├── Partition-2
-└── Partition-3
-
-
-Ab maan lo 2 Consumers hain jo 'Orders' Topic ko subscribe kiye hue hain:
-
-Consumer-1
-Consumer-2
-
-Aur ye dono same Consumer Group me hain:
-
-Group = OrderProcessors
-
-
-1. Range Assignor
------------------
-
-Assigns a continuous range of partitions to each consumer.
-
-Assignment:
-
-Consumer-1
-|
-Partition-0
-Partition-1
-
-
-Consumer-2
-|
-Partition-2
-Partition-3
-
-
-2. Round Robin Assignor
-------------------------
-
-Partitions ko consumers ke across relatively evenly distribute karta hai.
-
-Assignment:
-
-Consumer-1
-|
-Partition-0
-Partition-2
-
-
-Consumer-2
-|
-Partition-1
-Partition-3
-
-
-3. Sticky Assignor
+------------------
+1: SCALIBILITY :
 ------------------
 
-Tries to keep the existing partition assignments unchanged
-as much as possible to minimize partition movement during rebalancing.
+Maan lo ek Topic hai:
 
-Example:
+Orders
 
-Current Assignment:
+Aur usme continuously messages aa rahe hain:
 
-Consumer-1
+Message-1
+Message-2
+Message-3
+...
+Message-10 Billion
+
+Agar Topic ka saara data sirf ek hi Broker par store ho raha ho:
+
+Broker-1
 |
+Orders Topic
+
+To time ke saath messages badhte jaayenge aur ek point par:
+
+Broker ki storage limit reach ho sakti hai
+Broker ki processing capacity limit reach ho sakti hai
+Broker ki hardware limits (CPU, Memory, Disk) bottleneck ban sakti hain
+
+Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide karta hai.
+
+
+## EXAMPLE:
+
+Orders Topic
+
 Partition-0
+Partition-1
 Partition-2
 
-----------------
+Ab in Partitions ko alag-alag Brokers par distribute kiya ja sakta hai:
 
-Consumer-2
-|
-Partition-1
-Partition-3
+Broker-1 -> Partition-0
+
+Broker-2 -> Partition-1
+
+Broker-3 -> Partition-2
+
+Isse Topic ka data multiple Brokers me spread ho jata hai aur system horizontally scale kar pata hai.
+
+Isliye Partitions Kafka ko large amount of data handle karne aur system ko scale karne me help karte hain.
+
+---------------------
+2: PARALLEL READING
+---------------------
+
+Partition bana diye, lekin usse multiple consumers parallel kaise consume kar lenge?
+
+Aur iska answer hai: Consumer Group.
+
+## SIRF CONSUMER SAMJHO
+------------------------
+
+Maan lo topic hai: Intro
+
+Aur usme sirf 1 partition hai i.e partition-0 and Producer sequentially messages bhejta hai::
+"MY"
+"NAME"
+"IS"
+"ANURAG"
 
 
-Ab Consumer-3 join karta hai.
+Kyuki Topic me sirf ek hi Partition hai, saare messages isi Partition me sequentially store honge.
 
-Isliye Rebalancing trigger hogi.
-
-Agar Round Robin Assignor use ho,
-to sabhi partitions dobara reassign honge.
-
-Sticky Assignor jitna possible ho existing assignment ko preserve
-karne ki koshish karta hai.
-
-Suppose new assignment becomes:
-
-Consumer-1
-|
 Partition-0
 
-
-Consumer-2
-|
-|- Partition-1
-|- Partition-3
-
-
-Consumer-3
-|
-|- Partition-2
+Offset 0 -> MY
+Offset 1 -> NAME
+Offset 2 -> IS
+Offset 3 -> ANURAG
 
 
-Yaani jitna kam partition movement ho sake utna.
+## Case 1: SIRF 1 INDEPENDENT CONSUMER HAI 
+-------------------------------------------
+
+To Consumer-1 sequentially read karega:
+
+MY
+NAME
+IS
+ANURAG
+
+Is case me ordering 100% maintain rahegi.
+
+Note:
+
+Kafka Partition ke andar ordering maintain karta hai.
+
+Lekin agar Consumer internally multithreading use kar raha ho to final processing order change ho sakta hai.
 
 
-## IMPORTANT :
----------------
 
-Sticky Assignor Eager Rebalancing use karta hai.
+## Case 2:  MAN LO 2 INDEPENDENT CONSUMER HAI
+----------------------------------------------
 
-Isliye final assignment me bhale hi sirf Partition-2 move ho,
-lekin rebalance ke dauran pehle existing Consumers se
-assigned Partitions temporarily revoke ki jaati hain.
+Consumer-1:
 
-Uske baad nayi assignment perform hoti hai.
+MY
+NAME
+IS
+ANURAG
 
-Is wajah se rebalance ke dauran processing temporarily pause
-ho sakti hai.
+Consumer-2:
 
+MY
+NAME
+IS
+ANURAG
 
-Benefits:
+Matlab dono ko complete copy of data milegi.
 
-- Existing partition assignments ko maximum preserve karta hai.
-- Unnecessary partition movement ko reduce karta hai.
+Ordering dono ke liye maintain rahegi.
 
+Note:
 
-4. Cooperative Sticky Assignor
--------------------------------
-
-Ye Sticky Assignor ka improved version hai.
-
-Unlike Sticky Assignor, Cooperative Sticky Assignor
-Incremental Rebalancing use karta hai.
-
-Isme sirf required Partitions hi revoke/move ki jaati hain.
-
-Baaki Consumers apni existing Partitions par processing
-continue rakhte hain.
-
-Isliye processing interruption aur rebalance pause
-kaafi kam ho jata hai.
+Yahan bhi agar Consumer internally multithreading use kare to final processing order impact ho sakta hai.
 
 
-## IMPORTANT
-------------
-
-Modern Kafka me generally:
-
-partition.assignment.strategy
-
-property use hoti hai.
-
-Isme configure kar sakte ho:
-
-- RangeAssignor
-- RoundRobinAssignor
-- StickyAssignor
-- CooperativeStickyAssignor
 
 
 ## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
