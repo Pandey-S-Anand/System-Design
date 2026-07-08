@@ -214,28 +214,7 @@ Zookeeper ki dependency remove kar di gayi hai.
 
    Kyuki Topic me sirf ek hi Partition hai, isliye saare messages sequentially isi Partition me store honge.
 
-   Consumer messages read karta hai partition se aur apna Offset commit karta rehta hai.
-
-   Agar Consumer ne "C" successfully process kar liya aur Offset commit kar diya, to generally next read:
-
-   Offset 3 -> D
-
-   se start hogi.
-
-   Kafka committed Offset ko store karke rakhta hai.
-
-   Agar Consumer restart ho jaye, to Kafka last committed Offset check karta hai.
-
-  Example:
-
-  Last Committed Offset = 3
-
-  To Consumer dubara start hote hi:
-
-   Offset 4 -> E
-
-  se reading continue karega.
-
+ 
   Consumer chahe to committed Offset ignore karke beginning se bhi read kar sakta hai.
 
   Example:
@@ -480,9 +459,9 @@ Yahan bhi agar Consumer internally multithreading use kare to final processing o
 
 ## IMPORTANT RULE :
 
-Ek Partition ko Ek Group ke andar Sirf Ek Consumer Read Karega
+Ek Partition ko Ek consumer-group ke andar Sirf Ek Consumer Read Karega
 
-Example:
+## Example:
 
 Maan lo topic hai: Intro
 
@@ -496,14 +475,14 @@ Consumer-3
 Consumer-4 
 Consumer-5
 
-and ye pancho same group me hain. 
+and ye pancho same consumer-group me hain. 
 
-Group = IntroProcessors
+consumer-group = IntroProcessors
 
 Ab Kafka in 5 consumers ko ek team samjhega.
 
 
-Kafka assignment kuch aisa karega:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai:
 
 Partition-0 -> Consumer-1
 
@@ -516,9 +495,15 @@ Kyun?
 
 Kyuki ek hi Partition available hai.
 
-Aur ek Partition ko Group ke andar ek hi Consumer consume kar sakta hai.
+Aur ek Partition ko consumer-group ke andar ek hi Consumer consume kar sakta hai.
 
 Baaki Consumers idle rahenge.
+
+
+## NOTE :
+-------------
+Consumer Group ka Group Coordinator decide karta hai ki
+kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
 
 
 ## IMPORTANT :
@@ -549,11 +534,15 @@ Consumer-2 bhi consume kar sakta hai
 Kyuki dono alag Consumer Groups se belong karte hain.
 
 
-## NOTE :
--------------
-Consumer Group ka Group Coordinator decide karta hai ki
-kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
 
+## PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
+------------------------------------------------------------------------------
+
+Kafka me Partition Selection ke total 3 major mechanisms hote hain:
+
+
+1: NO KEY PARTITIONING
+-------------------------
 
 Ab Maan lo topic hai: 'Intro' and it has 3 partition. 
 
@@ -573,9 +562,24 @@ Consumer-3
 Consumer-4 
 Consumer-5
 
-and ye pancho same group me hain. 
+and ye pancho same consumer-group me hain. 
 
-Group = IntroProcessors
+consumer-group = IntroProcessors
+
+
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai:
+
+Partition-0 -> Consumer-1
+
+Partition-1 -> Consumer-2
+
+Partition-2 -> Consumer-3
+
+Consumer-4 -> Idle
+
+Consumer-5 -> Idle
+
+
 
 Producer bhej raha hai:
 
@@ -585,15 +589,6 @@ IS
 ANURAG
 Pandey
 
-
-## PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
-------------------------------------------------------------------------------
-
-Kafka me Partition Selection ke total 3 major mechanisms hote hain:
-
-
-1: NO KEY PARTITIONING
--------------------------
 
 Producer:
 
@@ -607,7 +602,7 @@ send("Pandey");
 
 Koi Key provide nahi ki gayi.
 
-Kafka roughly round-robin kar sakta hai. (Old Kafka : Round Robin, Modern Kafka : Sticky Partitioner)
+Kafka roughly round-robin kar sakta hai for partition assignment. (Old Kafka : Round Robin, Modern Kafka : Sticky Partitioner)
 
 Partition-0 -> MY
 Partition-1 -> NAME
@@ -632,17 +627,6 @@ Partition-2
 Offset 0 : "IS"
 
 
-Maan lo Kafka ne assignment kiya:
-
-Partition-0 -> Consumer-1
-
-Partition-1 -> Consumer-2
-
-Partition-2 -> Consumer-3
-
-Consumer-4 -> Idle
-
-Consumer-5 -> Idle
 
 Ab Sabse Important Question
 
@@ -817,22 +801,22 @@ Partition-2 -> F
 
 Partition-0
 |
-Offset-0: A
-Offset-1: D
+|- Offset-0: A
+|- Offset-1: D
 
-----------------
+
 
 Partition-1
 |
-Offset-0: B
-Offset-1: E
+|- Offset-0: B
+|- Offset-1: E
 
-----------------
+
 
 Partition-2
 |
-Offset-0: C
-Offset-1: F
+|- Offset-0: C
+|- Offset-1: F
 
 
 ## OBSERVATION:
@@ -862,9 +846,9 @@ To:
 
 Partition-1 
  |
- Offset-0: A
- Offset-1: B
- Offset-2: C
+ |- Offset-0: A
+ |- Offset-1: B
+ |- Offset-2: C
 
 Ab batch send ho gayi.
 
@@ -878,26 +862,27 @@ To:
 
 Partition-0 
  |
- Offset-0: D
- Offset-1: E
- Offset-2: F
+ |- Offset-0: D
+ |- Offset-1: E
+ |- Offset-2: F
+
 
 
 ## FINAL RESULT:
 
 Partition-0 
  |
- Offset-0: D
- Offset-1: E
- Offset-2: F
+ |- Offset-0: D
+ |- Offset-1: E
+ |- Offset-2: F
 
 ----------------
 
 Partition-1 
  |
- Offset-0: A
- Offset-1: B
- Offset-2: C
+ |- Offset-0: A
+ |- Offset-1: B
+ |- Offset-2: C
 
 ----------------
 
@@ -951,15 +936,6 @@ Assume karo ki Topic me 2 Partitions hain:
 Partition-0
 Partition-1
 
-Agar Producer Key provide nahi karta to Kafka in events ko different Partitions me distribute kar sakta hai.
-
-Example:
-
-Partition-0 -> Order Created
-Partition-1 -> Payment Done
-Partition-0 -> Order Shipped
-Partition-1 -> Order Delivered
-
 
 Ab maan lo do Consumers hain:
 
@@ -972,35 +948,55 @@ order-group
 
 se belong karte hain.
 
-Kafka ne assignment kiya:
+
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai:
 
 Partition-0 -> Consumer-0
 Partition-1 -> Consumer-1
 
 
-Lekin dono Consumers parallel chal rahe hain.
+Agar Producer Key provide nahi karta to Kafka in events ko different Partitions me distribute kar sakta hai.
+
+Example:
+
+Partition-0 -> Order Created
+Partition-1 -> Payment Done
+Partition-0 -> Order Shipped
+Partition-1 -> Order Delivered
+
+
+Result:
+
+Partition-0
+|
+|- Offset 0: "Order Created"
+|- Offset 1: "Order Shipped"
+
+
+Partition-1
+|
+|- Offset 0: "Payment Done"
+|- Offset 1: "Order Delivered"
+
+
+
+Since dono Consumers parallel chal rahe hain.
 
 Isliye actual processing order kuch bhi ho sakta hai.
 
-Partition Ordering Hogi probably
-
-Partition-0 (read by Consumer-0)
-
-Offset 0: "Order Created"
-Offset 1: "Order Shipped"
-
-Partition-1 (read by Consumer-1)
-
-Offset 0: "Payment Done"
-Offset 1: "Order Delivered"
-
-To processing order bigad sakta hai.
 
 Ex:
 "Payment Done"
 "Order Created"
 "Order Delivered"
 "Order Shipped"
+
+Ya phir
+
+"Order Created"
+"Payment Done"
+"Order Shipped"
+"Order Delivered"
 
 Ya koi aur combination.
 
@@ -1055,11 +1051,8 @@ Offset 1 -> Payment Done
 Offset 2 -> Order Shipped
 Offset 3 -> Order Delivered
 
-
-Kafka ne assignment kiya:
-
-Partition-0 -> Consumer-0
-Partition-1 -> Consumer-1
+Partition-1
+(Empty)
 
 
 Ab Consumer-0 ko events exactly isi order me milenge:
