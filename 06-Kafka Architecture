@@ -329,10 +329,10 @@ Example:
 Partition-0
 |
 --Segment-1
-|  |
-|  |- Offset 0 -> A
-|  |- Offset 1 -> B
-|  |- Offset 2 -> C
+|   |
+|   |- Offset 0 -> A
+|   |- Offset 1 -> B
+|   |- Offset 2 -> C
 |
 --Segment-2
 |   |
@@ -341,10 +341,10 @@ Partition-0
 |   |- Offset 5 -> F
 |
 --Segment-3
-   |
-   |- Offset 6 -> G
-   |- Offset 7 -> H
-   |- Offset 8 -> I
+    |
+    |- Offset 6 -> G
+    |- Offset 7 -> H
+    |- Offset 8 -> I
 
 Ye Segments Kafka automatically create aur manage karta hai.
 
@@ -403,12 +403,6 @@ Aur ek Partition ko consumer-group ke andar ek hi Consumer consume kar sakta hai
 Baaki Consumers idle rahenge.
 
 
-## NOTE :
-----------
-Consumer Group ka Group Coordinator decide karta hai ki
-kaunsi Partition Consumer Group ke kis Consumer ko assign hogi.
-
-
 ## IMPORTANT :
 ---------------
 
@@ -441,22 +435,33 @@ Kyuki dono alag Consumer Groups se belong karte hain.
 ## PARTITION ASSIGNMENT STRATEGIES - CONSUMER GROUP KE ANDAR KAUNSI PARTITION KIS CONSUMER KO ASSIGN HOGI?
 --------------------------------------------------------------------------------------------------------------
 
+Consumer Group ka Group Coordinator decide karta hai ki
+Consumer Group ke kis Consumer ko kaunsi Partition assign hogi.
+
+Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
+
+Partition Assignment Strategy decide karti hai ki
+Consumer Group ke available Consumers ke beech
+Partitions ko kaise distribute kiya jayega.
+
+
 ## IMPORTANT
 -------------
 
 - Partition Assignment Strategies sirf Consumer Groups ke liye hoti hain.
 
-- Independent Consumers ke liye Kafka automatically decide nahi karta ki
+- Standalone Consumers ke liye Kafka automatically decide nahi karta ki
   kaunsa Consumer kisi Topic ki kaunsi Partition consume karega.
 
-- Independent Consumers khud manually decide karte hain ki unhe kis
+- Standalone Consumers khud manually decide karte hain ki unhe kis
   Partition se read karna hai using the Consumer API (consumer.assign(...)).
 
-- Ek Independent Consumer chahe to sirf ek hi Partition consume kare
+- Ek Standalone Consumer chahe to sirf ek hi Partition consume kare
   ya multiple Partitions consume kare, ye decision Consumer khud leta hai.
 
 
 ## EXAMPLE :
+-------------
 
 Topic = Orders
 
@@ -466,7 +471,7 @@ Partition-0
 Partition-1
 Partition-2
 
-Maan lo 3 Independent Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
+Maan lo 3 Standalone Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
 
 Consumer-1
 Consumer-2
@@ -492,29 +497,18 @@ consumer.assign(Arrays.asList(
     new TopicPartition("orders", 2)
 ));
 
-Yaani Independent Consumers khud manually Partitions assign karte hain.
+Yaani Standalone Consumers khud manually Partitions assign karte hain.
 
 Kafka is assignment me interfere nahi karta.
 
----------------------
 
-Consumer Group ka Group Coordinator decide karta hai ki
-Consumer Group ke kis Consumer ko kaunsi Partition assign hogi.
-
-Ye decision ek Partition Assignment Strategy ke basis par liya jata hai.
-
-Partition Assignment Strategy decide karti hai ki
-Consumer Group ke available Consumers ke beech
-Partitions ko kaise distribute kiya jayega.
-
-
-Partition Assignment Strategies:
+## PARTITION ASSIGNMENT STRATEGIES :
+-------------------------------------
 
 1. Range Assignor
 2. Round Robin Assignor
 3. Sticky Assignor
 4. Cooperative Sticky Assignor
-
 
 Maan lo Topic hai:
 
@@ -691,9 +685,27 @@ Isme configure kar sakte ho:
 8: PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
 ==============================================================================================================
 
-Kafka me Partition Selection ke total 3 major mechanisms hote hain:
+Producer dwara publish kiya gaya message kis Partition me jayega, ye decide karne ke liye Kafka 3 major Partition Selection mechanisms provide karta hai:
 
+--------------
+## IMPORTANT:
+--------------
 
+Partition Selection Strategies ka Consumer type (Standalone Consumer ya Consumer Group) se koi relation nahi hota.
+
+Ye sirf itna decide karti hain ki Producer dwara publish kiya gaya message Topic ke kis Partition me store hoga.
+
+Uske baad:
+
+- Agar Consumers kisi Consumer Group ka hissa hain, to Group Coordinator ek Partition Assignment Strategy ki help se decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
+
+- Agar Consumers Standalone hain, to Kafka koi Partition assignment nahi karta. Har Consumer khud manually decide karta hai ki use kaunsi Partition consume karni hai (using consumer.assign(...)).
+
+Note:
+
+Neeche diye gaye examples me hum Consumer Groups ko consider karenge.
+
+-------------------------
 1: NO KEY PARTITIONING
 -------------------------
 
@@ -734,17 +746,6 @@ Consumer-5 -> Idle
 
 
 
-Producer bhej raha hai:
-
-MY
-NAME
-IS
-ANURAG
-Pandey
-
-
-Producer:
-
 Producer publish karta hai:
 
 send("MY");
@@ -763,25 +764,26 @@ Partition-2 -> IS
 Partition-0 -> ANURAG
 Partition-1 -> Pandey
 
-Result:
+
+## Result:
 
 Partition-0
-
-Offset 0: "MY"
-Offset 1: "ANURAG"
+|
+|- Offset 0: "MY"
+|- Offset 1: "ANURAG"
 
 Partition-1
-
-Offset 0: "NAME"
-offset 1: "Pandey"
+|
+|- Offset 0: "NAME"
+|-offset 1: "Pandey"
 
 Partition-2
-
+|
 Offset 0 : "IS"
 
 
 
-Ab Sabse Important Question
+## Ab Sabse Important Question
 
 Final output kya hoga? Kya mujhe "MY NAME IS ANURAG" milega?
 
@@ -822,13 +824,9 @@ Consumer-4 and Consumer-5 ideal rahenge.
 Possible execution:   
 
 Consumer-1 -> MY
-
 Consumer-2 -> NAME
-
 Consumer-1 -> ANURAG
-
 Consumer-2 -> Pandey
-
 Consumer-3 -> IS
 
 
@@ -1055,7 +1053,7 @@ Observation:
   default strategy hai for messages without keys.
 
 
-
+--------------------------
 2: KEY BASED PARTIONING 
 --------------------------
 
@@ -1108,7 +1106,7 @@ Partition-0 -> Consumer-0
 Partition-1 -> Consumer-1
 
 
-Agar Producer Key provide nahi karta to Kafka in events ko different Partitions me distribute kar sakta hai.
+Agar Producer Key provide nahi karta, to Kafka No-Key Partitioning strategy ka use karke messages ko different Partitions me distribute kar deta.
 
 Example:
 
@@ -1177,11 +1175,8 @@ Key = Order101
 Producer publish karta hai:
 
 (Key=Order101, Order Created)
-
 (Key=Order101, Payment Done)
-
 (Key=Order101, Order Shipped)
-
 (Key=Order101, Order Delivered)
 
 
@@ -1227,7 +1222,7 @@ Note:
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
 
-
+--------------------------
 3:  EXPLICIT PARTITION 
 --------------------------
 
