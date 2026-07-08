@@ -355,12 +355,14 @@ Application Developer ko normally Segments ke baare me directly deal nahi karna 
 7: CONSUMER GROUP
 ====================
 
-Consumer Group Consumers ka ek logical group hota hai jo milkar kisi Kafka Topic ke Partitions ko aapas me divide karke messages consume karta hai.
+Consumer Group Consumers ka ek logical group hota hai jo milkar
+kisi Kafka Topic ke Partitions ko divide karke parallel me messages consume karta hai.
 
 ----------
 ## NOTE :
 ----------
-Har consumer group ka Kafka cluster me ek broker hota hai jo us group ka coordinator banta hai
+Har Consumer Group ke liye Kafka Cluster ka koi ek Broker
+Group Coordinator ka role perform karta hai.
 
 ---------------------
 ## IMPORTANT RULE :
@@ -614,8 +616,7 @@ Suppose new assignment becomes:
 
 Consumer-1
 |
-Partition-0
-
+|- Partition-0
 
 Consumer-2
 |
@@ -686,15 +687,15 @@ Isme configure kar sakte ho:
 - CooperativeStickyAssignor
 
 
------------------------------------------------------------------------------------------------------------------------------
-## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE TOPIC KI HAR PARTITION ME KAHA TAK MESSAGES CONSUME KIYE HAIN?
+-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Maan lo Topic hai:
 
 Orders
 
-Aur iske 3 partitions hain.
+Aur iske 3 Partitions hain:
 
 Orders
 |
@@ -702,168 +703,264 @@ Orders
 |- Partition-1
 |- Partition-2
 
+
 Ek Consumer Group hai:
 
 order-processors
 
-Jisme 3 Consumers hain.
+Jisme 3 Consumers hain:
 
 Consumer-1
 Consumer-2
 Consumer-3
 
 
-Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
+Is Consumer Group ka Group Coordinator kuch is tarah Partition Assignment kar sakta hai:
 
 Partition-0 -> Consumer-1
 Partition-1 -> Consumer-2
 Partition-2 -> Consumer-3
 
 
-## Current Messages:
+## CURRENT MESSAGES:
+--------------------
 
 Partition-0
 |
-|- Offset0 -> Order-101
-|- Offset1 -> Order-102
-|- Offset2 -> Order-103
+|- Offset 0 -> Order-101
+|- Offset 1 -> Order-102
+|- Offset 2 -> Order-103
 
 
 Partition-1
 |
-|- Offset0 -> Order-201
-|- Offset1 -> Order-202
+|- Offset 0 -> Order-201
+|- Offset 1 -> Order-202
 
 
 Partition-2
 |
-|- Offset0 -> Order-301
-|- Offset1 -> Order-302
-
+|- Offset 0 -> Order-301
+|- Offset 1 -> Order-302
 
 
 Consumer-1 process karta hai:
 
 Order-101
-
 Order-102
 
-Aur:
+Aur phir:
 
-Offset=1
+Committed Offset = 1
 
-commit kar deta hai.
+Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
+
+Next Read:
+
+Offset 2 -> Order-103
+
+
+-----------
 
 Consumer-2 process karta hai:
 
 Order-201
 
-Aur:
+Aur phir:
 
-Offset=0
+Committed Offset = 0
 
-commit karta hai.
+Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
+
+Next Read:
+
+Offset 1 -> Order-202
+
+
+-----------
 
 Consumer-3 process karta hai:
 
 Order-301
-
 Order-302
 
-Aur:
+Aur phir:
 
-Offset=1
+Committed Offset = 1
 
-commit karta hai.
+Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
 
-Kafka internally record karega:
+Next Read:
 
-Consumer Group
+No Message Available
+(Kyunki Partition-2 me Offset 1 ke baad koi message nahi hai.)
 
-order-processors
 
---------------------------------
+-----------
 
+Kafka internally kuch is tarah record maintain karta hai:
+
+Consumer Group : order-processors
+|
 Partition-0
-
-Committed Offset = 1
-
---------------------------------
-
+|  |
+|  Committed Offset = 1
+|
+|
 Partition-1
-
-Committed Offset = 0
-
---------------------------------
-
+|  |
+|  Committed Offset = 0
+|
+|
 Partition-2
+   |
+   Committed Offset = 1
 
-Committed Offset = 1
 
-Notice:
-
-Kafka Consumer ka offset nahi store karta.
-
-Kafka store karta hai:
-
-Consumer Group
-
-+
-
-Partition
-
-↓
-
-Committed Offset
-
-Ye bahut important point hai.
 
 Ab maan lo:
 
 Consumer-2 crash ho gaya.
 
-Rebalance hua.
+Rebalancing hui.
 
-Ab:
+Aur maan lo:
 
-Partition-1
-
-↓
-
-Consumer-1
+Partition-1 -> Consumer-1
 
 ko assign ho gayi.
 
+
 Kafka check karega:
 
-order-processors
-
+Consumer Group : order-processors
+|
 Partition-1
+  |
+  Committed Offset = 0
 
-Committed Offset=0
 
-To Consumer-1:
+Isliye Consumer-1:
 
-Offset1 -> Order-202
+Offset 1 -> Order-202
 
 se reading continue karega.
 
-Notice:
 
-Kafka ko farak hi nahi padta pehle kaunsa consumer read kar raha tha.
+## NOTICE :
+--------------
 
-Usko sirf ye pata hai:
+Kafka ko isse koi farak nahi padta ki pehle Partition-1 ko
+kaunsa Consumer consume kar raha tha.
 
-Consumer Group
+Kafka sirf:
 
-+
+Consumer Group + Partition = Committed Offset
 
-Partition
+track karta hai.
 
-↓
 
-Committed Offset
+Kafka individual Consumer ka Offset store nahi karta.
 
+
+## NOTE:
+---------
+
+Kafka ye Committed Offsets apne ek internal Topic me store karta hai jiska naam hai:
+
+__consumer_offsets
+
+Isi Topic ki help se Kafka Consumer Group ke offsets ko track karta hai.
+
+
+-----------------------------------------------------------------------------------------------------------------------------
+## OFFSET COMMIT & STANDALONE CONSUMER - KAFKA STANDALONE CONSUMER KE OFFSETS KO KAISE MANAGE KARTA HAI?
+-----------------------------------------------------------------------------------------------------------------------------
+
+## IMPORTANT
+--------------
+
+Kafka me Offset Commit hamesha Consumer Group ke context me hota hai.
+
+Kafka kabhi bhi Offsets ko kisi individual Consumer ke naam se store nahi karta.
+
+Isliye Offset Commit ke liye Consumer Group identity (group.id) hona zaruri hai.
+
+
+## CASE-1
+-----------
+
+Maan lo Standalone Consumer manually Partition assign karta hai:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0)
+));
+
+Aur uske paas:
+
+group.id=my-app
+
+configured hai.
+
+Ab jab Consumer messages process karke Offset Commit karega,
+to Kafka us Committed Offset ko us Consumer Group ke liye
+apne __consumer_offsets internal topic me store kar lega.
+
+Consumer restart hone par Kafka Committed Offset check karega
+aur uske next Offset se reading continue karwa dega.
+
+
+
+
+## CASE-2
+-----------
+
+Ab maan lo Standalone Consumer manually Partition assign karta hai:
+
+consumer.assign(Arrays.asList(
+    new TopicPartition("orders", 0)
+));
+
+Lekin is baar:
+
+group.id
+
+configured nahi hai.
+
+Ab kyunki Kafka ke paas koi Consumer Group identity hi nahi hai,
+isliye Kafka uske Offsets automatically commit ya store nahi kar sakta.
+
+Is situation me Offsets maintain karne ki responsibility
+application ki hoti hai.
+
+Example:
+
+Database:
+
+orders
+|
+Partition-0
+|
+Committed Offset = 125
+
+
+Ya:
+
+
+Redis :
+
+Partition-0 -> Offset = 125
+
+
+Ya:
+
+
+File
+
+Partition-0 -> Offset = 125
+
+Consumer restart hone par application isi stored Offset ko read karegi
+aur uske next Offset se reading continue karwayegi.
 
 ----------------------------------------------------------------------------
 ## WHY DO WE NEED CONSUMER GROUPS? WHY ARE STANDALONE CONSUMERS NOT ENOUGH?
