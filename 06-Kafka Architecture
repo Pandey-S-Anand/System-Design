@@ -100,7 +100,7 @@ Aajkal (Kafka 3.x+) mostly KRaft Mode use hota hai.
                                   v
 
                     ┌──────────────────────┐
-                    │ Independent Consumers│
+                    │ Standalone Consumers │
                     └──────────────────────┘
                          /      |      \
                         v       v       v
@@ -1836,7 +1836,7 @@ of the same Topic.
 
 This is true for both:
 
-1. Independent Consumers
+1. Standalone Consumers
 2. Consumers inside a Consumer Group
 
 
@@ -1883,10 +1883,10 @@ Result:
 So Consumer-1 is consuming data from two different Partitions.
 
 
-## 2. Independent Consumer Perspective
+## 2. Standalone Consumer Perspective
 --------------------------------------
 
-Maan lo 2 independent consumers hai say Consumer-1 and Consumer-2 jo ki 'Orders' topic ko listen kar rahe hain.
+Maan lo 2 Standalone consumers hai say Consumer-1 and Consumer-2 jo ki 'Orders' topic ko listen kar rahe hain.
 
 Kafka may assign Partitions like:
 
@@ -1898,7 +1898,7 @@ Partition-0 -> Consumer-2
 Partition-1 -> Consumer-2
 Partition-2 -> Consumer-2
 
-Dono independent Consumers ko Topic ke saare messages ki apni-apni copy consume karne ko milegi.
+Dono Standalone Consumers ko Topic ke saare messages ki apni-apni copy consume karne ko milegi.
 
 ## NOTE:
 --------------
@@ -1924,7 +1924,7 @@ from all assigned Partitions across those Topics.
 
 This is true for both:
 
-    ✔ Independent Consumers
+    ✔ Standalone Consumers
     ✔ Consumers inside a Consumer Group
 
 
@@ -1942,7 +1942,7 @@ Payments
 |- Partition-1
 
 
-## CASE 1 : INDEPENDENT CONSUMERS
+## CASE 1 : Standalone CONSUMERS
 --------------------------------------
 
 Consumer-1 independently subscribes to following topics:
