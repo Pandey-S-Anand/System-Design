@@ -967,6 +967,12 @@ aur uske next Offset se reading continue karwayegi.
 ----------------------------------------------------------------------------
 
 
+## IMPORTANT
+------------
+
+Agar Standalone Consumers kisi Topic ko consume kar rahe hain,
+to har Standalone Consumer ko us Topic ka complete data milega.
+
 
 ==============================================================================================================
 8: PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
