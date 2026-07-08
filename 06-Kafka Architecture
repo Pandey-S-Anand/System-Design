@@ -690,7 +690,179 @@ Isme configure kar sakte ho:
 ## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
 -----------------------------------------------------------------------------------------------------------------------------
 
+Maan lo Topic hai:
 
+Orders
+
+Aur iske 3 partitions hain.
+
+Orders
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
+
+Ek Consumer Group hai:
+
+order-processors
+
+Jisme 3 Consumers hain.
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
+
+
+## Current Messages:
+
+Partition-0
+|
+|- Offset0 -> Order-101
+|- Offset1 -> Order-102
+|- Offset2 -> Order-103
+
+
+Partition-1
+|
+|- Offset0 -> Order-201
+|- Offset1 -> Order-202
+
+
+Partition-2
+|
+|- Offset0 -> Order-301
+|- Offset1 -> Order-302
+
+
+
+Consumer-1 process karta hai:
+
+Order-101
+
+Order-102
+
+Aur:
+
+Offset=1
+
+commit kar deta hai.
+
+Consumer-2 process karta hai:
+
+Order-201
+
+Aur:
+
+Offset=0
+
+commit karta hai.
+
+Consumer-3 process karta hai:
+
+Order-301
+
+Order-302
+
+Aur:
+
+Offset=1
+
+commit karta hai.
+
+Kafka internally record karega:
+
+Consumer Group
+
+order-processors
+
+--------------------------------
+
+Partition-0
+
+Committed Offset = 1
+
+--------------------------------
+
+Partition-1
+
+Committed Offset = 0
+
+--------------------------------
+
+Partition-2
+
+Committed Offset = 1
+
+Notice:
+
+Kafka Consumer ka offset nahi store karta.
+
+Kafka store karta hai:
+
+Consumer Group
+
++
+
+Partition
+
+↓
+
+Committed Offset
+
+Ye bahut important point hai.
+
+Ab maan lo:
+
+Consumer-2 crash ho gaya.
+
+Rebalance hua.
+
+Ab:
+
+Partition-1
+
+↓
+
+Consumer-1
+
+ko assign ho gayi.
+
+Kafka check karega:
+
+order-processors
+
+Partition-1
+
+Committed Offset=0
+
+To Consumer-1:
+
+Offset1 -> Order-202
+
+se reading continue karega.
+
+Notice:
+
+Kafka ko farak hi nahi padta pehle kaunsa consumer read kar raha tha.
+
+Usko sirf ye pata hai:
+
+Consumer Group
+
++
+
+Partition
+
+↓
+
+Committed Offset
 
 
 ----------------------------------------------------------------------------
