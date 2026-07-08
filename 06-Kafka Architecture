@@ -1031,6 +1031,7 @@ Producer publish karta hai:
 
 (Key=Order101, Order Delivered)
 
+
 Kafka internally calculate karta hai:
 
 partition = hash(key) % number_of_partitions
@@ -1204,14 +1205,13 @@ Assigns a continuous range of partitions to each consumer.
 Assignment:
 
 Consumer-1
-
+|
 Partition-0
 Partition-1
 
-----------------
 
 Consumer-2
-
+|
 Partition-2
 Partition-3
 
@@ -1224,14 +1224,13 @@ Partitions ko consumers ke across relatively evenly distribute karta hai.
 Assignment:
 
 Consumer-1
-
+|
 Partition-0
 Partition-2
 
-----------------
 
 Consumer-2
-
+|
 Partition-1
 Partition-3
 
@@ -1247,14 +1246,14 @@ Example:
 Current Assignment:
 
 Consumer-1
-
+|
 Partition-0
 Partition-2
 
 ----------------
 
 Consumer-2
-
+|
 Partition-1
 Partition-3
 
@@ -1343,6 +1342,11 @@ Isme configure kar sakte ho:
 - RoundRobinAssignor
 - StickyAssignor
 - CooperativeStickyAssignor
+
+
+## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
+-----------------------------------------------------------------------------------------------------------------------------
+
 
 ===============================================================================
 8: REPLICATION
