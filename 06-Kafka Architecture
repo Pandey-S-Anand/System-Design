@@ -681,6 +681,19 @@ Isme configure kar sakte ho:
 - CooperativeStickyAssignor
 
 
+-----------------------------------------------------------------------------------------------------------------------------
+## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
+-----------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+----------------------------------------------------------------------------
+## WHY DO WE NEED CONSUMER GROUPS? WHY ARE STANDALONE CONSUMERS NOT ENOUGH?
+----------------------------------------------------------------------------
+
+
+
 ==============================================================================================================
 8: PARTITION SELECTION STRATEGIES - KAUN SA MESSAGE KIS PARTITION ME JAYEGA?
 ==============================================================================================================
@@ -1376,8 +1389,7 @@ Yahan bhi agar Consumer internally multithreading use kare to final processing o
 
 
 
-## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE KAHA TAK MESSAGES CONSUME KIYE HAIN?
------------------------------------------------------------------------------------------------------------------------------
+
 
 
 ===============================================================================
