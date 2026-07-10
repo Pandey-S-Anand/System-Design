@@ -1024,11 +1024,12 @@ Maan lo topic hai: 'Intro' and it has 3 partition.
 
 Topic: Intro
 
-Partitions:
+Intro:
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
 
-Partition-0
-Partition-1
-Partition-2
 
 Ab maan lo 5 consumers hai jo ki 'Intro' topic ko subscribe kiye hue hai 
 
@@ -1046,13 +1047,10 @@ consumer-group = IntroProcessors
 Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai:
 
 Partition-0 -> Consumer-1
-
 Partition-1 -> Consumer-2
-
 Partition-2 -> Consumer-3
 
 Consumer-4 -> Idle
-
 Consumer-5 -> Idle
 
 
@@ -1086,7 +1084,7 @@ Partition-0
 Partition-1
 |
 |- Offset 0: "NAME"
-|-offset 1: "Pandey"
+|- Offset 1: "Pandey"
 
 Partition-2
 |
@@ -1227,11 +1225,12 @@ Suppose:
 
 Topic = Orders
 
-Partitions:
+Orders
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
 
-Partition-0
-Partition-1
-Partition-2
 
 Producer publish karta hai:
 
@@ -1505,11 +1504,11 @@ To final storage kuch aisa hoga:
 
 
 Partition-0
-
-Offset 0 -> Order Created
-Offset 1 -> Payment Done
-Offset 2 -> Order Shipped
-Offset 3 -> Order Delivered
+|
+|- Offset 0 -> Order Created
+|- Offset 1 -> Payment Done
+|- Offset 2 -> Order Shipped
+|- Offset 3 -> Order Delivered
 
 Partition-1
 (Empty)
@@ -1528,7 +1527,7 @@ Order Delivered
 Ye ordering Kafka guarantee karta hai.
 
 
-Note:
+## NOTE:
 
 Agar Consumer internally multithreading ya parallel processing use kar raha ho to application level par final processing order phir bhi change ho sakta hai.
 
@@ -1592,17 +1591,15 @@ Is problem ko solve karne ke liye Kafka Topic ko multiple Partitions me divide k
 ## EXAMPLE:
 
 Orders Topic
-
-Partition-0
-Partition-1
-Partition-2
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
 
 Ab in Partitions ko alag-alag Brokers par distribute kiya ja sakta hai:
 
 Broker-1 -> Partition-0
-
 Broker-2 -> Partition-1
-
 Broker-3 -> Partition-2
 
 Isse Topic ka data multiple Brokers me spread ho jata hai aur system horizontally scale kar pata hai.
@@ -1624,7 +1621,7 @@ Parallel processing ka actual benefit Consumer Groups provide karte hain.
 
 Consumer Group Topic ke Partitions ko apne Consumers ke beech divide kar deta hai, jisse multiple Consumers alag-alag Partitions ko simultaneously consume kar sakte hain.
 
-Important:
+## IMPORTANT:
 
 Consumer Groups parallel processing tabhi achieve kar sakte hain jab Topic me multiple Partitions available hon.
 
@@ -1635,6 +1632,7 @@ Isliye:
 Partitions parallelism ko enable karte hain,
 
 aur Consumer Groups us parallelism ko efficiently utilize karte hain.
+
 
 ===============================================================================
 10: REPLICATION
