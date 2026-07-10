@@ -983,9 +983,6 @@ Advantages of Consumer Groups:
 3. Offset Management
    Kafka Consumer Group ke committed offsets ko track karta hai,
 
-5. Easy Scalability
-   Consumers add ya remove karne par Kafka automatically workload redistribute kar deta hai.
-
 -------------
 ## IMPORTANT
 -------------
