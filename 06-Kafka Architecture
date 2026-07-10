@@ -1864,7 +1864,7 @@ order-group:
 |- Consumer-2
 
 
-Kafka may assign Partitions like:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
 
     Partition-0 -> Consumer-1
     Partition-1 -> Consumer-2
@@ -1888,15 +1888,17 @@ So Consumer-1 is consuming data from two different Partitions.
 
 Maan lo 2 Standalone consumers hai say Consumer-1 and Consumer-2 jo ki 'Orders' topic ko listen kar rahe hain.
 
-Kafka may assign Partitions like:
+Dono Consumers ne manually sabhi Partitions assign kar rakhi hain:
 
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-1
-Partition-2 -> Consumer-1
+Consumer-1:
+    Partition-0
+    Partition-1
+    Partition-2
 
-Partition-0 -> Consumer-2
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-2
+Consumer-2:
+    Partition-0
+    Partition-1
+    Partition-2
 
 Dono Standalone Consumers ko Topic ke saare messages ki apni-apni copy consume karne ko milegi.
 
@@ -1950,7 +1952,7 @@ Consumer-1 independently subscribes to following topics:
     Orders
     Payments
 
-Kafka may assign Partitions like:
+Consumer-1 ne manually sabhi Partitions assign kar rakhi hain:
 
 Orders-Partition-0 -> Consumer-1
 Orders-Partition-1 -> Consumer-1
@@ -1986,7 +1988,7 @@ Both Consumers subscribe to:
     Payments
 
 
-Kafka may assign partitions as:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
 
     Orders-Partition-0    -> Consumer-1
     Orders-Partition-1    -> Consumer-2
@@ -2073,18 +2075,18 @@ Orders Topic
 |-Partition-1
 |-Partition-2
 
-Maan lo 2 consumers (say C1 and C2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
+Maan lo 2 consumers (say Consumer-1 and Consumer-1) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
 
 order-group:
 
-C1
-C2
+Consumer-1
+Consumer-2
 
-Kafka assignment:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
 
-P0 -> C1
-P1 -> C2
-P2 -> C1
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-1
 
 Sab normal chal raha hai.
 
@@ -2098,14 +2100,14 @@ CASE 1: NAYA CONSUMER JOIN KARE
 
 Pehle:
 
-C1
-C2
+Consumer-1
+Consumer-2
 
 Ab:
 
-C1
-C2
-C3
+Consumer-1
+Consumer-2
+Consumer-3
 
 Kafka sochega:
 
@@ -2115,9 +2117,9 @@ To reassignment karega.
 
 Example:
 
-P0 -> C1
-P1 -> C2
-P2 -> C3
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
 
 Ye rebalancing hai.
 
@@ -2127,21 +2129,21 @@ Case 2: CONSUMER CRASH HO JAYE
 
 Pehle:
 
-P0 -> C1
-P1 -> C2
-P2 -> C3
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
 
-Ab C3 crash ho gaya.
+Ab Consumer-3 crash ho gaya.
 
 Kafka sochega:
 
-"P2 ko ab kaun consume karega?"
+"Partition-2 ko ab kaun consume karega?"
 
 Reassignment:
 
-P0 -> C1
-P1 -> C2
-P2 -> C1
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-1
 
 Ye bhi rebalancing hai.
 
@@ -2170,28 +2172,31 @@ Topic = Orders
 
 Partitions:
 
-P0
-P1
-P2
+Orders
+|
+|-Partition-0
+|-Partition-1
+|-Partition-2
 
-Maan lo 2 consumers (say C1 and C2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
+
+Maan lo 2 consumers (say Consumer-1 and Consumer-2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
 
 order-group:
 
-C1
-C2
+Consumer-1
+Consumer-2
 
-Kafka assignment:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
 
-P0 -> C1
-P1 -> C2
-P2 -> C1
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-1
 
 Sab normal chal raha hai.
 
 Achanak:
 
-C3 join karta hai.
+Consumer-3 join karta hai.
 
 Rebalance start ho jata hai.
 
@@ -2222,11 +2227,11 @@ Example:
 
 Pehle:
 
-P0 -> C1
-P1 -> C2
-P2 -> C1
+Partition-0  -> Consumer-1
+Partition-1  -> Consumer-2
+Partition-2  -> Consumer-1
 
-C3 join hua.
+Consumer-3 join hua.
 
 Purana rebalance:
 
@@ -2235,7 +2240,7 @@ Sab dobara assign karo
 
 Naya cooperative rebalance:
 
-P2 -> C3
+Partition-2 -> Consumer-3
 
 Bas.
 
@@ -2246,6 +2251,10 @@ Production me ye preferred approach hai.
 ===============================================================================
 10 : Consumer Group Coordinator
 ===============================================================================
+
+Har Consumer Group ke liye Kafka Cluster ka koi ek Broker automatically Group Coordinator ka role perform karta hai.
+Ye Broker us Consumer Group se related coordination aur management ka kaam handle karta hai.
+
 Example:
 
 Suppose Kafka cluster mai 4 brokers hai namely Broker-1, Broker-2, Broker-3 and Broker-4
@@ -2254,30 +2263,24 @@ also assume Topic = Orders
 
 and Orders topic has 3 Partitions:
 
-P0
-P1
-P2
+Orders
+|
+|-Partition-0
+|-Partition-1
+|-Partition-2
+
 
 Maan lo 3 consumers (say C1, C2 and C3) 'Orders' topic ko listen kar rahe hain aur teeno same consumer group se belong karte hain, say 'order-group'.
 
 order-group:
+|
+|- Consumer-1
+|- Consumer-2
+|- Consumer-3
 
-C1
-C2
-C3
 
-Kafka assignment:
-
-P0 -> C1
-P1 -> C2
-P2 -> C3
-
-Aur achanak: C2 crash ho gaya.
-
-Kafka ko kaise pata chalega ki C2 mar gaya aur P1 ko kisi aur consumer ko assign karna hai?
-
-Har consumer group ka Kafka cluster me ek broker hota hai jo us group ka coordinator banta hai for instance 'order-group' ke liye bhi koi ek broker out of the avaialable 4 brokers in the clusters will act as the group cordinator
-man lete hai 'order-group' consumer group ke like Broker-2 will act as group coordinator. i,e Ab group se related sab management ka kaam ye broker karega.
+For instance 'order-group' ke liye bhi koi ek broker out of the avaialable 4 brokers in the clusters will act as the group cordinator
+man lete hai 'order-group' consumer group ke like Broker-2 will act as group coordinator. i,e Ab 'order-group' se related sab management ka kaam ye broker karega.
 
 ------------------------------------------
 Consumer Group Coordinator Kya Karta Hai?
@@ -2294,7 +2297,7 @@ Jab bhi koi naya Consumer kisi Consumer Group ko join karta hai, to us Consumer 
 
 Kaunsa Consumer kis Partition ko consume karega, ye decide karne ka kaam Consumer Group Coordinator ka hota hai.
 
-Example:
+Is order-group ka group-coordinator (i.e Broker-2) partition assignment kuch aisa kar sakta hai :
 
 Partition-0 -> Consumer-1
 Partition-1 -> Consumer-2
@@ -2315,31 +2318,7 @@ Heartbeats ka purpose ye verify karna hota hai ki Consumer abhi bhi active hai y
 
 ## AGAR HEARTBEAT BAND HO JAYE TO?
 
-Assume karo:
-
-Topic = Orders
-
-Orders Topic ke 3 Partitions hain:
-
-Partition-0
-Partition-1
-Partition-2
-
-Maan lo 3 Consumers hain:
-
-Consumer-1
-Consumer-2
-Consumer-3
-
-Aur teeno same Consumer Group se belong karte hain:
-
-Group = order-group
-
-Kafka ne Partition Assignment kiya:
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-3
+Consider the above example:
 
 Ab maan lo:
 
@@ -2747,9 +2726,9 @@ ISR (In Sync Replicas)is a set of replicas that are in sync with the leader.
 
 Current State:
 
-Leader (In Broker-1)       Offset 3
-Follower-1 (In Broker-2)   Offset 3
-Follower-2 (In Broker-3)   Offset 3
+Leader (In Broker-1)     ->   Offset 3
+Follower-1 (In Broker-2) ->   Offset 3
+Follower-2 (In Broker-3) ->   Offset 3
 
 ISR:
 
