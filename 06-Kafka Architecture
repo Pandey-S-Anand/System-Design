@@ -268,11 +268,12 @@ Example:
 
 Topic: Orders
 
-Partitions:
 
-Partition-0
-Partition-1
-Partition-2
+Orders
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
 
 Har Partition ke andar messages sequentially store hote hain aur har message ko ek unique Offset milta hai.
 
@@ -457,9 +458,6 @@ Partitions ko kaise distribute kiya jayega.
 
 - Partition Assignment Strategies sirf Consumer Groups ke liye hoti hain.
 
-- Standalone Consumers ke liye Kafka automatically decide nahi karta ki
-  kaunsa Consumer kisi Topic ki kaunsi Partition consume karega.
-
 - Standalone Consumers khud manually decide karte hain ki unhe kis
   Partition se read karna hai using the Consumer API (consumer.assign(...)).
 
@@ -472,11 +470,11 @@ Partitions ko kaise distribute kiya jayega.
 
 Topic = Orders
 
-Partitions:
-
-Partition-0
-Partition-1
-Partition-2
+Orders
+|
+|- Partition-0
+|- Partition-1
+|- Partition-2
 
 Maan lo 3 Standalone Consumers hain jinhone Orders topic ko subscribe kiya hua hai :
 
@@ -602,7 +600,7 @@ Partition-1
 Partition-3
 
 
-Ab Consumer-3 join karta hai.
+Ab Consumer-3 join karta hai OrderProcessors group ko.
 
 Isliye Rebalancing trigger hogi.
 
