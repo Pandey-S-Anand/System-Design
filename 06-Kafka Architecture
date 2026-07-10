@@ -1640,11 +1640,12 @@ aur Consumer Groups us parallelism ko efficiently utilize karte hain.
 
 Kafka replication use karta hai, jisme har partition ki multiple replicas different brokers par distribute ki ja sakti hain. 
 Ek replica Leader hoti hai aur baaki replicas Followers hoti hain
-Leader replica read/write requests handle karti hai, aur follower replicas continuously leader se data copy karti rehti hain, taaki fault tolerance aur high availability ensure ki ja sake.
+Leader replica read / write requests handle karti hai, aur follower replicas continuously leader se data copy karti rehti hain, 
+taaki fault tolerance aur high availability ensure ki ja sake.
 
-------------------------
-1: Without Replication
-------------------------
+---------------------------------
+## WHY REPLICATION IS REQUIRED ?
+---------------------------------
 
 Maan lo:
 
@@ -1696,17 +1697,17 @@ To: Partition-0 ka data permanently lost.
 Bahut dangerous.
 
 
-------------------------
-2: With Replication
-------------------------
+--------------------------------
+WHY REPLICATION IS REQUIRED ?
+--------------------------------
 
 Example:
 
-Topic: Orders Topic
+Topic: Orders 
 
-Aur Orders Topic ke paas 3 Partitions hai:
+Aur Orders topic ke paas 3 Partitions hai:
 
-Orders Topic
+Orders 
 |
 |-Partition-0
 |-Partition-1
@@ -1798,8 +1799,29 @@ Follower ---> Leader
 - Similarly, Consumer bhi ab Partition-0 ka data Broker-3 par maujood naye Leader Replica se hi consume karega.
 
 
+## IMPORTANT:
+--------------
+
+Yahan hum baar-baar bol rahe hain:
+
+"Kafka detect karega"
+
+Lekin actually Kafka ke andar ye kaam kaun karta hai?
+
+Answer:
+
+Kafka Controller
+
+- Purane Kafka (ZooKeeper Mode) me cluster metadata ZooKeeper me maintain hota tha. 
+  Kafka Controller isi metadata ka use karke cluster ko manage karta tha aur jab kisi Partition ka Leader unavailable ho jata tha, 
+  to ISR (In-Sync Replicas) me se suitable Follower Replica ko naya Leader elect karta tha.
+
+- Modern Kafka (KRaft Mode) me ZooKeeper remove ho chuka hai. Ab Kafka Controller khud cluster metadata maintain karta hai 
+  aur Leader Replica fail hone par ISR (In-Sync Replicas) me se suitable Follower Replica ko naya Leader promote karta hai.
+
+
 -----------------------------------------------------------------------
-Kya Ek Partition Ki Multiple Copies Same Broker Me Ho Sakti Hain?
+KYA EK PARTITION KI MULTIPLE COPIES SAME BROKER ME HO SAKTI HAI?
 -----------------------------------------------------------------------
 
 NO
