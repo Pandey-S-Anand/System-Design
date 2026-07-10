@@ -5521,61 +5521,50 @@ duplicate messages ko prevent karta hai.
 
 Lekin Exactly-Once ka problem sirf Producer Retry tak limited nahi hai.
 
-
 ## EXAMPLE
 --------------
 
-Maan lo ek Topic hai:
+Maan lo do Topics hain:
 
-Topic = order-topic
+1. order-topic
+2. payment-topic
 
-Aur Topic ke paas sirf 1 Partition hai:
+Dono Topics ke paas sirf 1-1 Partition hai.
 
-Partition-0
- |
- Offset 0 -> Order-101
+order-topic
+|
+└── Partition-0
+    └── Offset 0 -> Order-101
 
+payment-topic
+|
+└── Partition-0
 
-Ek Consumer Group hai:
+Ab maan lo do Consumer Groups hain:
+
+1. order-processors
+   - Consumer-1
+   - Consumer-2
+   - Consumer-3
+
+2. payment-processors
+   - Payment-Consumer-1
+
+Kafka har Consumer Group ke liye alag Group Coordinator assign karta hai.
+
+Possible Partition Assignment:
 
 order-processors
 
-Jisme 3 Consumers hain:
-
-Consumer-1
-Consumer-2
-Consumer-3
-
-Kafka Assignment:
-
-Partition-0 -> Consumer-1
-
+Partition-0 (order-topic) -> Consumer-1
 Consumer-2 -> Idle
-
 Consumer-3 -> Idle
 
-Saath hi ek aur Topic hai:
+----------------------------
 
-payment-topic
+payment-processors
 
-Jiske paas bhi sirf 1 Partition hai:
-
-payment-topic
-|
-Partition-0
-
-Ek aur Consumer hai:
-
-Payment-Consumer-1
-
-Jo payment-topic ko subscribe kiye hua hai.
-
-Kafka Assignment:
-
-payment-topic
-|
-Partition-0 -> Payment-Consumer-1
-
+Partition-0 (payment-topic) -> Payment-Consumer-1
 
 
 Consumer-1 ka kaam hai:
