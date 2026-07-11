@@ -121,15 +121,15 @@ Aajkal (Kafka 3.x+) mostly KRaft Mode use hota hai.
 
 Zookeeper ki dependency remove kar di gayi hai.
 
-===============================================================================
+=============================
 2: Kafka Cluster and Broker
-===============================================================================
+=============================
 
    Kafka Cluster multiple Brokers ka collection hota hai. Broker basically ek Kafka Server hota hai jo messages ko store aur serve karne ka kaam karta hai.
 
-===============================================================================
+===================================
 3: Producer, Consumer aur Topic 
-===============================================================================
+===================================
 
    Producer messages ko Topic me publish karta hai. 
    Consumer Topic ko subscribe karta hai aur usme se messages read karta hai.
@@ -141,9 +141,10 @@ Zookeeper ki dependency remove kar di gayi hai.
    Payments
    Notifications
 
-===============================================================================
+
+==========================
 4: Topic aur Partitions 
-===============================================================================
+==========================
 
    Topic Partition/s me divided hota hai.
    Example:
@@ -193,9 +194,9 @@ Zookeeper ki dependency remove kar di gayi hai.
    Actual data Partitions ke andar store hota hai.
 
 
-===============================================================================
+============
 5: OFFSET
-===============================================================================
+============
 
 Har Partition ke andar har message ko ek unique Offset milta hai.
 
