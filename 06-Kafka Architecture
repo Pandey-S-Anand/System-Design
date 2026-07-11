@@ -488,11 +488,13 @@ consumer.assign(Arrays.asList(
     new TopicPartition("orders", 0)
 ));
 
+
 Ya sirf Partition-1:
 
 consumer.assign(Arrays.asList(
     new TopicPartition("orders", 1)
 ));
+
 
 Ya saari Partitions:
 
@@ -684,6 +686,124 @@ Isme configure kar sakte ho:
 - StickyAssignor
 - CooperativeStickyAssignor
 
+
+----------------
+## REBALANCING
+-----------------
+
+Rebalancing is the process in which Kafka redistributes the partitions of a topic among the consumers of a consumer group whenever the group membership changes,
+such as when a new consumer joins or an existing consumer leaves or crashes. Rebalancing jab trigger hoti hai, us samay Partition Assignment Strategies ke
+basis par ye decide kiya jata hai ki consumers ke beech partitions kaise redistribute honge. Hum already in Partition Assignment Strategies ko pehle hi padh chuke hain.
+
+## PARTITION ASSIGNMENT STRATEGIES :
+-------------------------------------
+
+1. Range Assignor
+2. Round Robin Assignor
+3. Sticky Assignor
+4. Cooperative Sticky Assignor
+
+
+## EXAMPLE:
+
+Maan lo:
+
+Topic = Orders
+
+Aur Orders Topic ke paas 3 Partitions hain:
+
+Orders
+|
+|-Partition-0
+|-Partition-1
+|-Partition-2
+
+Maan lo 2 consumers (say Consumer-1 and Consumer-2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
+
+order-group:
+|
+|- Consumer-1
+|- Consumer-2
+
+Is consumer-group ka Group Coordinator partition assignment kuch aisa kar sakta hai:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-1
+
+Sab normal chal raha hai.
+
+Rebalancing Kab Hota Hai?
+
+Kafka ko jab pata chalta hai ki consumer group ki composition change ho gayi hai. 
+
+---------------------------------
+CASE 1: NAYA CONSUMER JOIN KARE
+---------------------------------
+
+Pehle:
+
+Consumer-1
+Consumer-2
+
+Ab:
+
+Consumer-1
+Consumer-2
+Consumer-3
+
+Kafka sochega:
+
+"Ab ek naya consumer aa gaya hai, kaam redistribute karna chahiye."
+
+To reassignment karega using the configured Partition Assignment Strategy.
+
+Example:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-3
+
+Ye rebalancing hai.
+
+---------------------------------
+CASE 2: CONSUMER CRASH HO JAYE
+---------------------------------
+
+Pehle:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-2
+Partition-2 -> Consumer-1
+
+Ab Consumer-2 crash ho gaya.
+
+Kafka sochega:
+
+"Partition-1 ko ab kaun consume karega?"
+
+To reassignment karega using the configured Partition Assignment Strategy.
+
+Example:
+
+Partition-0 -> Consumer-1
+Partition-1 -> Consumer-1
+Partition-2 -> Consumer-1
+
+Ye bhi rebalancing hai.
+
+---------------------------------
+CASE 3: CONSUMER RESTART HO
+---------------------------------
+
+Kafka ke liye restart bhi:
+
+leave group
+join group
+
+jaisa hi hota hai.
+
+Isliye rebalance trigger ho sakta hai.
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 ## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE TOPIC KI HAR PARTITION ME KAHA TAK MESSAGES CONSUME KIYE HAIN?
@@ -906,7 +1026,6 @@ apne __consumer_offsets internal topic me store kar lega.
 
 Consumer restart hone par Kafka Committed Offset check karega
 aur uske next Offset se reading continue karwa dega.
-
 
 
 
@@ -1639,7 +1758,7 @@ aur Consumer Groups us parallelism ko efficiently utilize karte hain.
 
 
 ==================
-10: REPLICATION
+9: REPLICATION
 ==================
 
 Kafka replication use karta hai, jisme har partition ki multiple replicas different brokers par distribute ki ja sakti hain. 
@@ -2292,200 +2411,6 @@ Actual parallelism application ki implementation par depend karta hai, jaise mul
 
 
 ===============================================================================
-11: Rebalancing
-===============================================================================
-
-Rebalancing is the process in which Kafka redistributes partitions of a topic among consumers of a consumer group whenever the group membership changes,
-such as when a new consumer joins, an existing consumer leaves or crashes .
-
-Maan lo:
-
-Topic = Orders
-
-Aur Orders Topic ke paas 3 Partitions hai:
-
-Orders
-|
-|-Partition-0
-|-Partition-1
-|-Partition-2
-
-Maan lo 2 consumers (say Consumer-1 and Consumer-1) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
-
-order-group:
-
-Consumer-1
-Consumer-2
-
-Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-1
-
-Sab normal chal raha hai.
-
-Rebalancing Kab Hota Hai?
-
-Kafka ko jab lagta hai ki consumer group ki composition change ho gayi hai. Is case me 'order-group' ki composition change ho gayi.
-
----------------------------------
-CASE 1: NAYA CONSUMER JOIN KARE
----------------------------------
-
-Pehle:
-
-Consumer-1
-Consumer-2
-
-Ab:
-
-Consumer-1
-Consumer-2
-Consumer-3
-
-Kafka sochega:
-
-"Ab ek naya consumer aa gaya hai, kaam redistribute karna chahiye."
-
-To reassignment karega.
-
-Example:
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-3
-
-Ye rebalancing hai.
-
----------------------------------
-Case 2: CONSUMER CRASH HO JAYE
----------------------------------
-
-Pehle:
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-3
-
-Ab Consumer-3 crash ho gaya.
-
-Kafka sochega:
-
-"Partition-2 ko ab kaun consume karega?"
-
-Reassignment:
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-1
-
-Ye bhi rebalancing hai.
-
----------------------------------
-Case 3: CONSUMER RESTART HO
----------------------------------
-
-Kafka ke liye restart bhi:
-
-leave group
-join group
-
-jaisa hi hota hai.
-
-Isliye rebalance trigger ho sakta hai.
-
------------------------------------
-## REBALANCING KI PROBLEM KYA HAI?
------------------------------------
-
-Classic rebalance me processing kuch time ke liye ruk sakti hai.
-
-Example:
-
-Maan lo:
-
-Topic = Orders
-
-Partitions:
-
-Orders
-|
-|-Partition-0
-|-Partition-1
-|-Partition-2
-
-
-Maan lo 2 consumers (say Consumer-1 and Consumer-2) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
-
-order-group:
-
-Consumer-1
-Consumer-2
-
-Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
-
-Partition-0 -> Consumer-1
-Partition-1 -> Consumer-2
-Partition-2 -> Consumer-1
-
-Sab normal chal raha hai.
-
-Achanak:
-
-Consumer-3 join karta hai.
-
-Rebalance start ho jata hai.
-
-Thode time ke liye consumers pause ho sakte hain.
-
-Production systems me ye issue hota tha.
-
-Isliye Kafka ne later:
-
-Cooperative Rebalancing
-
-introduce ki.
-
--------------------------------------------------------------------------------
-Cooperative Rebalancing Kya Hai?
--------------------------------------------------------------------------------
-
-Purana approach:
-
-Sab partitions chhodo
-Sab dobara assign karo
-
-Naya approach:
-
-Sirf zaruri partitions move karo
-
-Example:
-
-Pehle:
-
-Partition-0  -> Consumer-1
-Partition-1  -> Consumer-2
-Partition-2  -> Consumer-1
-
-Consumer-3 join hua.
-
-Purana rebalance:
-
-Sab revoke karo
-Sab dobara assign karo
-
-Naya cooperative rebalance:
-
-Partition-2 -> Consumer-3
-
-Bas.
-
-Baaki assignments disturb nahi hote.
-
-Production me ye preferred approach hai.
-
-===============================================================================
 10 : Consumer Group Coordinator
 ===============================================================================
 
@@ -2577,6 +2502,7 @@ Consumer-2 = DEAD
 
 
 ## FIR KYA HOGA?
+------------------
 
 Jaise hi Consumer-2 dead declare hota hai, Consumer Group Coordinator Rebalancing trigger karega.
 
@@ -2852,8 +2778,9 @@ Result:
     Consumer removed
     Rebalance triggered
 
+
 ===============================================================================
-11 : ISR (IN SYNC REPLICAS) & LEADER ELECTION
+11 : ISR (IN SYNC REPLICAS) & PARTITION LEADER ELECTION
 ===============================================================================
 
 ISR (In Sync Replicas) Kafka ke fault tolerance ka core concept hai.
@@ -2955,9 +2882,9 @@ Offset 3 -> D
 
 Ab teeno replicas completely synchronized hain.
 
-------------------------------------------------------------
+--------------
 ISR KYA HAI? 
-------------------------------------------------------------
+--------------
 
 ISR (In Sync Replicas)is a set of replicas that are in sync with the leader.
 
@@ -2979,9 +2906,10 @@ Aur yaad rakho:
 
 Leader bhi partition ki ek replica copy hi hai, bas usko special role mila hua hai, isliye leader bhi ISR ka member hota hai.
 
-------------------------------------------------------------
+
+---------------------
 OUT OF SYNC REPLICA
-------------------------------------------------------------
+---------------------
 
 Ab Producer aur messages bhejta hai jo ki partition-0 ke Leader replica (In Broker-1) mai sequentially store hote hai:
 
@@ -3040,6 +2968,7 @@ New ISR:
 
 ISR = {Leader, Follower-1}
 
+
 ## IMPORTANT:
 --------------
 
@@ -3057,9 +2986,10 @@ ISR Members = 2
 
 Note: ISR me hone ka matlab ye nahi ki replica har moment leader ke exact same offset par hai. ISR replicas thoda lag kar sakte hain.
 
-------------------------------------------------------------
+
+------------------------------------------
 ## KAFKA ISR MAINTAIN HI KYU KARTA HAI?
-------------------------------------------------------------
+------------------------------------------
 
 Current State:
 
@@ -3240,9 +3170,9 @@ Producer decide karta hai:
 
 "Mujhe success kab maana hai?"
 
-------------------------------------------------------------
+-------------------
 Case 1: ACKS = 0
-------------------------------------------------------------
+-------------------
 
 Producer message publish karne ke baad bina kisi confirmation from Leader Replica (i.e. Partition-0 in Broker-1)
 ka wait kiye aage badh jata hai i.e Producer wait hi nahi karta after publishing the message.
@@ -3261,9 +3191,10 @@ producer ko pata nahi.
 
 Data loss possible.
 
-------------------------------------------------------------
+-------------------
 Case 2: ACKS = 1
-------------------------------------------------------------
+-------------------
+
 Producer message publish karta hai ye message Partition-0 ke Leader Replica (i.e. Partition-0 in Broker-1)
 ke paas jata hai.
 
@@ -3314,6 +3245,7 @@ Follower-2 Offset = 0 (Broker-3)
 
 ISR = {Follower-1, Follower-2}
 
+
 ## IMPORTANT NOTE:
 -------------------
 
@@ -3340,9 +3272,10 @@ Isliye Offset 101 wala message lost ho gaya.
 
 Data Loss.
 
-------------------------------------------------------------
+
+--------------------
 Case 3: ACKS = ALL
-------------------------------------------------------------
+--------------------
 
 Current State:
 
@@ -3476,6 +3409,7 @@ Ab Producer:
 acks = all
 
 use kar raha hai.
+
 
 ## QUESTION:
 --------------
