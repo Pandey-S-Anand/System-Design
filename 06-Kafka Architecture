@@ -539,8 +539,8 @@ Aur ye dono same Consumer Group me hain:
 Group = OrderProcessors
 
 
-1. Range Assignor
------------------
+1. RANGE ASSIGNOR
+-------------------
 
 Assigns a continuous range of partitions to each consumer.
 
@@ -558,7 +558,7 @@ Partition-2
 Partition-3
 
 
-2. Round Robin Assignor
+2. ROUND ROBIN ASSIGNOR
 ------------------------
 
 Partitions ko consumers ke across relatively evenly distribute karta hai.
@@ -577,8 +577,8 @@ Partition-1
 Partition-3
 
 
-3. Sticky Assignor
-------------------
+3. STICKY ASSIGNOR
+--------------------
 
 Tries to keep the existing partition assignments unchanged
 as much as possible to minimize partition movement during rebalancing.
@@ -651,8 +651,8 @@ Benefits:
 - Unnecessary partition movement ko reduce karta hai.
 
 
-4. Cooperative Sticky Assignor
--------------------------------
+4. COOPERATIVE STICKY ASSIGNOR
+--------------------------------
 
 Ye Sticky Assignor ka improved version hai.
 
@@ -1033,15 +1033,17 @@ Intro:
 
 Ab maan lo 5 consumers hai jo ki 'Intro' topic ko subscribe kiye hue hai 
 
-Consumer-1 
-Consumer-2 
-Consumer-3 
-Consumer-4 
-Consumer-5
-
 and ye pancho same consumer-group me hain. 
 
 consumer-group = IntroProcessors
+
+IntroProcessors
+|
+|- Consumer-1 
+|- Consumer-2 
+|- Consumer-3 
+|- Consumer-4 
+|- Consumer-5
 
 
 Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai:
@@ -1092,9 +1094,8 @@ Offset 0 : "IS"
 
 
 
-## Ab Sabse Important Question
-
-Final output kya hoga? Kya mujhe "MY NAME IS ANURAG" milega?
+## MOST IMPORTANT QUESTION - KYA OUTPUT "MY NAME IS ANURAG" HOGA?
+------------------------------------------------------------------------------------------------
 
 Answer: NO. 
 
@@ -1553,9 +1554,9 @@ Partition-2 -> Order-101
 
 
 
-===============================================================================
+============================================
 9: WHY PARTITIONS ARE REQUIRED IN A TOPIC?
-===============================================================================
+============================================
 
 ------------------
 1: SCALABILITY
@@ -1578,6 +1579,7 @@ Agar Topic ka saara data sirf ek hi Broker par store ho raha ho:
 Broker-1
 |
 Orders Topic
+
 
 To time ke saath messages badhte jaayenge aur ek point par:
 
@@ -1621,7 +1623,9 @@ Parallel processing ka actual benefit Consumer Groups provide karte hain.
 
 Consumer Group Topic ke Partitions ko apne Consumers ke beech divide kar deta hai, jisse multiple Consumers alag-alag Partitions ko simultaneously consume kar sakte hain.
 
+
 ## IMPORTANT:
+---------------
 
 Consumer Groups parallel processing tabhi achieve kar sakte hain jab Topic me multiple Partitions available hon.
 
@@ -1750,16 +1754,12 @@ Har partition ka ek leader hota hai.
 
 Producer jo bhi message publish karta hai, agar wo message kisi particular partition me map hota hai, to sabse pehle us Partition ke Leader Replica me store hota hai.
 
-Baaki copies/replica followers hoti hain.
+Baaki copies /replica followers hoti hain.
 
 Leader partion
-
    |
-
    +----> Follower partition
-
    |
-
    +----> Follower partition
 
 
