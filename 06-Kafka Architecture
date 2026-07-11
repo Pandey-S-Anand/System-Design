@@ -1821,13 +1821,13 @@ Kafka Controller
 
 
 -----------------------------------------------------------------------
-KYA EK PARTITION KI MULTIPLE COPIES SAME BROKER ME HO SAKTI HAI?
+## KYA EK PARTITION KI MULTIPLE COPIES SAME BROKER ME HO SAKTI HAI?
 -----------------------------------------------------------------------
 
 NO. Kafka allow nahi karta. Replication ka purpose hi fail ho jayega.
 
 -----------------------------------------------------------------------
-CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS OF SAME TOPIC ?
+## CAN A SINGLE CONSUMER CONSUME MULTIPLE PARTITIONS OF SAME TOPIC ?
 -----------------------------------------------------------------------
 
 YES.
@@ -1854,7 +1854,7 @@ Orders
 |-Partition-2
 
 
-## 1. Consumer Group Perspective
+## 1. CONSUMER GROUP PERSPECTIVE
 ----------------------------------
 
 Maan lo 2 consumers (say Consumer-1 and Consumer-1) 'Orders' topic ko listen kar rahe hain aur dono same consumer group se belong karte hain, say 'order-group'.
@@ -1884,8 +1884,8 @@ Result:
 So Consumer-1 is consuming data from two different Partitions.
 
 
-## 2. Standalone Consumer Perspective
---------------------------------------
+## 2. STANDALONE CONSUMER PERSPECTIVE
+---------------------------------------
 
 Maan lo 2 Standalone consumers hai say Consumer-1 and Consumer-2 jo ki 'Orders' topic ko listen kar rahe hain.
 
@@ -1917,7 +1917,7 @@ However:
 
 
 -----------------------------------------------------------------------
-CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
+## CAN A SINGLE CONSUMER CONSUME FROM MULTIPLE TOPICS?
 -----------------------------------------------------------------------
 
 YES.
@@ -1945,7 +1945,7 @@ Payments
 |- Partition-1
 
 
-## CASE 1 : Standalone CONSUMERS
+## CASE 1 : STANDALONE CONSUMERS
 --------------------------------------
 
 Consumer-1 independently subscribes to following topics:
@@ -1993,7 +1993,6 @@ Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta 
 
     Orders-Partition-0    -> Consumer-1
     Orders-Partition-1    -> Consumer-2
-
     Payments-Partition-0 -> Consumer-1
     Payments-Partition-1 -> Consumer-2
 
@@ -2001,13 +2000,11 @@ Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta 
 Result:
 
     Consumer-1
-
         ├── Orders-Partition-0 
         └── Payments-Partition-0
 
 
     Consumer-2
-
         ├── Orders-Partition-1
         └── Payments-Partition-1
 
@@ -2026,9 +2023,9 @@ However:
 
 
 
-===============================================================================
-PARALLELISM NOTE
-===============================================================================
+--------------------
+## PARALLELISM NOTE
+--------------------
 
 Suppose ek Topic hai:
 
@@ -2122,9 +2119,9 @@ Partition-1 -> Order-Y
 Partition-0 -> Order-B
 
 
--------------------------------------------------------------------------------
+-----------------------------------------
 ## KYA PROCESSING SEQUENTIAL HOTI HAI?
--------------------------------------------------------------------------------
+-----------------------------------------
 
 By default:
 
@@ -2298,8 +2295,8 @@ Actual parallelism application ki implementation par depend karta hai, jaise mul
 11: Rebalancing
 ===============================================================================
 
-Rebalancing is the process in which Kafka redistributes partitions among consumers of a consumer group whenever the group membership changes,
-such as when a new consumer joins, an existing consumer leaves, crashes, or becomes unavailable.
+Rebalancing is the process in which Kafka redistributes partitions of a topic among consumers of a consumer group whenever the group membership changes,
+such as when a new consumer joins, an existing consumer leaves or crashes .
 
 Maan lo:
 
@@ -2307,7 +2304,7 @@ Topic = Orders
 
 Aur Orders Topic ke paas 3 Partitions hai:
 
-Orders Topic
+Orders
 |
 |-Partition-0
 |-Partition-1
@@ -2385,7 +2382,9 @@ Partition-2 -> Consumer-1
 
 Ye bhi rebalancing hai.
 
-Case 3: Consumer Restart Ho
+---------------------------------
+Case 3: CONSUMER RESTART HO
+---------------------------------
 
 Kafka ke liye restart bhi:
 
@@ -2396,9 +2395,9 @@ jaisa hi hota hai.
 
 Isliye rebalance trigger ho sakta hai.
 
--------------------------------------------------------------------------------
-Rebalancing ki problem kya hai?
--------------------------------------------------------------------------------
+-----------------------------------
+## REBALANCING KI PROBLEM KYA HAI?
+-----------------------------------
 
 Classic rebalance me processing kuch time ke liye ruk sakti hai.
 
