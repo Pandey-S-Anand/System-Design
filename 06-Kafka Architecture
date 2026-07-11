@@ -2411,9 +2411,9 @@ Lekin true parallel processing Kafka automatically provide nahi karta.
 Actual parallelism application ki implementation par depend karta hai, jaise multiple Worker Threads ya asynchronous processing ka use.
 
 
-===============================================================================
+===================================
 10 : Consumer Group Coordinator
-===============================================================================
+===================================
 
 Har Consumer Group ke liye Kafka Cluster ka koi ek Broker automatically Group Coordinator ka role perform karta hai.
 Ye Broker us Consumer Group se related coordination aur management ka kaam handle karta hai.
@@ -2452,13 +2452,17 @@ Consumer Group Coordinator Kya Karta Hai?
 ## 1. CONSUMER JOIN KARWATA HAI
 --------------------------------
 
-Jab bhi koi naya Consumer kisi Consumer Group ko join karta hai, to us Consumer ko group me register karne ka kaam Consumer Group Coordinator ka hota hai.
+Jab bhi koi naya Consumer kisi Consumer Group ko join karta hai, to us Consumer ko Group me register karne ka kaam Consumer Group Coordinator ka hota hai.
+Kyunki Consumer Group ki composition change ho jaati hai (ek naya Consumer add ho gaya), isliye Rebalancing trigger hoti hai.
+Rebalancing ke dauran Consumer Group Coordinator available Consumers aur Topic ke Partitions ke basis par Partition Assignment Strategy (Range, Round Robin, Sticky, Cooperative Sticky) 
+ka use karke decide karta hai ki kaunsi Partition kis Consumer ko assign hogi.
 
 
 ##2. PARTITION ASSIGNMENT KARWATA HAI
 -------------------------------------
 
-Kaunsa Consumer kis Partition ko consume karega, ye decide karne ka kaam Consumer Group Coordinator ka hota hai.
+Consumer Group ke andar kaunsa Consumer kis Partition ko consume karega, ye decide karne ka kaam Consumer Group Coordinator ka hota hai. Jab Rebalancing trigger hoti hai, 
+to Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke available Consumers ke beech Partitions assign karta hai.
 
 Is order-group ka group-coordinator (i.e Broker-2) partition assignment kuch aisa kar sakta hai :
 
