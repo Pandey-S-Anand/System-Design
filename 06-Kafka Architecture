@@ -2868,9 +2868,10 @@ Broker-3 -> Partition-0 (Follower)
 
  Follower (Broker-2)   Follower (Broker-3)
 
-------------------------------------------------------------
-MESSAGE FLOW
-------------------------------------------------------------
+
+------------------
+## MESSAGE FLOW
+------------------
 
 Producer message bhejta hai:
 
@@ -2929,9 +2930,10 @@ Offset 3 -> D
 
 Ab teeno replicas completely synchronized hain.
 
---------------
-ISR KYA HAI? 
---------------
+
+-----------------
+## ISR KYA HAI? 
+-----------------
 
 ISR (In Sync Replicas)is a set of replicas that are in sync with the leader.
 
@@ -2954,9 +2956,9 @@ Aur yaad rakho:
 Leader bhi partition ki ek replica copy hi hai, bas usko special role mila hua hai, isliye leader bhi ISR ka member hota hai.
 
 
----------------------
-OUT OF SYNC REPLICA
----------------------
+-----------------------
+## OUT OF SYNC REPLICA
+-----------------------
 
 Ab Producer aur messages bhejta hai jo ki partition-0 ke Leader replica (In Broker-1) mai sequentially store hote hai:
 
@@ -3031,7 +3033,10 @@ But
 
 ISR Members = 2
 
-Note: ISR me hone ka matlab ye nahi ki replica har moment leader ke exact same offset par hai. ISR replicas thoda lag kar sakte hain.
+
+## NOTE: 
+---------
+ISR me hone ka matlab ye nahi ki replica har moment leader ke exact same offset par hai. ISR replicas thoda lag kar sakte hain.
 
 
 ------------------------------------------
@@ -3100,23 +3105,7 @@ Kafka kisko naya Leader banaye?
 ## CASE 1: AGAR FOLLOWER-2 KO LEADER BANA DIYA JAYE
 ------------------------------------------------------------
 
-Follower-2 ke paas sirf offset 3 tak ka data hai i.e
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
-
-Lekin purane Leader ke paas offset 6 tak ka data tha i.e
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
-Offset 6 -> G
-
+Follower-2 ke paas sirf offset 3 tak ka data hai Lekin purane Leader ke paas offset 6 tak ka data tha 
 
 Agar Follower-2 ko Leader bana diya gaya, to:
 
@@ -3125,21 +3114,12 @@ E, F aur G permanently lost ho sakte hain.
 Matlab data loss ho gaya.
 
 
-
 ## CASE 2: AGAR FOLLOWER-1 KO LEADER BANA DIYA JAYE
 ------------------------------------------------------------
 
 Follower-1 Leader ke saath fully synchronized tha.
 
-Uske paas bhi offset-6 tak ka data maujood hai.:
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
-Offset 6 -> G
+Uske paas bhi offset-6 tak ka data maujood hai.
 
 Isliye agar Follower-1 ko Leader promote kiya jaye,
 to koi data loss nahi hoga.
@@ -3157,9 +3137,9 @@ To ISR koi permanent group nahi hai.
 Ye continuously update hota rehta hai based on replica health and lag.
 
 
-===============================================================================
+=====================
 12 : ACKS Kya Hai?
-===============================================================================
+=====================
 
 Maan lo Kafka cluster me multiple brokers hain:
 
@@ -3171,8 +3151,11 @@ Topic = Alphabet
 
 Topic ke paas sirf 1 Partition hai:
 
-Partition-0
+Alphabet
+|
+|- Partition-0
 
+ 
 Aur Replication Factor = 3 hai.
 
 Matlab Partition-0 ki total 3 copies (replicas) hongi jo different brokers
@@ -3181,10 +3164,9 @@ par store hongi.
 Partition Distribution:
 
 Broker-1 -> Partition-0 (Leader)
-
 Broker-2 -> Partition-0 (Follower)
-
 Broker-3 -> Partition-0 (Follower)
+
 
 Producer message bhejta hai: "A"
 
@@ -3205,7 +3187,7 @@ Follower-2 Offset = 0 (Broker-3)
 
 Question:
 
-Leader producer ko kab bolega:
+Leader replica producer ko kab bolega:
 
 "Message Successfully Stored"
 
@@ -3245,9 +3227,9 @@ Case 2: ACKS = 1
 Producer message publish karta hai ye message Partition-0 ke Leader Replica (i.e. Partition-0 in Broker-1)
 ke paas jata hai.
 
-Leader receive karta hai.
+Leader replica receive karta hai.
 
-Leader disk par write karta hai.
+Leader replica disk par write karta hai.
 
 Fir Producer ko ACK bhej deta hai.
 
@@ -3258,7 +3240,7 @@ Producer ko koi farak nahi padta.
 
 Bas Leader ne successfully write kar liya ho.
 
-Problem
+## PROBLEM:
 
 Current State:
 
@@ -3270,10 +3252,10 @@ Follower-2 Offset = 0 (Broker-3)
 
 Producer ne ek naya message bheja manlo "B"
 
-Leader us message ko write kar deta hai:
+Leader replica us message ko write kar deta hai:
 
 Now 
-Leader Offset = 1
+Leader replica Offset = 1
 
 Aur Producer ko ACK bhej deta hai.
 
@@ -3281,7 +3263,7 @@ Producer: SUCCESS
 
 Lekin ussi second Leader crash ho gaya.
 
-Followers tak Offset 1 wala message I.E "B"
+Followers tak Offset 1 wala message i.e "B"
 abhi replicate hi nahi hua tha.
 
 Current State:
@@ -3310,8 +3292,8 @@ Follower-1 (Partition-0 in Broker-2)
 
 new Leader ban gaya.
 
-RESULT:
--------
+## RESULT:
+-----------
 
 Offset 101 wala message kisi replica tak pahucha hi nahi tha.
 
@@ -3337,46 +3319,36 @@ ISR = {Leader, Follower-1, Follower-2}
 
 Producer message publish karta hai.
 
-Ye message Partition-0 ke Leader Replica
-(i.e. Partition-0 on Broker-1)
-ke paas jata hai.
+Ye message Partition-0 ke Leader Replica (i.e. Partition-0 on Broker-1) ke paas jata hai.
 
-Leader receive karta hai.
+Leader replica receive karta hai.
 
-Leader disk par message write karta hai.
+Leader replica disk par message write karta hai.
 
-Ab Leader wait karega.
+Ab Leader replica wait karega.
 
-Jab tak ye message sabhi ISR replicas tak
-replicate nahi ho jata.
+Jab tak ye message sabhi ISR replicas tak replicate nahi ho jata.
 
 Uske baad hi Producer ko ACK bheja jayega.
 
-Example:
+## EXAMPLE:
 
-Producer ne ek naya message bheja:
+Producer ne ek naya message bheja: "B"
 
-"B"
-
-
-Leader us message ko write kar deta hai.
+Leader replica us message ko write kar deta hai.
 
 Updated State:
 
-Leader Offset = 1
+Leader replica Offset = 1
 
 
-Ab Leader (Partition-0 on Broker-1)
-wait karega jab tak baaki ISR replicas
-(Partition-0 on Broker-2 and Broker-3)
+Ab Leader replica (Partition-0 on Broker-1) wait karega jab tak baaki ISR replicas (Partition-0 on Broker-2 and Broker-3)
 bhi is message ko write na kar lein.
 
 Final State:
 
 Leader Offset      = 1
-
 Follower-1 Offset  = 1
-
 Follower-2 Offset  = 1
 
 
@@ -3386,7 +3358,7 @@ Ab Kafka Producer ko ACK bhej dega.
 ## KYA ACKS = ALL MATLAB SAB REPLICAS?
 ----------------------------------------
 
-Nahi.
+NAHI.
 
 Kafka bolta hai:
 
@@ -3415,7 +3387,7 @@ In 3 replicas me:
 
 Replicas:
 
-Leader
+Leader 
 Follower-1
 Follower-2
 
@@ -3465,7 +3437,7 @@ Kya Leader Follower-2 ke sync hone ka bhi wait karega?
 
 Answer:
 
-No.
+NO
 
 Leader sirf ISR members ke sync hone ka wait karega.
 
@@ -3475,11 +3447,8 @@ ISR = {Leader, Follower-1}
 
 To Leader sirf Follower-1 ke sync hone ka wait karega.
 
-Follower-2 ke liye wait nahi karega.
+Follower-2 ke liye wait nahi karega. Kyuki Follower-2 ISR ka member hi nahi hai.
 
-Kyun?
-
-Kyuki Follower-2 ISR ka member hi nahi hai.
 
 Important:
 
@@ -3493,7 +3462,7 @@ NOT
 
 
 ## MIN.INSYNC.REPLICAS
---------------------------
+-------------------------
 
 Yahi sabse important production setting hai.
 
@@ -3529,7 +3498,7 @@ Current ISR:
 
 {Leader, Follower-1, Follower-2}
 
-Ab Producer:
+Producer:
 
 acks=all
 
@@ -3539,10 +3508,8 @@ Question:
 
 "Producer ko success kab milega?"
 
-Kafka bolega:
-
-Jab ISR ke saare replicas me message aa jaye.
-
+Leader replica tabhi ACK bhejega jab message saare current ISR replicas tak replicate ho jaye.
+Lekin write accept hogi ya reject, ye min.insync.replicas decide karta hai.
 
 
 ## SCENARIO 1
@@ -3552,134 +3519,56 @@ Assume:
 
 min.insync.replicas = 2
 
-Producer aur messages bhejta hai.
-
-Updated State:
-
-Leader      Offset = 15
-Follower-1  Offset = 15
-Follower-2  Offset = 15
+Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
 
 Current ISR:
 
 {Leader, Follower-1, Follower-2}
 
-Count = 3
+ISR Count = 3
 
-Kya Kafka ACK de dega?
+Since, ISR Count (3) ≥ min.insync.replicas (2)
 
-Yahi decision min.insync.replicas leta hai.
-
-min.insync.replicas = 2
-
-Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
-
-Current ISR Count = 3
-
-Condition satisfy ho rahi hai.
-
-Aur message saare ISR replicas tak pahunch chuka hai.
-
-Result:
-
-Kafka Producer ko ACK bhej dega.
+Hence,
+-> Write Accepted
+-> Producer ko ACK mil jayega.
 
 
 ## SCENARIO 2
 -------------
 
-Producer aur messages bhejta hai.
-
-Message Leader aur Follower-1 tak pahunch jata hai.
-
-Lekin Follower-2 bahut piche reh jata hai ya crash ho jata hai.
+Ab Follower-2 bahut piche reh jata hai ya crash ho jata hai.
 
 Kafka Follower-2 ko ISR se remove kar deta hai.
 
-Updated State:
-
-Leader      Offset = 20
-Follower-1  Offset = 20
-Follower-2  Offset = 15
-
-Current ISR:
+Updated ISR:
 
 {Leader, Follower-1}
 
-Count = 2
+ISR Count = 2
 
-Kya Kafka ACK de dega?
+Since, ISR Count (2) ≥ min.insync.replicas (2)
 
-Yahi decision min.insync.replicas leta hai.
-
-min.insync.replicas = 2
-
-Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
-
-Current ISR Count = 2
-
-Condition ab bhi satisfy ho rahi hai.
-
-Aur message saare ISR replicas tak pahunch chuka hai.
-
-Result:
-
-Kafka Producer ko ACK bhej dega.
-
-Still fine.
+Hence,
+-> Write Accepted
+-> Producer ko ACK mil jayega.
 
 
 ## SCENARIO 3
 ----------------
-
-Current ISR:
-
-{Leader, Follower-1}
-
-Count = 2
-
-Ab Producer aur messages bhejta hai.
-
-Message Leader par write ho jata hai.
-
-Lekin Follower-1 bhi crash ho jata hai ya Leader ke saath sync nahi reh pata.
-
-Kafka Follower-1 ko bhi ISR se remove kar deta hai.
-
-Updated State:
-
-Leader      Offset = 40
-Follower-1  Offset = 20
-Follower-2  Offset = 15
+Ab Follower-1 bahut piche reh jata hai ya crash ho jata hai.
 
 Current ISR:
 
 {Leader}
 
-Count = 1
+ISR Count = 1
 
-Kya Kafka ACK de dega?
+Since, ISR Count (1) < min.insync.replicas (2)
 
-Yahi decision min.insync.replicas leta hai.
-
-min.insync.replicas = 2
-
-Matlab write accept karne ke liye kam se kam 2 ISR members hone chahiye.
-
-Current ISR Count = 1
-
-Condition satisfy nahi ho rahi.
-
-Result:
-
-Kafka Producer ko ACK nahi bhejega.
-
-Kafka bolega:
-
-Write Rejected
-
-Producer ko exception milega.
-
+Hence,
+-> Write Rejected
+-> Producer ko ACK nhi miega.
 
 
 ## KAFKA WRITE REJECT KYU KAR RAHA HAI?
@@ -3699,13 +3588,9 @@ Lekin currently ISR me sirf:
 
 bacha hua hai.
 
-Count = 1
+ISR Count = 1
 
-Agar Kafka is situation me write accept kar le aur Producer ko ACK bhej de, to Producer maan lega ki data safely store ho gaya hai.
-
-Lekin reality me message sirf Leader ke paas hai.
-
-Ab agar ACK bhejne ke turant baad Leader bhi crash ho jaye, to us message ki koi synchronized copy available nahi hogi.
+Agar Kafka is situation me write accept kar le aur Producer ko ACK bhej de and ACK bhejne ke turant baad Leader bhi crash ho jaye, to us message ki koi synchronized copy available nahi hogi.
 
 Result:
 
@@ -3713,8 +3598,8 @@ Data Loss
 
 Isliye Kafka safety ko priority deta hai aur write reject kar deta hai.
 
-IMPORTANT:
------------
+## IMPORTANT:
+--------------
 
 Write reject karne se Leader crash hone ki possibility khatam nahi hoti.
 
@@ -3742,18 +3627,20 @@ Ye configuration high durability aur fault tolerance provide karti hai.
 
 Note : min.insync.replicas is enforced only when the producer uses acks=all.
 
-===============================================================================
-13 . Retention Policy
-===============================================================================
 
-After a consumer consumes the message from the topic that message is not deleted from the topic (technically partition's of the topic) , it stays there unlike other MQ like RabbitMQ
-i.e
+========================
+13: RETENTION POLICY
+========================
+
+After a consumer consumes the message from the topic that message is not deleted from the topic (technically partition's of the topic) , 
+it stays there unlike other MQ like RabbitMQ i.e
+
 Partition-0
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
+|
+|- Offset 0 -> A
+|- Offset 1 -> B
+|- Offset 2 -> C
+|- Offset 3 -> D
 
 Consumer ne A,B,C,D read kar liya.
 
