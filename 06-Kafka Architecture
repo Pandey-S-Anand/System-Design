@@ -41,9 +41,9 @@
                           | Consumer-3               |
                           +---------------------------+
 
-===============================================================================
+===============
 1: Zookeeper
-===============================================================================
+===============
 
 Purane Kafka versions me zookeeper hua karta tha 
 
@@ -688,9 +688,9 @@ Isme configure kar sakte ho:
 - CooperativeStickyAssignor
 
 
-----------------
-## REBALANCING
------------------
+-------------------------
+## WHAT IS REBALANCING ?
+-------------------------
 
 Rebalancing is the process in which Kafka redistributes the partitions of a topic among the consumers of a consumer group whenever the group membership changes,
 such as when a new consumer joins or an existing consumer leaves or crashes. Rebalancing jab trigger hoti hai, us samay Partition Assignment Strategies ke
@@ -706,6 +706,7 @@ basis par ye decide kiya jata hai ki consumers ke beech partitions kaise redistr
 
 
 ## EXAMPLE:
+------------
 
 Maan lo:
 
@@ -725,6 +726,7 @@ order-group:
 |
 |- Consumer-1
 |- Consumer-2
+
 
 Is consumer-group ka Group Coordinator partition assignment kuch aisa kar sakta hai:
 
@@ -805,6 +807,7 @@ join group
 jaisa hi hota hai.
 
 Isliye rebalance trigger ho sakta hai.
+
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 ## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE TOPIC KI HAR PARTITION ME KAHA TAK MESSAGES CONSUME KIYE HAIN?
@@ -992,18 +995,26 @@ __consumer_offsets
 Isi Topic ki help se Kafka Consumer Group ke offsets ko track karta hai.
 
 
------------------------------------------------------------------------------------------------------------------------------
-## OFFSET COMMIT & STANDALONE CONSUMER - KAFKA STANDALONE CONSUMER KE OFFSETS KO KAISE MANAGE KARTA HAI?
------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+## HOW KAFKA HANDLES OFFSET MANAGEMENT, HEARTBEATS, REBALANCING & PARTITION ASSIGNMENT FOR STANDALONE CONSUMERS
+----------------------------------------------------------------------------------------------------------------------
 
 ## IMPORTANT
 --------------
 
-Kafka me Offset Commit hamesha Consumer Group ke context me hota hai.
+Kafka committed offsets ko hamesha group.id ke context me store karta hai. 
 
-Kafka kabhi bhi Offsets ko kisi individual Consumer ke naam se store nahi karta.
+Kafka kabhi bhi offsets ko kisi individual Consumer ke naam se store nahi karta.
 
 Isliye Offset Commit ke liye Consumer Group identity (group.id) hona zaruri hai.
+
+Standalone Consumer ke paas group.id configured hone se wo Consumer Group ka member nahi ban jata.
+
+group.id sirf Offset Commit ke context me use hota hai.
+
+Consumer Group ka member banne ke liye Consumer ko subscribe() API use karke Consumer Group join karna padta hai.
+
+Heartbeat, Rebalancing aur Automatic Partition Assignment sirf Consumer Groups (subscribe() API) ke liye hote hain.
 
 
 ## CASE-1
@@ -1021,13 +1032,40 @@ group.id=my-app
 
 configured hai.
 
-Ab jab Consumer messages process karke Offset Commit karega,
+Ab ye Consumer manually Partition assign kar raha hai, isliye ye Consumer Group
+join nahi karega.
+
+Is wajah se:
+
+- Kafka automatic Partition Assignment nahi karega.
+- Heartbeats nahi hongi.
+- Rebalancing nahi hogi.
+
+Lekin kyunki group.id configured hai, isliye jab Consumer messages process karke Offset Commit karega,
 to Kafka us Committed Offset ko us Consumer Group ke liye
 apne __consumer_offsets internal topic me store kar lega.
 
+Sirf group.id configure kar dene se offsets automatically commit nahi honge. Consumer ko offsets commit karne ke liye ya to Auto Commit enable karna hoga ya phir Manual Commit use karna hoga.
+
+Offset Commit do tariko se ho sakta hai:
+
+## 1. Auto Commit
+
+enable.auto.commit = true
+
+Ya
+
+## 2. Manual Commit
+
+consumer.commitSync();
+
+Ya
+
+consumer.commitAsync();
+
+
 Consumer restart hone par Kafka Committed Offset check karega
 aur uske next Offset se reading continue karwa dega.
-
 
 
 ## CASE-2
@@ -1048,8 +1086,14 @@ configured nahi hai.
 Ab kyunki Kafka ke paas koi Consumer Group identity hi nahi hai,
 isliye Kafka uske Offsets automatically commit ya store nahi kar sakta.
 
-Is situation me Offsets maintain karne ki responsibility
-application ki hoti hai.
+Is wajah se:
+
+- Kafka automatic Partition Assignment nahi karega.
+- Heartbeats nahi hongi.
+- Rebalancing nahi hogi.
+- Auto Commit aur Manual Commit (commitSync()/commitAsync()) bhi use nahi kiye ja sakte. 
+  i.e Offsets maintain karne ki responsibility application ki hoti hai.
+
 
 Example:
 
@@ -1061,9 +1105,7 @@ Partition-0
 |
 Committed Offset = 125
 
-
 Ya:
-
 
 Redis :
 
@@ -1071,7 +1113,6 @@ Partition-0 -> Offset = 125
 
 
 Ya:
-
 
 File
 
@@ -1103,13 +1144,13 @@ Advantages of Consumer Groups:
 3. Offset Management
    Kafka Consumer Group ke committed offsets ko track karta hai,
 
+
 -------------
 ## IMPORTANT
 -------------
 
 Agar Standalone Consumers kisi Topic ko consume kar rahe hain,
 to har Standalone Consumer ko us Topic ka complete data milega.
-
 
 
 ==============================================================================================================
@@ -1308,14 +1349,14 @@ Kafka sirf Partition ke andar ordering guarantee karta hai.
 ## Partition Ordering Kya Hai?
 
 Partition-0
-
-Offset 0: "MY"
-Offset 1: "ANURAG"
+|
+|- Offset 0: "MY"
+|- Offset 1: "ANURAG"
 
 Partition-1
-
-Offset 0: "NAME"
-Offset 0: "Pandey"
+|
+|- Offset 0: "NAME"
+|- Offset 0: "Pandey"
 
 Partition-2
 
@@ -1901,7 +1942,7 @@ Partition-0 (Leader) present tha.
 
 Kafka detect karega ki Leader unavailable ho gaya hai.
 
-Ab Kafka available Followers me se kisi ek ko promote kar dega.
+Kafka available ISR followers me se kisi ek ko new Leader Replica ke roop me promote kar dega. (Refer: ISR and Partition Leader Election)
 
 Example:
 
@@ -1937,7 +1978,7 @@ Kafka Controller
   to ISR (In-Sync Replicas) me se suitable Follower Replica ko naya Leader elect karta tha.
 
 - Modern Kafka (KRaft Mode) me ZooKeeper remove ho chuka hai. Ab Kafka Controller khud cluster metadata maintain karta hai 
-  aur Leader Replica fail hone par ISR (In-Sync Replicas) me se suitable Follower Replica ko naya Leader promote karta hai.
+  aur Leader Replica unavailable hone par ISR (In-Sync Replicas) me se suitable Follower Replica ko naya Leader promote karta hai.
 
 
 -----------------------------------------------------------------------
@@ -2529,9 +2570,9 @@ Yahi reason hai ki Heartbeats aur Rebalancing closely related concepts hain.
 
 Heartbeats Consumer ki health monitor karti hain, aur Heartbeat fail hone par Rebalancing trigger ho sakti hai.
 
-------------------------------------------
-HEARTBEAT & SESSION TIMEOUT
-------------------------------------------
+-------------------------------
+## HEARTBEAT & SESSION TIMEOUT
+-------------------------------
 
 ##1. SESSION.TIMEOUT.MS
 --------------------------
@@ -2651,12 +2692,12 @@ Result:
     even though it is actually running.
 
 
-------------------------------------------
-MAX POLL INTERVAL
-------------------------------------------
+----------------------
+## MAX POLL INTERVAL
+----------------------
 
 ##1. MAX.POLL.INTERVAL.MS
-------------------------------------------
+---------------------------
 
 Meaning:
     Defines the maximum time allowed between
@@ -2752,9 +2793,10 @@ Partitions previously assigned
 to this consumer will be reassigned
 to other consumers in the group.
 
-------------------------------------------------------------
-HEARTBEAT VS MAX POLL INTERVAL
-------------------------------------------------------------
+
+-----------------------------------
+## HEARTBEAT VS MAX POLL INTERVAL
+-----------------------------------
 
 heartbeat.interval.ms
 
@@ -2784,9 +2826,9 @@ Result:
     Rebalance triggered
 
 
-===============================================================================
+===========================================================
 11 : ISR (IN SYNC REPLICAS) & PARTITION LEADER ELECTION
-===============================================================================
+===========================================================
 
 ISR (In Sync Replicas) Kafka ke fault tolerance ka core concept hai.
 
