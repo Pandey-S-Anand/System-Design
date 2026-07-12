@@ -3633,7 +3633,7 @@ Note : min.insync.replicas is enforced only when the producer uses acks=all.
 ========================
 
 After a consumer consumes the message from the topic that message is not deleted from the topic (technically partition's of the topic) , 
-it stays there unlike other MQ like RabbitMQ i.e
+it stays there unlike other messaging queues like RabbitMQ.
 
 Partition-0
 |
@@ -3642,30 +3642,26 @@ Partition-0
 |- Offset 2 -> C
 |- Offset 3 -> D
 
-Consumer ne A,B,C,D read kar liya.
+Maan lo Consumer ne A, B, C aur D successfully consume kar liye.
 
-Partition me data fir bhi rahega.
+Iske baad bhi Partition ka data unchanged rahega
 
-Partition-0
+-----------------------------------
+## MESSAGES DELETE KAB HOTE HAIN ?
+-----------------------------------
 
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-Offset 3 -> D
+Messages kab delete honge, ye Kafka ki Retention Policy decide karti hai.
 
-Kuch delete nahi hua.
+Kafka data ko do tariko se retain kar sakta hai:
 
-Fir Delete Kab Hota Hai?
+1. Time-Based Retention
+   - Data ko ek configured duration (e.g., 7 days) tak retain kiya jata hai.
+   - Duration complete hone ke baad purana data delete kar diya jata hai.
 
-Retention policy decide karti hai.
 
-Kafka bolta hai:
-
-Main data ko kitne time tak rakhunga before deleting? (Time based retention)
-
-Ya
-
-Main kitna storage limit tak data rakhunga before deleting? (Size Based Retention)
+2. Size-Based Retention
+   - Data ko ek configured storage limit tak retain kiya jata hai.
+   - Storage limit exceed hote hi purane messages delete kiye jaate hain.
 
 ---------------------------------
 KAFKA ME RETENTION SETTINGS:
