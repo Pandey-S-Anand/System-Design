@@ -3674,90 +3674,112 @@ KAFKA ME RETENTION SETTINGS:
 1: BROKER LEVEL RETENTION (Global Default)
 --------------------------------------------
 
-Agar kisi topic ne apni retention define nahi ki, to ye broker level retention use hogi. i.e Broker-level retention acts as the default for all topics
-Note : Retention policy topic ke saare partitions par apply hoti hai, na ki kisi individual/particular partition par.
+Agar kisi Topic ke liye koi retention policy explicitly define nahi ki gayi hai, to Kafka us Topic par Broker-level retention apply karta hai. 
+Yaani, Broker-level retention sabhi Topics ke liye default retention policy ka kaam karti hai.
 
-Kafka broker configuration me define kar sakte ho:
+## NOTE : 
+----------
+Retention policy Topic ke saare Partitions par apply hoti hai, kisi individual Partition par nahi.
 
-# Time based retention
-  log.retention.hours=170
+Broker configuration me retention define ki ja sakti hai:
 
-ya
+## Time-Based Retention:
 
-# Size based retention
-  log.retention.ms=604800000
+   log.retention.hours=170
+
+   ya
+
+   log.retention.ms=604800000
+
+## Size-Based Retention
+
+log.retention.bytes=1073741824
 
 
 ## DEFAULT BROKER LEVEL RETENTION 
 ----------------------------------
 
-Default Time-Based Retention:
+Agar Broker-level retention bhi explicitly configure nahi ki gayi ho, to Kafka default values use karta hai:
+
+## Default Time-Based Retention:
 log.retention.hours=168 (Matlab 7 days) 
 
-
-Default size-Based Retention:
+## Default size-Based Retention:
 log.retention.bytes=-1 (Matlab: No size limit)
 
-Size ki wajah se deletion nahi hogi.
+Matlab koi size limit nahi hai.
+
+Is case me deletion sirf Time-Based Retention ke basis par hogi.
 
 Deletion sirf time-based retention ke basis par hogi.
 
-Aur tumne: Topic level retention nahi di and Broker level retention bhi explicitily nahi di to Kafka broker ye default values use karta hai. 
+Yaani agar:
+
+Topic-level retention define nahi hai.
+Broker-level retention bhi explicitly configure nahi hai.
+
+to Kafka ye default values use karega.
 
 
 ## TRULY INFINITE RETENTION:
 -----------------------------
 
-Agar theoretically indefinitely retain karna ho to:
+Agar theoretically data ko indefinitely retain karna ho, to dono limits disable karni padengi:
 
 log.retention.ms=-1
 log.retention.bytes=-1
 
-Dono disable karne padenge.
+Yaani:
 
-Lekin production me almost kabhi nahi karte, warna disk bhar jayegi.
+Time-based deletion disabled.
+Size-based deletion disabled.
+
+Result: Messages indefinitely retain honge.
+
+Note: Production me aisa configuration generally avoid kiya jata hai, kyunki time ke saath disk storage completely fill ho sakti hai.
+
 
 
 2: TOPIC LEVEL RETENTION (Most Common in Production)
 --------------------------------------------------------
 
-Topic-level configuration broker-level retention ko override kar deti hai.
+Topic-level retention configuration broker-level retention ko override kar deti hai.
 
-Yaani agar tumne kisi specific topic par retention define ki hai, to us topic ke liye broker ki default retention settings use nahi hongi.
+Yaani agar tumne kisi specific topic par retention define ki hai, to us topic ke liye broker ki retention settings use nahi hongi.
 
 Suppose orders topic me sirf 1 partition hai.
 
 Kafka internally partition ko multiple log segments me divide karke store karta hai.
 
 Partition-0
-
-Segment-1
-
-Offset 0 -> A
-Offset 1 -> B
-Offset 2 -> C
-
-Segment-2
-
-Offset 3 -> D
-Offset 4 -> E
-Offset 5 -> F
-
-Segment-3
-
-Offset 6 -> G
-Offset 7 -> H
-Offset 8 -> I
+|
+|- Segment-1
+|   |
+|   |- Offset 0 -> A
+|   |- Offset 1 -> B
+|   |- Offset 2 -> C
+|
+|- Segment-2
+|    |
+|    |- Offset 3 -> D
+|    |- Offset 4 -> E
+|    |- Offset 5 -> F
+|
+|-Segment-3
+    |
+    |- Offset 6 -> G
+    |- Offset 7 -> H
+    |- Offset 8 -> I
 
 
 1: TIME BASED RETENTION:
 ---------------------------
 
-Example:
+## EXAMPLE:
+-------------
 
 @Bean
 public NewTopic ordersTopic() {
-
     return TopicBuilder.name("orders")
             .partitions(3)
             .replicas(3)
@@ -3771,6 +3793,7 @@ public NewTopic ordersTopic() {
             )
             .build();
 }
+
 
 Explanation:
 
@@ -3792,30 +3815,13 @@ Common Values:
 ## TopicConfig.CLEANUP_POLICY_DELETE
 -------------------------------------
 
-Purpose:
-
--> Kafka ko batata hai ki cleanup ka method kya hoga.
-
-Meaning:
-
--> Purana data delete karke cleanup karna hai.
-
-Note:
-
--> Ye cleanup strategy hai.
--> Ye decide karta hai "cleanup kaise hoga".
+Meaning: Purana data delete karke cleanup karna hai.
 
 
 ## TopicConfig.RETENTION_MS_CONFIG
 -------------------------------------
 
-Purpose:
-
--> Kafka ko batata hai ki records kitne time tak retain karne hain.
-
-Meaning:
-
--> Specified time complete hone ke baad purana eligible segments delete kiya ja sakta hai.
+Meaning: Specified time complete hone ke baad purana eligible segments delete kiya ja sakta hai.
 
 In This Example:
 
@@ -3827,11 +3833,6 @@ Meaning:
 
 -> Records ko 7 din tak retain karo.
 -> 7 din ke baad eligible segments delete kiye ja sakte hain.
-
-Note:
--> Ye cleanup strategy nahi hai.
-
-
 
 In the above example:
 
@@ -3887,9 +3888,11 @@ Offset 6 -> G
 2: SIZE BASED RETENTION :
 ---------------------------
 
+## EXAMPLE:
+-------------
+
 @Bean
 public NewTopic ordersTopic() {
-
     return TopicBuilder.name("orders")
             .partitions(3)
             .replicas(3)
@@ -3976,9 +3979,10 @@ Offset 6 -> G
    Agar Kafka har message ko offset level par individually delete kare, to disk operations bahut expensive aur inefficient ho jayengi.
    Isliye Kafka segment-level deletion use karta hai, jo high-throughput systems ke liye kaafi efficient approach hai.
 
-===============================================================================
+
+======================
 14. LOG COMPACTION
-===============================================================================
+======================
 
 Retention ka Goal:
 -> Storage bachana
@@ -4014,15 +4018,16 @@ Topic = UserLocation
 
 Aur Topic ke paas 2 Partitions hain:
 
-Partition-0
-Partition-1
+UserLocation
+|
+|- Partition-0
+|- Partition-1
+
 
 Producer messages publish karta hai:
 
 (Key=User1, Value=Delhi)
-
 (Key=User1, Value=Mumbai)
-
 (Key=User1, Value=Bangalore)
 
 Meaning:
@@ -4040,21 +4045,20 @@ Isliye teeno messages same Partition me jayenge.
 
 Suppose: Partition-0
 
-
 Partition-0
-
+|
 Offset 0:
-Key   = User1
-Value = Delhi
-
-
+|   |- Key   = User1
+|   |- Value = Delhi
+|
+|
 Offset 1:
-Key   = User1
-Value = Mumbai
-
+|   |- Key   = User1
+|   |- Value = Mumbai
+|
 Offset 2:
-Key   = User1
-Value = Bangalore
+    |- Key   = User1
+    |- Value = Bangalore
 
 
 ## QUESTION :
@@ -4086,9 +4090,7 @@ CustomerPreferences
 Messages:
 
 (Key=User1, Value=Hindi)
-
 (Key=User1, Value=English)
-
 (Key=User1, Value=French)
 
 Current Preference: French
@@ -4101,10 +4103,12 @@ Hume sirf latest state chahiye.
 ## COMPACTION ENABLE KARTE HAIN
 ---------------------------------
 
+##EXAMPLE
+----------
+
 @Bean
 public NewTopic userProfileTopic() {
-
-return TopicBuilder.name("user-profile")
+      return TopicBuilder.name("user-profile")
         .partitions(3)
         .replicas(3)
         .config(
@@ -4125,12 +4129,10 @@ return TopicBuilder.name("user-profile")
 
 
 ------------------------------------
-Kya Compaction instant hota hai ?
+## KYA COMPACTION INSTANT HOTA HAI ?
 ------------------------------------
 
-Answer:
-
-Compaction instant nahi hota.
+Answer: Compaction instant nahi hota.
 
 Compaction ek background process hai. Kafka background me periodically cleanup run karta hai.
 
@@ -4140,23 +4142,23 @@ Kafka instant cleanup ki guarantee nahi deta.
 Current State :
 
 Partition-0
-
+|
 Offset 0:
-Key   = User1
-Value = Delhi
-
-
+|   |- Key   = User1
+|   |- Value = Delhi
+|
+|
 Offset 1:
-Key   = User1
-Value = Mumbai
-
-
+|   |- Key   = User1
+|   |- Value = Mumbai
+|
 Offset 2:
-Key   = User1
-Value = Bangalore
+    |- Key   = User1
+    |- Value = Bangalore
 
 
-KAFKA KYA DEKHEGA?
+
+## KAFKA KYA DEKHEGA?
 
 Kafka observe karega: 
 
@@ -4167,38 +4169,20 @@ multiple baar aa rahi hai.
 To Kafka latest record preserve karega.
 
 
-AFTER COMPACTION :
+## AFTER COMPACTION :
 
 Partition-0
-
-Offset 2
-Key   = User1
-Value = Bangalore
-
-Delhi aur Mumbai wale purane records eventually remove ho sakte hain.
+|
+Offset 2:
+    |- Key   = User1
+    |- Value = Bangalore
 
 
-------------------------------------
-MOST IMPORTANT RULE
-------------------------------------
-
-Compaction works on: KEY
-
-NOT VALUE
-
-Kafka compare karta hai:
-
-"Same Key?"
-
-Agar same key hai:
-
-Latest record preserve karo.
-
-Purane records remove kiye ja sakte hain.
+Delhi aur Mumbai wale purane records eventually remove ho gaye.
 
 
 -------------------------------------
-COMPACTION + RETENTION TOGETHER
+## COMPACTION + RETENTION TOGETHER
 -------------------------------------
 
 Kafka me hum Retention aur Compaction dono ek saath use kar sakte hain.
@@ -4210,8 +4194,7 @@ Kafka me hum Retention aur Compaction dono ek saath use kar sakte hain.
 
 @Bean
 public NewTopic userProfileTopic() {
-
-return TopicBuilder.name("user-profile")
+   return TopicBuilder.name("user-profile")
         .partitions(3)
         .replicas(3)
         .config(
@@ -4233,9 +4216,7 @@ Meaning:
    Same KEY ke multiple records hain:
 
    (User1, Delhi)
-
    (User1, Mumbai)
-
    (User1, Bangalore)
 
    To Kafka eventually latest value preserve karega:
@@ -4253,9 +4234,9 @@ Meaning:
    to Kafka segment level cleanup perform kar sakta hai.
 
 
-===============================================================================
+==========================
 15. DELIVERY SEMANTICS
-===============================================================================
+==========================
 
 
 Problem Statement:
