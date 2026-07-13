@@ -4275,19 +4275,19 @@ Consumer-2 -> Idle
 
 Consumer ko:
 
-Order-101
+Order-101 process karna hai.
 
-process karna hai.
-
-Example:
 
 Order-101
-↓
+      ↓
 Payment Deduct
-↓
-Database Update
-↓
+      ↓
+Inventory Reduce
+      ↓
 Email Send
+      ↓
+Offset Commit
+
 
 ----------------------------------------
 ## DELIVERY SEMANTICS EXACTLY KYA HAI?
@@ -4369,9 +4369,9 @@ Business Logic chali hi nahi:
 
 ✖ Payment Deduct
 
-✖ DB Update
+✖ Inventory Reduce
 
-✖ Email
+✖ Email Send
 
 Consumer Group me Rebalancing trigger hoti hai.
 
@@ -4465,7 +4465,9 @@ Consumer-1 message read karta hai.
 
 Business Logic chalta hai:
 
-✔ Payment Deduct
+✔  Payment Deduct
+✔  Inventory Reduce
+✔  Email Send
 
 Lekin uske turant baad:
 
@@ -4491,8 +4493,9 @@ Partition-0 -> Consumer-2
 
 ## BUSINESS SIDE:
 
-✔ Payment already deduct ho chuka hai
-
+✔  Payment already deduct ho chuka hai
+✔  Inventory Reduce ho gya hai
+✔  Email Send ho gya hai
 
 ## KAFKA SIDE:
 
@@ -4515,12 +4518,16 @@ Offset 1 -> Order-102
 Consumer-2 dobara process karega:
 
 ✔ Payment Deduct
+✔ Inventory Deduct
+✔ Email Send
 
 
 ## RESULT :
 ------------
 
 Customer se 2 baar payment deduct ho gayi.
+Inventory 2 baar reduce ho gayi.
+Duplicate email send ho gaya.
 
 ## PROBLEM:
 ------------
@@ -4538,13 +4545,6 @@ Ye dangerous ho sakta hai agar operation idempotent na ho.
 
 Isliye production systems me business logic ko usually
 idempotent design kiya jata hai.
-
-Payment Deduct operation ko generally idempotent banaya jata hai.
-
-Kyuki At-Least-Once me duplicates expected hote hain.
-
-Agar payment system duplicate-safe nahi hai to customer ka paisa
-multiple baar deduct ho sakta hai.
 
 
 ## IMPORTANT OBSERVATION
@@ -4672,41 +4672,10 @@ Retry-3 ❌
 ## BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
 -------------------------------------------------------------
 
-Maan lo:
-
-Topic = Orders
-
-Partition-0
-
-Offset 0 -> Order-101
-
-Consumer Group:
-
-order-processors
-
-Consumer:
-
-Consumer-1
-
-
-## BUSINESS REQUIREMENT
--------------------------
-
-Order-101
-      ↓
-Payment Deduct
-      ↓
-Inventory Reduce
-      ↓
-Email Send
-      ↓
-Offset Commit
-
-
 ## AT-LEAST-ONCE FLOW
 ------------------------
 
-Consumer message read karta hai:
+Consumer-1 message read karta hai:
 
 Offset 0 -> Order-101
 
