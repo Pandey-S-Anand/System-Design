@@ -4238,7 +4238,6 @@ Meaning:
 15. DELIVERY SEMANTICS
 ==========================
 
-
 Problem Statement:
 
 Maan lo:
@@ -4247,35 +4246,31 @@ Topic = Orders
 
 Aur Topic ke paas sirf 1 Partition hai:
 
+Orders
+|
 Partition-0
+  |
+  |- Offset 0 -> Order-101
+  |- Offset 1 -> Order-102
 
-Ek Consumer Group hai:
+
+Ek Consumer Group hai: order-processors
+
+Aur us group me 2 Consumers hai: Consumer-1 and Consumer-2
 
 order-processors
+|
+|- Consumer-1
+|- Consumer-2
 
-Aur us group me ek hi Consumer hai:
 
-Consumer-1
-
-Kafka Assignment:
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
 
 Partition-0 -> Consumer-1
-
-Current State:
-
-Partition-0
-
-Offset 0 -> Order-101
-Offset 1 -> Order-102
-
-Consumer Group:
-
-order-processors
-
-Consumer-1
+Consumer-2 -> Idle
 
 ------------------------
-BUSINESS REQUIREMENT
+## BUSINESS REQUIREMENT
 ------------------------
 Consumer ko:
 
@@ -4294,11 +4289,11 @@ Database Update
 Email Send
 
 
--------------------------------------
-SAB KUCH PERFECT CHALA
--------------------------------------
+--------------------------
+## SAB KUCH PERFECT CHALA
+--------------------------
 
-Consumer:
+Consumer-1:
 
 Offset 0 -> Order-101
 
@@ -4320,7 +4315,7 @@ Order-101 successfully process ho gaya.
 
 Kafka ne bhi Offset Commit record kar liya.
 
-Isliye next time Consumer:
+Isliye next time Consumer-1:
 
 Offset 1 -> Order-102
 
@@ -4329,11 +4324,11 @@ read karega.
 Sab happy.
 
 
--------------------------------------
-DUPLICATE PROCESSING
--------------------------------------
+--------------------------
+## DUPLICATE PROCESSING
+--------------------------
 
-Consumer:
+Consumer-1:
 
 Offset 0 -> Order-101
 
@@ -4345,9 +4340,18 @@ Business Logic start hoti hai:
 
 Lekin uske turant baad:
 
-✖ Consumer Crash
+✖ Consumer-1 Crash
 
 ho jata hai.
+
+Consumer Group me Rebalancing trigger hoti hai.
+
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
+
+Example:
+
+Partition-0 -> Consumer-2
+
 
 ## IMPORTANT:
 --------------
@@ -4366,7 +4370,7 @@ Lekin Order-101 se jude baaki operations complete nahi hue.
 
 
 ## KAFKA SIDE:
-----------------
+---------------
 
 ✖ Offset Commit nahi hua.
 
@@ -4374,26 +4378,26 @@ Kafka ke hisaab se:
 
 Order-101 abhi process hi nahi hua.
 
-Consumer restart hota hai.
-
-Kafka check karta hai:
+Jaise hi Rebalancing ke baad Partition-0 Consumer-2 ko assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
 Last Committed Offset = -1
+
+Iska matlab Kafka ko koi committed progress nahi mili.
 
 Isliye Kafka phir se dega:
 
 Offset 0 -> Order-101
 
-Consumer dobara:
+Ab Consumer-2 is message ko phir se process karega.
 
-Payment Deduct
+Consumer-2 dobara:
 
-kar deta hai.
+Payment Deduct kar deta hai. 
 
 ## RESULT:
 -----------
 
-Customer se 2 baar payment deduct ho gayi.
+Customer-2 se 2 baar payment deduct ho gayi.
 
 ## PROBLEM:
 ------------
@@ -4401,9 +4405,9 @@ Customer se 2 baar payment deduct ho gayi.
 Duplicate Processing
 
 
--------------------------------------
-MESSAGE LOSS
--------------------------------------
+----------------
+## MESSAGE LOSS
+----------------
 
 Consumer:
 
