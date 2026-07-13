@@ -4409,13 +4409,26 @@ Duplicate Processing
 ## MESSAGE LOSS
 ----------------
 
-Consumer:
+## NOTE:
+--------
+Can a consumer commit an offset before processing the message?
+
+Answer:
+
+Yes. Kafka does not enforce when an offset should be committed. The application decides when to commit it.
+However, committing the offset before successful processing can lead to message loss if the consumer crashes before executing the business logic.
+
+
+## EXAMPLE:
+-----------
+
+Consumer-1:
 
 Offset 0 -> Order-101
 
 read karta hai.
 
-Lekin is baar Consumer pehle hi:
+Lekin is baar Consumer-1 pehle hi:
 
 Offset Commit
 
@@ -4427,13 +4440,24 @@ Offset 0 successfully processed.
 
 Lekin Offset Commit ke turant baad:
 
-✖ Consumer Crash
+✖ Consumer-1 Crash
 
 ho jata hai.
 
+Consumer Group me Rebalancing trigger hoti hai.
 
-## IMPORTANT:
---------------
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
+
+Example:
+
+Partition-0 -> Consumer-2
+
+
+## CURRENT SITUATION
+---------------------
+
+## BUSINESS SIDE:
+------------------
 
 Business Logic execute hi nahi hui.
 
@@ -4446,34 +4470,38 @@ Business Logic execute hi nahi hui.
 kuch bhi execute nahi hua.
 
 
+## KAFKA SIDE:
+---------------
+
 Kafka ko lag raha hai:
 
 Order-101 successfully process ho chuka hai.
 
 Kyunki Offset Commit ho gaya tha.
 
+Jaise hi Rebalancing ke baad Partition-0 Consumer-2 ko assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
-Consumer restart hota hai.
+Last Committed Offset = 0
 
 Kafka bolta hai:
 
-Start from next offset
+Start from next offset i.e Offset-1
 
-Aur Consumer ko de deta hai:
+Aur Consumer-2 ko de deta hai:
 
 Offset 1 -> Order-102
 
-Result:
-
+## RESULT:
+-----------
 Order-101 kabhi process hi nahi hua.
 
-Problem:
-
+## PROBLEM:
+-------------
 Message Loss
 
 
 --------------------------------------
-DELIVERY SEMANTICS EXACTLY KYA HAI?
+## DELIVERY SEMANTICS EXACTLY KYA HAI?
 --------------------------------------
 
 Consumer ke paas 2 kaam hain:
