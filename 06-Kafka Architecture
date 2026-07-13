@@ -4509,11 +4509,11 @@ Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke l
 
 Kafka dekhta hai:
 
-Last Committed Offset = 0
+Last Committed Offset = -1
 
-Isliye Consumer-2 reading next offset se start karta hai:
+Isliye Kafka Consumer-2 ko bhi Offset-0 par stored wahi message dubara deliver karega.
 
-Offset 1 -> Order-102
+Offset 0 -> Order-101
 
 Consumer-2 dobara process karega:
 
@@ -4672,6 +4672,20 @@ Retry-3 ❌
 ## BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
 -------------------------------------------------------------
 
+## BUSINESS IDEMPOTENCY
+------------------------
+
+Definition:
+
+Same message 1 baar aaye ya multiple baar aaye,
+final business result same rehna chahiye.
+
+Business Idempotency ensure karti hai ki:
+
+Already completed operations dobara execute na hon,
+aur incomplete operations safely continue ho sakein.
+
+
 ## AT-LEAST-ONCE FLOW
 ------------------------
 
@@ -4689,21 +4703,29 @@ Lekin uske turant baad:
 
 ✖ Consumer Crash
 
-Important:
+## BUSINESS SIDE
+✔  Payment already deduct ho chuka hai
+✔  Inventory Reduce ho gya hai
+✖  Email Send nahi hua
 
-✖ Email Send nahi hua
-
+## KAFKA SIDE:
 ✖ Offset Commit nahi hua
 
+Consumer Group me Rebalancing trigger hoti hai.
 
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
 
-## Kafka ke hisaab se:
+Example:
 
-Order-101 abhi process hi nahi hua.
+Partition-0 -> Consumer-2
 
-Kyuki Offset Commit nahi hua tha.
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
-Isliye Consumer restart hone par Kafka phir se dega:
+Kafka dekhta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka Consumer-2 ko bhi Offset-0 par stored wahi message dubara deliver karega.
 
 Offset 0 -> Order-101
 
@@ -4724,41 +4746,14 @@ To:
 ✖ Inventory 2 baar reduce ho sakti hai
 
 
-## BUSINESS IDEMPOTENCY
-------------------------
-
-Definition:
-
-Same message 1 baar aaye ya multiple baar aaye,
-final business result same rehna chahiye.
-
-Business Idempotency ensure karti hai ki:
-
-Already completed operations dobara execute na hon,
-aur incomplete operations safely continue ho sakein.
-
-
-## CURRENT STATE
------------------
-
-Order-101
-
-✔ Payment Deduct
-
-✔ Inventory Reduce
-
-✖ Email Send
-
-✖ Offset Commit
-
-
 ## MESSAGE REDELIVERY
+--------------------
 
 Kafka phir se dega:
 
 Offset 0 -> Order-101
 
-Consumer state check karega:
+Consumer-2 state check karega:
 
 Payment already completed?
 YES
