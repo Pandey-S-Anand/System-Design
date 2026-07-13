@@ -4272,6 +4272,7 @@ Consumer-2 -> Idle
 ------------------------
 ## BUSINESS REQUIREMENT
 ------------------------
+
 Consumer ko:
 
 Order-101
@@ -4288,221 +4289,9 @@ Database Update
 ↓
 Email Send
 
-
---------------------------
-## SAB KUCH PERFECT CHALA
---------------------------
-
-Consumer-1:
-
-Offset 0 -> Order-101
-
-read karta hai.
-
-Business Logic successfully execute ho jata hai:
-
-✔ Payment Deduct
-
-✔ Database Update
-
-✔ Email Send
-
-Uske baad Consumer-1 Offset Commit kar deta hai.
-
-Result:
-
-Order-101 successfully process ho gaya.
-
-Kafka ne bhi Offset Commit record kar liya.
-
-Isliye next time Consumer-1:
-
-Offset 1 -> Order-102
-
-read karega.
-
-Sab happy.
-
-
---------------------------
-## DUPLICATE PROCESSING
---------------------------
-
-Consumer-1:
-
-Offset 0 -> Order-101
-
-read karta hai.
-
-Business Logic start hoti hai:
-
-✔ Payment Deduct
-
-Lekin uske turant baad:
-
-✖ Consumer-1 Crash
-
-ho jata hai.
-
-Consumer Group me Rebalancing trigger hoti hai.
-
-Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
-
-Example:
-
-Partition-0 -> Consumer-2
-
-
-## IMPORTANT:
---------------
-
-Offset Commit abhi tak hua hi nahi tha.
-
-## CURRENT SITUATION
----------------------
-
-## BUSINESS SIDE:
-------------------
-
-✔ Payment already deduct ho chuka hai.
-
-Lekin Order-101 se jude baaki operations complete nahi hue.
-
-
-## KAFKA SIDE:
----------------
-
-✖ Offset Commit nahi hua.
-
-Kafka ke hisaab se:
-
-Order-101 abhi process hi nahi hua.
-
-Jaise hi Rebalancing ke baad Partition-0 Consumer-2 ko assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
-
-Last Committed Offset = -1
-
-Iska matlab Kafka ko koi committed progress nahi mili.
-
-Isliye Kafka phir se dega:
-
-Offset 0 -> Order-101
-
-Ab Consumer-2 is message ko phir se process karega.
-
-Consumer-2 dobara:
-
-Payment Deduct kar deta hai. 
-
-## RESULT:
------------
-
-Customer-2 se 2 baar payment deduct ho gayi.
-
-## PROBLEM:
-------------
-
-Duplicate Processing
-
-
-----------------
-## MESSAGE LOSS
-----------------
-
-## NOTE:
---------
-Can a consumer commit an offset before processing the message?
-
-Answer:
-
-Yes. Kafka does not enforce when an offset should be committed. The application decides when to commit it.
-However, committing the offset before successful processing can lead to message loss if the consumer crashes before executing the business logic.
-
-
-## EXAMPLE:
------------
-
-Consumer-1:
-
-Offset 0 -> Order-101
-
-read karta hai.
-
-Lekin is baar Consumer-1 pehle hi:
-
-Offset Commit
-
-kar deta hai.
-
-Kafka record kar leta hai:
-
-Offset 0 successfully processed.
-
-Lekin Offset Commit ke turant baad:
-
-✖ Consumer-1 Crash
-
-ho jata hai.
-
-Consumer Group me Rebalancing trigger hoti hai.
-
-Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
-
-Example:
-
-Partition-0 -> Consumer-2
-
-
-## CURRENT SITUATION
----------------------
-
-## BUSINESS SIDE:
-------------------
-
-Business Logic execute hi nahi hui.
-
-✖ Payment Deduct
-
-✖ Database Update
-
-✖ Email Send
-
-kuch bhi execute nahi hua.
-
-
-## KAFKA SIDE:
----------------
-
-Kafka ko lag raha hai:
-
-Order-101 successfully process ho chuka hai.
-
-Kyunki Offset Commit ho gaya tha.
-
-Jaise hi Rebalancing ke baad Partition-0 Consumer-2 ko assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
-
-Last Committed Offset = 0
-
-Kafka bolta hai:
-
-Start from next offset i.e Offset-1
-
-Aur Consumer-2 ko de deta hai:
-
-Offset 1 -> Order-102
-
-## RESULT:
------------
-Order-101 kabhi process hi nahi hua.
-
-## PROBLEM:
--------------
-Message Loss
-
-
---------------------------------------
+----------------------------------------
 ## DELIVERY SEMANTICS EXACTLY KYA HAI?
---------------------------------------
+----------------------------------------
 
 Consumer ke paas 2 kaam hain:
 
@@ -4560,7 +4349,7 @@ Current State:
 
 Offset 0 -> Order-101
 
-Consumer read karta hai:
+Consumer-1 read karta hai:
 
 Read Order-101
 
@@ -4574,7 +4363,7 @@ Last Committed Offset = 0
 
 Ab crash ho gaya:
 
-✖ Consumer Crash
+✖ Consumer-1 Crash
 
 Business Logic chali hi nahi:
 
@@ -4584,26 +4373,32 @@ Business Logic chali hi nahi:
 
 ✖ Email
 
-Consumer restart hota hai.
+Consumer Group me Rebalancing trigger hoti hai.
 
-Kafka dekhega:
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
 
-Offset already committed
+Example:
 
-To:
+Partition-0 -> Consumer-2
+
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
+
+Kafka dekhta hai:
+
+Last Committed Offset = 0
+
+Isliye Consumer-2 reading next offset se start karta hai:
 
 Offset 1 -> Order-102
 
-de dega.
+## RESULT:
+-----------
+Order-101 kabhi process hi nahi hua.
 
-Result:
+## PROBLEM:
+------------
 
-Order-101
-
-kabhi process hi nahi hua.
-
-Message Lost.
-
+MESSAGE LOST.
 
 
 ## REAL WORLD USE CASES
@@ -4629,7 +4424,7 @@ Lekin duplicate metric aa gaya to reporting galat ho sakti hai.
 
 
 2: AT LEAST ONCE
---------------------
+------------------
 
 Guarantee:
 
@@ -4643,7 +4438,7 @@ Guarantee:
   koshish ki jaati hai
 
 
-## KAISE ACHIEVE KARTE HAIN?
+## KAISE ACHIEVE KARTE HAIN ?
 -----------------------------
 
 Consumer pehle Business Logic execute karta hai.
@@ -4666,7 +4461,7 @@ Current State:
 
 Offset 0 -> Order-101
 
-Consumer message read karta hai.
+Consumer-1 message read karta hai.
 
 Business Logic chalta hai:
 
@@ -4674,11 +4469,21 @@ Business Logic chalta hai:
 
 Lekin uske turant baad:
 
-✖ Consumer Crash
+✖ Consumer-1 Crash
 
-Important:
+
+## IMPORTANT :
+--------------
 
 Offset Commit abhi tak hua hi nahi tha.
+
+Consumer Group me Rebalancing trigger hoti hai.
+
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
+
+Example:
+
+Partition-0 -> Consumer-2
 
 
 ## CURRENT SITUATION
@@ -4697,56 +4502,49 @@ Kafka ke hisaab se:
 
 Order-101 abhi process hi nahi hua.
 
-Consumer restart hota hai.
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
-Kafka check karta hai:
+Kafka dekhta hai:
 
-Last Committed Offset = -1
+Last Committed Offset = 0
 
-Isliye Kafka phir se dega:
+Isliye Consumer-2 reading next offset se start karta hai:
 
-Offset 0 -> Order-101
+Offset 1 -> Order-102
 
-Consumer dobara process karega:
+Consumer-2 dobara process karega:
 
 ✔ Payment Deduct
+
 
 ## RESULT :
 ------------
 
 Customer se 2 baar payment deduct ho gayi.
 
-## NOTE :
----------
+## PROBLEM:
+------------
+
+DUPLICATE PROCESSING
+
+
+## REAL PRODUCTION SYSTEMS
+-----------------------------
 
 Duplicate message delivery ki wajah se same business operation
 multiple baar execute ho sakta hai.
 
 Ye dangerous ho sakta hai agar operation idempotent na ho.
 
-
-## REAL PRODUCTION SYSTEMS
------------------------------
+Isliye production systems me business logic ko usually
+idempotent design kiya jata hai.
 
 Payment Deduct operation ko generally idempotent banaya jata hai.
 
 Kyuki At-Least-Once me duplicates expected hote hain.
 
-Example:
-
-1000 Rs Deduct
-       ↓
-Consumer Crash
-       ↓
-Kafka Redelivery
-       ↓
-1000 Rs Deduct Again
-
-Agar system duplicate-safe nahi hai to customer ka paisa
+Agar payment system duplicate-safe nahi hai to customer ka paisa
 multiple baar deduct ho sakta hai.
-
-Isliye production systems me business logic ko usually
-idempotent design kiya jata hai.
 
 
 ## IMPORTANT OBSERVATION
@@ -4756,26 +4554,21 @@ Notice karo:
 
 ✔ Message loss nahi hua
 
-✔ Message eventually consumer ko phir se mil gaya
+✔ Message eventually consumer ko mil gaya
 
 Lekin:
 
 ✖ Duplicate processing ho gayi
 
-Isliye:
-
-At-Least-Once duplicates allow karta hai,
-lekin message loss avoid karta hai.
-
 
 ## AT LEAST ONCE KA ACTUAL MEANING
 -----------------------------------
 
-Kafka message ko tab tak consumed nahi maanta
-jab tak uska Offset Commit na ho jaye.
+Kafka bas itni guarantee deta hai:
 
-Kafka Offset Commit na hone par same message ko
-future consumer polls me phir se available kar dega.
+"Jab tak message offset commit nahi hua,
+main message ko processed nahi maanunga
+aur future consumer polls me phir se available kar dunga."
 
 Therefore:
 
@@ -4784,27 +4577,10 @@ Therefore:
 ✔ Message Loss avoid karne ki koshish ki jaati hai
 
 
-## VERY IMPORTANT POINT
----------------------------
-
-At-Least-Once guarantee ye nahi karti ki:
-
-"Message eventually successfully process ho hi jayega."
-
-Success Business Logic par depend karta hai,
-Kafka par nahi.
-
-Kafka bas itni guarantee deta hai:
-
-"Jab tak message offset commit nahi hua,
-main message ko processed nahi maanunga
-aur consumer ko deta rahunga."
-
-
 ## POISON MESSAGE PROBLEM
 -----------------------------
 
-Example:
+## Example:
 
 Order-101
       ↓
