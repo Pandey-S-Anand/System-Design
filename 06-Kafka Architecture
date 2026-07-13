@@ -4817,7 +4817,6 @@ even if:
 occur karen.
 
 
-
 ## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
 -----------------------------------------------------------------------------------------------------------------------
 
@@ -4846,41 +4845,40 @@ Ye bahut bada difference hai.
 
 Maan lo ek Topic hai:
 
-Topic = order-topic
+Topic = orders
 
-Aur Topic ke paas sirf 1 Partition hai:
+Aur Topic ke paas sirf 1 Partition hai i.e Partition-0
 
-Partition-0
-
-Producer ne ek event publish kiya:
+and Producer ne ek event publish kiya:
 
 Order-101
 
 Ye event order-topic ke Partition-0 me store ho gaya.
-
-Current State:
 
 Partition-0
  |
  Offset 0 -> Order-101
 
 
-Ek Consumer hai:
+Ek Consumer Group hai: order-processors
 
-Consumer-1
+Aur us group me 2 Consumers hai: Consumer-1 and Consumer-2
 
-Jisne order-topic ko subscribe kiya hua hai.
+order-processors
+|
+|- Consumer-1
+|- Consumer-2
 
-Kafka Assignment:
 
-order-topic
-    |
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
+
 Partition-0 -> Consumer-1
+Consumer-2 -> Idle
 
 
 Saath hi ek aur Topic hai:
 
-Topic = payment-topic
+Topic = payments
 
 Consumer-1 ka kaam hai:
 
