@@ -4588,7 +4588,10 @@ JSON Parsing Error
       ↓
 Exception
       ↓
-Retry
+Offset not committed
+      ↓
+Kafka Re-delivery
+
 
 Phir:
 
@@ -4596,7 +4599,10 @@ JSON Parsing Error
       ↓
 Exception
       ↓
-Retry
+Offset not committed
+      ↓
+Kafka Re-delivery
+
 
 Phir:
 
@@ -4604,82 +4610,63 @@ JSON Parsing Error
       ↓
 Exception
       ↓
-Retry
+Offset not committed
+      ↓
+Kafka Re-delivery
 
-Agar Business Logic baar-baar fail ho rahi hai,
-to Offset Commit kabhi nahi hoga.
+Ye process baar-baar repeat hota rahega.
 
 
 ## RESULT
 -----------
 
-Consumer har baar same message uthayega
+- Consumer har baar same message read karega.
+- Business processing har baar fail hogi.
+- Offset commit nahi hoga.
+- Kafka message ko baar-baar re-deliver karega.
 
-Har baar fail hoga
+Ye infinite processing loop create kar sakta hai.
 
-Offset Commit nahi hoga
-
-Message phir se deliver hoga
-
-Phir fail hoga
-
-Phir deliver hoga
-
-...
-
-Ye infinite retry loop create kar sakta hai.
-
-Isse kehte hain:
-
-POISON MESSAGE
+Isi problematic message ko Poison Message kehte hain.
 
 
 ## AT LEAST ONCE ME POISON MESSAGE KO KAISE HANDLE KAROGE?
 ------------------------------------------------------------
 
-Answer:
-
-Retry + Dead Letter Topic (DLT)
+Answer: Application Retries + Dead Letter Topic (DLT)
 
 ## APPROACH :
+-------------
 
-1. Fixed number of retries karo
+1. Business processing ko fixed number of retries do.
 
 Example:
 
 Retry-1 ❌
-
 Retry-2 ❌
-
 Retry-3 ❌
 
+(Ye retries application/framework, jaise Spring Kafka, perform karta hai.)
 
-2. Agar fir bhi fail ho
+2. Agar saare retries fail ho jaayein, to message ko Dead Letter Topic (DLT) me publish kar do.
 
-Message ko DLT me publish kar do
+3. Ensure karo ki message successfully DLT me publish ho gaya hai.
 
+4. Original message ka offset commit kar do.
 
-3. Ensure DLT publish successful
-
-
-4. Offset Commit kar do
-
-
-5. Next message process karo
+5. Consumer next message ki processing continue karega.
 
 
 ## BENEFITS :
 --------------
 
-✔ Infinite retries avoid hoti hain
+✔ Infinite re-delivery loop avoid hota hai.
 
-✔ Consumer block nahi hota
+✔ Consumer poison message ki wajah se block nahi hota.
 
-✔ Processing continue rehti hai
+✔ Baaki messages ki processing continue rehti hai.
 
-✔ Problematic messages ko later investigate kiya ja sakta hai
-
-Problem Statement
+✔ Problematic messages ko baad me analyze aur reprocess kiya ja sakta hai.
 
 
 ## BUSINESS IDEMPOTENCY IN AT-LEAST-ONCE DELIVERY SEMANTICS
