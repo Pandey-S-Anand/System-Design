@@ -4733,7 +4733,7 @@ Offset 0 -> Order-101
 ## PROBLEM
 ------------
 
-Agar Consumer blindly dobara execute kare:
+Agar Consumer-2 blindly dobara execute kare:
 
 ✔ Payment Deduct
 
@@ -4847,67 +4847,71 @@ Maan lo ek Topic hai:
 
 Topic = orders
 
-Aur Topic ke paas sirf 1 Partition hai i.e Partition-0
+Is Topic ke paas sirf 1 Partition hai:
 
-and Producer ne ek event publish kiya:
+Partition-0
+
+Producer ek event publish karta hai:
 
 Order-101
 
-Ye event order-topic ke Partition-0 me store ho gaya.
+Ye event `orders` Topic ke Partition-0 me store ho jata hai.
 
+orders
+|
 Partition-0
  |
  Offset 0 -> Order-101
 
 
-Ek Consumer Group hai: order-processors
-
-Aur us group me 2 Consumers hai: Consumer-1 and Consumer-2
+Ab maan lo ek Consumer Group hai:
 
 order-processors
-|
-|- Consumer-1
-|- Consumer-2
 
+Jisme 2 Consumers hain:
 
-Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
+Consumer-1
+Consumer-2
+
+Consumer Group Coordinator Partition Assignment kuch is tarah kar sakta hai:
 
 Partition-0 -> Consumer-1
 Consumer-2 -> Idle
 
 
-Saath hi ek aur Topic hai:
+Ab ek aur Topic hai:
 
 Topic = payments
 
-Consumer-1 ka kaam hai:
+Iske paas bhi sirf 1 Partition hai:
 
-1. order-topic se Order-101 consume karna
+Partition-0
 
-2. Inventory reduce and Update Order Status
-
-3. payment-topic me ek naya event publish karna
-
-4. Offset commit karna
-
-
-Ek aur Consumer hai:
-
-Consumer-2
-
-Jisne payment-topic ko subscribe kiya hua hai.
-
-Kafka Assignment:
-
-payment-topic
+payments
 |
-Partition-0 -> Consumer-2
+Partition-0
+
+
+Is Topic ko consume karne ke liye ek aur Consumer Group hai:
+
+payment-processors
+
+Jisme 2 Consumers hain:
+
+Consumer-3
+Consumer-4
+
+
+Consumer Group Coordinator Partition Assignment kuch is tarah kar sakta hai:
+
+Partition-0 -> Consumer-3
+Consumer-4 -> Idle
 
 
 ## BUSINESS REQUIREMENT
 --------------------------
 
-Consumer-1 ko:
+Consumer ko:
 
 1. order-topic se Order-101 read karna hai
 
