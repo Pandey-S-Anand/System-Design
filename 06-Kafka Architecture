@@ -5789,67 +5789,46 @@ jaise application-level approaches ka use kiya jata hai.
 15. HIGH WATERMARK
 ===============================================================================
 
-High Watermark ka purpose hai:
-
-Consumer ko sirf wahi messages dikhana jo safely replicated
-ho chuke hain, i.e. jo message jis partition ke Leader Replica
-me store hua hai, wo us partition ke sabhi CURRENT ISR
-(In-Sync Replicas) tak bhi successfully replicate ho chuka ho.
-
-One Line Definition:
-
-High Watermark is the highest offset of a partition that has been
-successfully replicated to all CURRENT ISR replicas and is therefore
-safe to expose to consumers.
+High Watermark ka purpose hai Consumers ko sirf wahi messages dikhana jo Leader Replica par successfully store ho chuke hon
+aur us Partition ki current ISR me maujood sabhi Follower Replicas tak bhi successfully replicate ho chuke hon.
 
 
-## IMPORTANT:
+## IMPORTANT
 --------------
 
-High Watermark ka concept tab meaningful hota hai
-jab replication enabled ho.
+High Watermark ka concept tabhi meaningful hota hai jab Replication enabled ho.
 
 Agar:
 
 Replication Factor = 1
 
-matlab sirf ek hi replica (Leader Replica) exist karta hai,
-to practically:
+matlab Partition ki sirf ek hi Replica (Leader Replica) exist karti hai aur koi Follower Replica nahi hota.
 
-High Watermark = Leader Replica ka Last Offset
+Is case me:
 
-Kyunki synchronize karne ke liye koi follower replica
-exist hi nahi karta.
+High Watermark = Leader Replica ka Last Offset (LEO)
 
-Iska matlab:
+Yaani, Replication Factor = 1 ke case me High Watermark practically Leader Replica ke Last Offset (LEO) ke barabar hota hai.
 
-Leader Replica me jo bhi messages successfully persist
-ho jaate hain,
+Isliye Leader Replica par jo bhi messages successfully persist ho jaate hain, wo turant Consumers ke liye visible ho jaate hain.
 
-wo saare messages Consumer ko visible ho jaate hain.
 
-Yaani Replication Factor = 1 ke case me,
-High Watermark practically Leader ke Last Offset
-ke barabar hota hai.
-
-## IMPORTANT:
+## IMPORTANT
 --------------
 
-High Watermark partition ke sabhi replicas ko consider nahi karta.
+High Watermark calculate karte waqt Kafka Partition ki sabhi Replicas ko consider nahi karta.
 
-High Watermark sirf partition ke CURRENT ISR
-(In-Sync Replicas) ke basis par calculate hota hai,
-na ki us partition ki total replicas ke basis par.
+Ye sirf current ISR (In-Sync Replicas) ke basis par calculate hota hai.
 
 
-## Example:
--------------
+## EXAMPLE
+------------
 
 Maan lo:
 
 Topic = orders
 
-Aur is topic ke paas sirf ek partition hai:
+Aur is Topic ke paas sirf ek Partition hai:
 
 orders
    |
@@ -5859,34 +5838,31 @@ Aur:
 
 Replication Factor = 3
 
-Assume karo cluster me 3 brokers hain aur
-Partition-0 ki replicas un brokers me distribute hain:
+Assume karo Cluster me 3 Brokers hain aur Partition-0 ki Replicas un Brokers me distributed hain:
 
-Broker-1 -> Leader
-Broker-2 -> Follower-1
-Broker-3 -> Follower-2
+Broker-1 -> Leader Replica
 
-Maan lo Consumer-1 ne:
+Broker-2 -> Follower Replica
 
-orders
+Broker-3 -> Follower Replica
 
-topic ko subscribe kar rakha hai.
+Maan lo Consumer-1 ne `orders` Topic ko subscribe kar rakha hai.
 
-Producer ne 10 messages publish kiye aur
-wo sabhi replicas tak successfully replicate ho gaye.
+Producer ne 10 messages publish kiye aur wo current ISR ki sabhi Replicas tak successfully replicate ho gaye.
 
 Current State:
 
-Leader       Offset = 10
-Follower-1   Offset = 10
-Follower-2   Offset = 10
+Leader Replica       Offset = 10
+
+Follower Replica-1   Offset = 10
+
+Follower Replica-2   Offset = 10
 
 Current ISR:
 
 ISR = {Leader, Follower-1, Follower-2}
 
-Kyuki current ISR ke sabhi members
-Offset 10 tak synchronized hain,
+Kyuki current ISR ke sabhi members Offset 10 tak synchronized hain,
 
 isliye:
 
@@ -5896,29 +5872,30 @@ High Watermark = 10
 ## NEW MESSAGE ARRIVES
 -----------------------
 
-Ab Producer ek aur message bhejta hai:
+Ab Producer ek aur message publish karta hai:
 
 Offset 11 -> D
 
-Ye message Leader Replica tak successfully
-pahunch jata hai.
+Ye message Leader Replica par successfully store ho jata hai.
 
-Lekin abhi followers tak replicate nahi hua.
+Lekin abhi tak Followers tak replicate nahi hua.
 
 Current State:
 
-Leader Offset = 11
-Follower-1 Offset = 10
-Follower-2 Offset = 10
+Leader Replica       Offset = 11
 
----------------------------------------------------------
-## Question: Kya Consumer-1 ko message 'D' dikh jayega?
----------------------------------------------------------
+Follower Replica-1   Offset = 10
+
+Follower Replica-2   Offset = 10
+
+
+-----------------------------------------------------------------------
+## QUESTION: WILL CONSUMER-1 BE ABLE TO READ MESSAGE 'D'? IF NOT, WHY?
+-----------------------------------------------------------------------
 
 Answer: NO.
 
-Kyuki 'D' abhi tak saare CURRENT ISR replicas
-tak replicate nahi hua hai.
+Kyuki message 'D' abhi tak current ISR ke sabhi Replicas tak successfully replicate nahi hua hai.
 
 Isliye:
 
@@ -5926,65 +5903,103 @@ High Watermark = 10
 
 hi rahega.
 
-Consumer sirf:
+Aur Kafka ka ek important rule hai:
 
-Offset <= High Watermark tak ke messages hi read kar sakta hai.
+**Consumer sirf High Watermark tak ke messages hi read kar sakta hai.**
 
----------------------------------------------------------------------------
-## Question: WHY CAN A CONSUMER NEVER READ UNREPLICATED DATA FROM KAFKA? 
----------------------------------------------------------------------------
+Matlab:
 
-Suppose Kafka 'D' ko Consumer-1 ko dikha deta.
+Offset <= High Watermark
+
+tak ke messages hi Consumer ko visible honge.
+
+
+## BUT WHY?
+------------
+
+Suppose Kafka Consumer ko message 'D' read karne de deta.
 
 Ab maan lo:
 
-Leader crash (in Broker-1)
+Leader Replica (Broker-1) crash ho jaati hai.
 
-ho gaya.
-
-New leader banega among the ISR members:
-suppose Follower-1 -> Leader
-
-Current State:
-
-Leader       Offset = 10
-Follower-2   Offset = 10
-
-
-Message: 'D' gayab.
-
-Ab consumer bol raha hai:
-
-"Maine D read kar liya tha."
-
-Kafka bol raha hai:
-
-"Mere paas D hai hi nahi."
-
-Ye impossible situation create ho jayegi.
-
-Isliye Kafka rule banata hai:
-
-Consumer ko kabhi bhi High Watermark
-se aage ka data nahi dikhaya jayega.
-
-
-## IMPORTANT
----------------
-
-ISR ka matlab ye nahi hota:
-
-Leader Offset == Follower Offset
-
-exactly har microsecond.
-
-Kafka followers ko thoda lag karne deta hai.
+Ab current ISR me se koi Follower naya Leader banega.
 
 Example:
 
-Leader      Offset = 100
-Follower-1  Offset = 99
-Follower-2  Offset = 99
+Follower-1 -> New Leader
+
+Current State:
+
+Leader Replica       Offset = 10
+
+Follower Replica-2   Offset = 10
+
+Message 'D' permanently lost ho jayega.
+
+Ab Consumer kahega:
+
+"Maine 'D' read kiya tha."
+
+Lekin Kafka ke paas wo message exist hi nahi karega.
+
+Ye data inconsistency create kar dega.
+
+**Isi situation ko avoid karne ke liye Kafka Consumers ko kabhi bhi High Watermark se aage ka data read nahi karne deta.**
+
+
+## AB MAAN LO
+--------------
+
+Ab maan lo ki Follower-1 bhi Leader Replica se message replicate kar leta hai, lekin Follower-2 bahut piche reh jata hai aur Kafka use ISR se remove kar deta hai.
+
+Old ISR:
+
+{Leader, Follower-1, Follower-2}
+
+New ISR:
+
+{Leader, Follower-1}
+
+Current State:
+
+Leader Replica       Offset = 11
+
+Follower Replica-1   Offset = 11
+
+Isliye:
+
+High Watermark = 11
+
+ho jayega.
+
+Ab Consumer ko:
+
+Offset 11 -> D
+
+visible ho jayega.
+
+
+## IMPORTANT
+--------------
+
+ISR ka matlab ye nahi hota ki:
+
+Leader Offset == Follower Offset
+
+har microsecond ya har instant par exactly same hon.
+
+Kafka Followers ko thoda sa lag (replication delay) karne ki permission deta hai.
+
+Jab tak Followers acceptable limits (defined by `replica.lag.time.max.ms`) ke andar Leader ke saath synchronized rehte hain, tab tak wo ISR ka part bane rehte hain.
+
+Example:
+
+Leader Replica       Offset = 100
+
+Follower Replica-1   Offset = 99
+
+Follower Replica-2   Offset = 99
 
 Aur phir bhi:
 
@@ -5992,33 +6007,4 @@ ISR = {Leader, Follower-1, Follower-2}
 
 ho sakta hai.
 
-----------------
-## AB MAAN LO:
-----------------
-
-Ab manlo ki follower-1 bhi data copy kar leta hai leader partition se but follower-2 piche reh jata hai  and Kafka use ISR se remove kar deta hai:
-
-Old ISR:
-
-    {Leader, Follower-1, Follower-2}
-
-New ISR:
-
-    {Leader, Follower-1}
-
-Aur:
-
-Leader       Offset = 11
-Follower-1   Offset = 11
-
-To:
-
-    High Watermark = 11
-
-ho jayega.
-
-Ab Consumer ko:
-
-    Offset 11 -> D
-
-visible ho jayega.
+Yaani ISR ka matlab **perfectly identical offsets nahi, balki Leader ke saath sufficiently synchronized Replicas hota hai.
