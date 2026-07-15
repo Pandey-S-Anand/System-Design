@@ -4896,7 +4896,7 @@ Consumer ko:
 
 3. Order status update karna hai DB mai
 
-4. payment-topic me Payment-101 event publish karna hai
+4. payments topic me Payment-101 event publish karna hai
 
 5. Offset Commit karna hai
 
@@ -4941,7 +4941,7 @@ Uske baad Consumer-1:
 
 Payment-101
 
-event ko payment-topic me publish kar deta hai.
+event ko payments topic me publish kar deta hai.
 
 Lekin event publish hone ke turant baad:
 
@@ -5006,15 +5006,15 @@ payment-topic me.
 ## RESULT:
 -----------
 
- payment-topic
- |
- Partition-0
+payments 
+|
+Partition-0
   |
   |- Offset 0 -> Payment-101
   |- Offset 1 -> Payment-101
 
 
-Ab payment-topic me duplicate event create ho gaya.
+Ab payments topic me duplicate event create ho gaya.
 
 
 ## WHY IS THIS DANGEROUS?
@@ -5067,45 +5067,46 @@ In this scenario, Consumer-1 is acting as a Producer because it is producing mes
 ## PROBLEM
 -------------
 
-Maan lo Consumer-1 publish karta hai:
+Maan lo Producer (Consumer-1) ek message publish karta hai:
 
 Payment-101
 
-payment-topic me.
+payments topic me.
 
-Broker successfully message receive kar leta hai aur store bhi kar deta hai.
+Broker ka Leader Replica message successfully receive karke store kar leta hai.
 
 Current State:
 
-payment-topic
+payments
   |
-  Offset 0 -> Payment-101
+  |- Offset 0 -> Payment-101
 
-Lekin ACK (from Leader partition ) network issue ki wajah se Consumer-1 tak pahunch hi nahi pata.
+Lekin Leader Replica dwara bheja gaya ACK network issue ki wajah se Producer (Consumer-1) tak pahunch nahi pata.
 
+Ab kyunki:
 
-After timeout Ab Consumer-1 sochta hai:
+retries > 0
 
-"Shayad message publish nahi hua."
+configured hai,
 
-Aur safety ke liye retry kar deta hai.
+isliye Producer (Consumer-1) same message ko dobara publish (retry) karta hai.
 
 Dobara:
 
 Payment-101
 
-publish kar diya jata hai.
+payments topic me publish ho jata hai.
 
-Is baar Broker ACK successfully Consumer-1 tak pahucha deta hai.
+Is baar Leader Replica ACK successfully Producer (Consumer-1) tak bhej deta hai.
 
 
 ## RESULT
 -------------
 
 payment-topic
- |
- |- Offset 0 -> Payment-101
- |- Offset 1 -> Payment-101
+  |
+  |- Offset 0 -> Payment-101
+  |- Offset 1 -> Payment-101
 
 
 ## OBSERVATION
@@ -5119,104 +5120,102 @@ Yahan:
 
 Problem sirf Producer Retry ki wajah se hui.
 
-Producer ko ACK nahi mila,
-isliye usne same message dobara bhej diya.
+Producer ko ACK nahi mila, isliye usne same message dobara bhej diya.
 
-Aur Broker ne usse ek naya message samajh kar
-phir se store kar liya.
+Aur Broker ne usse ek naya message samajh kar phir se store kar liya.
 
 Result:
 
 payment-topic me duplicate event create ho gaya.
 
 
-## SOLUTION
---------------
-
-Isi Producer-Retry wale duplicate problem ko solve karne ke liye Kafka provide karta hai:
-
-✔ Idempotent Producer
-
-Idempotent Producer ensure karta hai ki Producer retries ki wajah se
-same message broker par multiple baar store na ho.
-
-
-## How Idempotent Producer is implemented
+## SOLUTION: USING AN IDEMPOTENT PRODUCER
 -------------------------------------------
 
-Question:
+Agar Producer ko Leader Replica se ACK receive nahi hota (due to network issues, timeout, etc.), to Producer same message ko retry kar sakta hai.
 
-Broker ko kaise pata chalega ki:
+Without idempotence, ye retries Kafka Topic me duplicate messages create kar sakti hain.
+
+Isi Producer Retry wale duplicate message problem ko solve karne ke liye Kafka **Idempotent Producer** provide karta hai.
+
+✔ Idempotent Producer ensure karta hai ki Producer retries ki wajah se same message Kafka topic ke Leader Replica par multiple baar store na ho.
+
+Ye Producer ID (PID) aur Sequence Numbers ka use karke duplicate messages ko detect aur prevent karta hai.
+
+
+## HOW IS AN IDEMPOTENT PRODUCER IMPLEMENTED?
+----------------------------------------------
+
+## QUESTION:
+
+Leader Replica ko kaise pata chalega ki:
 
 Payment-101
 
-ek completely naya event hai
+ek completely naya message hai
 
 ya
 
-Producer Retry ki wajah se dobara aaya hua wahi event hai?
+Producer Retry ki wajah se dobara bheja gaya wahi message hai?
 
-Kafka message content compare nahi karta.
+Kafka message content compare nahi karta, kyunki wo inefficient aur expensive hota hai.
 
-Isliye Kafka ek alag mechanism use karta hai.
+Is problem ko solve karne ke liye Kafka internally do cheezein use karta hai:
 
-## KAFKA INTERNALLY USE KARTA HAI:
----------------------------------
-1: Producer ID (PID)
-2: Sequence Number
+1. Producer ID (PID)
+2. Sequence Number
 
 
-1: PRODUCER ID (PID)
+1. PRODUCER ID (PID)
 ---------------------
 
 Jab Producer Idempotency enable karta hai:
 
 enable.idempotence=true
 
-to Kafka us Producer ko ek unique Producer ID assign karta hai.
+to Kafka us Producer ko ek unique Producer ID (PID) assign karta hai.
 
 Example:
 
 Producer ID = 5001
 
-Ab Kafka ko pata hai ki:
-
-Ye saare messages Producer-5001 se aa rahe hain.
+Ab us Partition ke Leader Replica ko pata hota hai ki ye saare messages Producer-5001 se aa rahe hain.
 
 
-2: SEQUENCE NUMBER
+2. SEQUENCE NUMBER
 -------------------
 
-Kafka Producer har message ke saath ek sequence number bhi bhejta hai.
+Producer har message ke saath ek Sequence Number bhi send karta hai. 
+Ye Sequence Number, Producer ID (PID) ke saath milkar us Producer dwara bheje gaye har message ko uniquely identify karta hai.
 
-Example:
+## EXAMPLE:
+-------------
 
 Producer ID = 5001
 
-----------------
-First Message:
-
-Payment-101
-PID = 5001
-Sequence = 0
-
------------------
-Second Message:
-
-Payment-102
-PID = 5001
-Sequence = 1
-
------------------
-Third Message:
-
-Payment-103
-PID = 5001
-Sequence = 2
+First Message
+|
+|- Payment-101
+|- PID = 5001
+|- Sequence = 0
 
 
-## NORMAL FLOW
-----------------
+Second Message
+|
+|- Payment-102
+|- PID = 5001
+|- Sequence = 1
+
+
+Third Message
+|
+|- Payment-103
+|- PID = 5001
+|- Sequence = 2
+
+
+## ACK SUCCESS SCENARIO
+------------------------
 
 Producer send karta hai:
 
@@ -5224,19 +5223,18 @@ Payment-101
 PID = 5001
 Sequence = 0
 
-Broker message receive karta hai.
+Broker message receive karta hai aur usse respective leader replica me successfully store kar deta hai.
 
-Message successfully store kar diya jata hai respective partition mai.
+## CURRENT STATE:
 
-Current State:
-
-payment-topic
+payments
+|
+Partition-0
  |
- Partition-0
-  |
-  Offset 0 -> Payment-101
+ Offset 0 -> Payment-101
 
-Saath hi Broker internally yaad rakhta hai:
+
+Saath hi Leader Replica internally is Producer ke liye last successfully accepted Sequence Number maintain karti hai:
 
 Producer ID = 5001
 Last Sequence Number = 0
@@ -5251,34 +5249,35 @@ Payment-101
 PID = 5001
 Sequence = 0
 
-Broker successfully message receive kar leta hai
-aur topic me store bhi kar deta hai.
+Broker message receive karta hai aur usse respective leader replica me successfully store kar deta hai.
 
-Current State:
+## CURRENT STATE:
 
-payment-topic
-  |
- Partition-0
-   |
-   Offset 0 -> Payment-101
+payments
+|
+Partition-0
+ |
+ Offset 0 -> Payment-101
 
-Lekin ACK network issue ki wajah se Producer tak pahunch nahi pata.
+Lekin network issue ki wajah se ACK Producer tak nahi pahunch pata.
 
-Producer ko lagta hai:
+Producer assume karta hai:
 
 "Message publish fail ho gaya."
 
-Isliye Producer same message dobara send karta hai.
+Agar retries > 0 configured hain, to Producer wahi message dobara send karta hai.
 
-## IMPORTANT:
----------------
+
+## IMPORTANT
+-------------
 
 Retry ke time Producer:
 
-Same PID
-Same Sequence Number
+✔ Same Producer ID (PID)
 
-bhejta hai.
+✔ Same Sequence Number
+
+send karta hai.
 
 Retry Request:
 
@@ -5290,23 +5289,19 @@ Sequence = 0
 ## BROKER DUPLICATE DETECTION
 ------------------------------
 
-Broker retry request receive karta hai.
+Leader Replica retry request receive karti hai.
 
-Broker check karta hai:
-
-Producer ID = 5001
-Sequence Number = 0
-
-Broker ke paas already record hai:
+Leader Replica check karti hai:
 
 Producer ID = 5001
 Sequence Number = 0
 
-Isliye Broker samajh jata hai ki:
+Leader Replica ke paas already record hota hai:
 
-Ye koi naya message nahi hai.
+Producer ID = 5001
+Last Sequence Number = 0
 
-Ye pehle wale message ka retry hai.
+Isliye Leader Replica samajh jaati hai ki ye koi naya message nahi hai, balki pehle wale message ka retry hai.
 
 Result:
 
@@ -5318,22 +5313,17 @@ ACK Send ✔
 
 
 ## FINAL RESULT
------------------
+----------------
 
 payment-topic
-  |
-  Offset 0 -> Payment-101
+|
+Offset 0 -> Payment-101
 
-Sirf ek hi record present rahega.
+Topic me sirf ek hi record store hoga.
 
-Producer ne retry kiya tha,
-lekin Broker ne duplicate detect karke
-message ko dobara store nahi kiya.
+Producer ne retry kiya, lekin Leader Replica ne Producer ID (PID) aur Sequence Number ki help se duplicate detect karke message ko dobara store nahi kiya.
 
-Isi mechanism ki wajah se Idempotent Producer
-Producer-Retry ki wajah se hone wale duplicate events ko
-prevent karta hai.
-
+Isi mechanism ki wajah se Idempotent Producer Producer Retries ki wajah se hone wale duplicate messages ko prevent karta hai.
 
 
 ## WHY IDEMPOTENT PRODUCER ALONE IS NOT ENOUGH?
