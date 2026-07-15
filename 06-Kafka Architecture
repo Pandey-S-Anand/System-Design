@@ -3036,7 +3036,29 @@ ISR Members = 2
 
 ## NOTE: 
 ---------
-ISR me hone ka matlab ye nahi ki replica har moment leader ke exact same offset par hai. ISR replicas thoda lag kar sakte hain.
+
+ISR me hone ka matlab ye nahi ki :
+
+Leader Offset == Follower Offset
+
+har microsecond ya har instant par exactly same hon.
+
+Kafka Followers ko thoda sa lag (replication delay) karne ki permission deta hai.
+
+Jab tak Followers acceptable limits (defined by `replica.lag.time.max.ms`) ke andar Leader ke saath synchronized rehte hain, tab tak wo ISR ka part bane rehte hain.
+
+Example:
+
+Leader Replica       Offset = 100
+Follower Replica-1   Offset = 99
+Follower Replica-2   Offset = 99
+
+Aur phir bhi:
+ISR = {Leader, Follower-1, Follower-2}
+
+ho sakta hai.
+
+Yaani ISR ka matlab perfectly identical offsets nahi, balki Leader ke saath sufficiently synchronized Replicas hota hai.
 
 
 ------------------------------------------
@@ -3133,8 +3155,57 @@ sirf unhi replicas me se naya Leader select kiya jaye
 jo Leader ke saath synchronized hain.
 
 To ISR koi permanent group nahi hai.
-
 Ye continuously update hota rehta hai based on replica health and lag.
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## QUESTION: AGAR PARTITION KI SAARI FOLLOWER REPLICAS ISR SE BAHAR CHALI JAAYEIN AUR USKE BAAD LEADER REPLICA CRASH HO JAAYE, TO NAYA LEADER KAISE ELECT HOGA?
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ANSWER:
+
+Ye Kafka ki configuration par depend karta hai.
+
+## CASE-1 (Default / Recommended)
+----------------------------------
+
+unclean.leader.election.enable=false
+
+Agar Leader Replica crash hone ke baad ISR me koi Replica available nahi hai, to Kafka kisi bhi Out-of-Sync Replica ko naya Leader nahi banata.
+
+## RESULT:
+
+✖ Koi naya Leader elect nahi hoga.
+✖ Partition temporarily unavailable ho jayega.
+
+Kafka crashed Leader Replica ke recover hone ka wait karega.
+
+Leader recover hone ke baad hi Partition dobara available hoga aur data loss avoid hoga.
+
+
+## CASE-2 
+----------
+
+unclean.leader.election.enable=true
+
+Agar Leader crash hone ke baad ISR empty ho, to Kafka kisi Out-of-Sync Replica ko bhi Leader elect kar sakta hai.
+
+Result:
+
+✔ Partition available ho jayega.
+✖ Lekin Leader par maujood aur Followers tak replicate na hua data permanently lose ho sakta hai.
+
+Is process ko Unclean Leader Election kehte hain.
+
+
+## IMPORTANT :
+--------------
+
+Agar Unclean Leader Election ke baad purana Leader recover ho jata hai, to Kafka use dobara Leader nahi banata.
+Recovered previous Leader Replica pehle ek Out-of-Sync Follower ke roop me join karta hai, ISR ka part nahi banta.
+Uske baad wo apne extra (divergent) log ko truncate karta hai aur naye Leader ke saath synchronize karta hai.
+Puri tarah synchronize hone ke baad hi Kafka use dobara ISR me add karta hai.
+Is process me purane Leader par maujood lekin naye Leader ke paas na hone wala data permanently lose ho jata hai.
 
 
 =====================
@@ -5978,33 +6049,3 @@ Ab Consumer ko:
 Offset 11 -> D
 
 visible ho jayega.
-
-
-## IMPORTANT
---------------
-
-ISR ka matlab ye nahi hota ki:
-
-Leader Offset == Follower Offset
-
-har microsecond ya har instant par exactly same hon.
-
-Kafka Followers ko thoda sa lag (replication delay) karne ki permission deta hai.
-
-Jab tak Followers acceptable limits (defined by `replica.lag.time.max.ms`) ke andar Leader ke saath synchronized rehte hain, tab tak wo ISR ka part bane rehte hain.
-
-Example:
-
-Leader Replica       Offset = 100
-
-Follower Replica-1   Offset = 99
-
-Follower Replica-2   Offset = 99
-
-Aur phir bhi:
-
-ISR = {Leader, Follower-1, Follower-2}
-
-ho sakta hai.
-
-Yaani ISR ka matlab **perfectly identical offsets nahi, balki Leader ke saath sufficiently synchronized Replicas hota hai.
