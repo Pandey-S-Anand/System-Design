@@ -2486,9 +2486,15 @@ order-group:
 For instance 'order-group' ke liye bhi koi ek broker out of the avaialable 4 brokers in the clusters will act as the group cordinator
 man lete hai 'order-group' consumer group ke like Broker-2 will act as group coordinator. i,e Ab 'order-group' se related sab management ka kaam ye broker karega.
 
-------------------------------------------
-Consumer Group Coordinator Kya Karta Hai?
-------------------------------------------
+------------------------------------------------------
+## CONSUMER GROUP COORDINATOR SELECT KAISE HOTA HAI?
+------------------------------------------------------
+Kafka har Consumer Group ke liye Cluster ke available Brokers me se automatically ek Broker ko Group Coordinator select karta hai. 
+Ye selection Consumer Group ID (group.id) ke hash ke basis par kiya jata hai.
+
+----------------------------------------------
+## CONSUMER GROUP COORDINATOR KYA KARTA HAI?
+----------------------------------------------
 
 ## 1. CONSUMER JOIN KARWATA HAI
 --------------------------------
