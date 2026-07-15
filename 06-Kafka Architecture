@@ -4342,10 +4342,9 @@ Commit Offset
 Business Logic
 
 
-## EXAMPLE :
----------------
-
-Current State:
+## CONTINUING WITH THE ABOVE EXAMPLE
+-------------------------------------
+Current state:
 
 Offset 0 -> Order-101
 
@@ -4454,10 +4453,10 @@ Business Logic
 Commit Offset
 
 
-## EXAMPLE
-------------
+## CONTINUING WITH THE ABOVE EXAMPLE
+-------------------------------------
 
-Current State:
+Current state:
 
 Offset 0 -> Order-101
 
@@ -4817,44 +4816,8 @@ even if:
 occur karen.
 
 
-## EXAMPLE
--------------
-
-Maan lo ek Topic hai:
-
-Topic = orders
-
-Is Topic ke paas sirf 1 Partition hai:
-
-Partition-0
-
-Producer ek event publish karta hai:
-
-Order-101
-
-Ye event `orders` Topic ke Partition-0 me store ho jata hai.
-
-orders
-|
-Partition-0
- |
- Offset 0 -> Order-101
-
-
-Ab maan lo ek Consumer Group hai:
-
-order-processors
-
-Jisme 2 Consumers hain:
-
-Consumer-1
-Consumer-2
-
-Consumer Group Coordinator Partition Assignment kuch is tarah kar sakta hai:
-
-Partition-0 -> Consumer-1
-Consumer-2 -> Idle
-
+## NOW, LET'S MODIFY THE ABOVE EXAMPLE TO MEET A NEW BUSINESS REQUIREMENT:
+-----------------------------------------------------------------------------
 
 Ab ek aur Topic hai:
 
@@ -4867,22 +4830,6 @@ Partition-0
 payments
 |
 Partition-0
-
-
-Is Topic ko consume karne ke liye ek aur Consumer Group hai:
-
-payment-processors
-
-Jisme 2 Consumers hain:
-
-Consumer-3
-Consumer-4
-
-
-Consumer Group Coordinator Partition Assignment kuch is tarah kar sakta hai:
-
-Partition-0 -> Consumer-3
-Consumer-4 -> Idle
 
 
 ## BUSINESS REQUIREMENT
@@ -4995,13 +4942,13 @@ dobara execute nahi honge.
 
 Lekin Consumer-2 ko ye nahi pata ki:
 
-Payment-101 event successfully publish hua tha ya nahi.
+Payment-101 message successfully publish hua tha ya nahi.
 
 Isliye Consumer-2 dobara publish karega:
 
 Payment-101
 
-payment-topic me.
+payments topic me.
 
 ## RESULT:
 -----------
@@ -5046,7 +4993,7 @@ Consumer side business logic already idempotent hai.
 
 Actual problem ye hai ki:
 
-Kafka ke payment-topic me hi duplicate event create ho gaya.
+Kafka ke payments topic me hi duplicate event create ho gaya.
 
 Aur isi problem ko solve karne ke liye Kafka provide karta hai:
 
@@ -5060,9 +5007,9 @@ Jinke combination se Exactly-Once Semantics achieve ki ja sakti hai.
 ## IDEMPOTENT PRODUCER :
 ------------------------
 
-Consider the previous example where Consumer-1 publishes events to payment-topic.
+Consider the previous example where Consumer-1 publishes events to payments topic.
 
-In this scenario, Consumer-1 is acting as a Producer because it is producing messages to payment-topic.
+In this scenario, Consumer-1 is acting as a Producer because it is producing messages to payments topic.
 
 ## PROBLEM
 -------------
@@ -5083,7 +5030,7 @@ payments
 
 Lekin Leader Replica dwara bheja gaya ACK network issue ki wajah se Producer (Consumer-1) tak pahunch nahi pata.
 
-Ab kyunki:
+Manlo:
 
 retries > 0
 
@@ -5103,7 +5050,7 @@ Is baar Leader Replica ACK successfully Producer (Consumer-1) tak bhej deta hai.
 ## RESULT
 -------------
 
-payment-topic
+payments topic
   |
   |- Offset 0 -> Payment-101
   |- Offset 1 -> Payment-101
@@ -5124,9 +5071,10 @@ Producer ko ACK nahi mila, isliye usne same message dobara bhej diya.
 
 Aur Broker ne usse ek naya message samajh kar phir se store kar liya.
 
-Result:
 
-payment-topic me duplicate event create ho gaya.
+## RESULT:
+-----------
+payments topic me duplicate event create ho gaya.
 
 
 ## SOLUTION: USING AN IDEMPOTENT PRODUCER
@@ -5315,7 +5263,7 @@ ACK Send ✔
 ## FINAL RESULT
 ----------------
 
-payment-topic
+payments 
 |
 Offset 0 -> Payment-101
 
