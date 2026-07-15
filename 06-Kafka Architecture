@@ -4914,8 +4914,8 @@ Partition-0 -> Consumer-2
 ✔ Payment-101 event successfully publish ho chuka hai
 
 
-## KAFKA SIDE:
-
+## KAFKA SIDE :
+----------------
 ✖ Offset Commit abhi tak hua hi nahi tha.
 
 
@@ -5274,134 +5274,121 @@ Producer ne retry kiya, lekin Leader Replica ne Producer ID (PID) aur Sequence N
 Isi mechanism ki wajah se Idempotent Producer Producer Retries ki wajah se hone wale duplicate messages ko prevent karta hai.
 
 
-## WHY IDEMPOTENT PRODUCER ALONE IS NOT ENOUGH?
-------------------------------------------------
+## WHY IDEMPOTENT PRODUCER AND BUSINESS IDEMPOTENCY ALONE IS NOT ENOUGH ?
+--------------------------------------------------------------------------
 
 Idempotent Producer sirf Producer Retry ki wajah se hone wale
 duplicate messages ko prevent karta hai.
 
 Lekin Exactly-Once ka problem sirf Producer Retry tak limited nahi hai.
 
-## EXAMPLE
---------------
-
-Maan lo do Topics hain:
-
-1. order-topic
-2. payment-topic
-
-Dono Topics ke paas sirf 1-1 Partition hai.
-
-order-topic
-|
-└── Partition-0
-    └── Offset 0 -> Order-101
-
-payment-topic
-|
-└── Partition-0
-
-Ab maan lo do Consumer Groups hain:
-
-1. order-processors
-   - Consumer-1
-   - Consumer-2
-   - Consumer-3
-
-2. payment-processors
-   - Payment-Consumer-1
-
-Kafka har Consumer Group ke liye alag Group Coordinator assign karta hai.
-
-Possible Partition Assignment:
-
-order-processors
-
-Partition-0 (order-topic) -> Consumer-1
-Consumer-2 -> Idle
-Consumer-3 -> Idle
-
-----------------------------
-
-payment-processors
-
-Partition-0 (payment-topic) -> Payment-Consumer-1
-
-
-Consumer-1 ka kaam hai:
-
-1. Order-101 consume karna
-
-2. Inventory reduce karna and Order status update karna
-
-3. payment-topic me Payment-101 publish karna
-
-4. Offset Commit karna
-
 
 ## IMPORTANT:
 ----------------
 
-order-topic ke perspective se:
+orders topic ke perspective se:
 
 Consumer-1 ek Consumer hai.
 
-Lekin payment-topic ke perspective se:
+Lekin payments topic ke perspective se:
 
 Consumer-1 ek Producer bhi hai,
 
-kyuki wahi payment event publish kar raha hai payment-topic mai.
+kyuki wahi payment event publish kar raha hai payments topic mai.
 
 
 ## SCENARIO
 -------------
 
-Consumer-1:
+Consumer-1 `orders` Topic se following message read karta hai:
 
-order-topic
+orders
 |
 Offset 0 -> Order-101
 
-read karta hai.
+Business processing ke dauran Consumer-1:
 
-Inventory reduce karta hai.
+✔ Inventory reduce karta hai.
 
-Uske baad:
+✔ Order Status update karta hai.
 
-Payment-101 event successfully payment-topic me publish kar deta hai.
+Uske baad `payments` Topic me ek naya event publish karta hai:
+
+Payment-101
+
+Kyuki Producer Idempotency enable hai, isliye Kafka Producer is message ke saath automatically:
+
+Producer ID = 5001
+
+Sequence Number = 0
+
+assign karta hai.
+
+`Payment-101` message successfully `payments` Topic me publish ho jata hai.
 
 Current State:
 
-payment-topic
- |
- Offset 0 -> Payment-101
+payments
+|
+Offset 0 -> Payment-101
 
-Lekin Offset Commit hone se pehle:
+Lekin `orders` Topic me `Order-101` ka Offset Commit hone se pehle hi:
 
-Consumer-1 Crash ho jata hai.
+✖ Consumer-1 crash ho jata hai.
+
+
+## BUSINESS SIDE
+----------------
+
+✔ Inventory reduced
+
+✔ Order Status updated
+
+✔ `Payment-101` event successfully publish ho chuka hai.
+
+
+## KAFKA SIDE
+--------------
+
+✖ `Order-101` ka Offset Commit abhi tak nahi hua tha.
 
 
 ## REBALANCING
-----------------
+---------------
 
-Consumer-1 crash hone ke baad
-Consumer Group Coordinator rebalance trigger karta hai.
+Consumer-1 crash hone ke baad Consumer Group me Rebalancing trigger hoti hai.
 
-Ab Kafka Partition-0 ko kisi aur Consumer ko assign karega.
+Rebalancing ke dauran Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 kisi aur Consumer ko assign kar deta hai.
 
-Suppose:
+Example:
 
-order-topic
-|
 Partition-0 -> Consumer-2
 
-Ab Consumer-2 Offset 0 se dubara Order-101 read karega.
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
+
+Kafka dekhta hai:
+
+Last Committed Offset = -1
+
+Isliye Kafka Consumer-2 ko Offset-0 par stored wahi message dobara deliver karega.
+
+Offset 0 -> Order-101
+
+Consumer-2 phir se wahi message process karega.
+
+Kyuki Business Idempotency implement ki gayi hai, isliye:
+
+✔ Inventory Reduce → Skip
+
+✔ Order Status Update → Skip
+
+Ye operations dobara execute nahi honge.
 
 
 ## IMPORTANT OBSERVATION
---------------------------
+-------------------------
 
-Consumer-2 payment-topic me dubara publish karega:
+Ab Consumer-2 `payments` Topic me dobara publish karega:
 
 Payment-101
 
@@ -5409,61 +5396,71 @@ Lekin dhyan do.
 
 Ye Producer Retry nahi hai.
 
-Ye ek completely naya Producer hai.
+Ye ek completely naya Producer instance hai.
 
-Consumer-2 payment-topic me publish karte waqt
-ek naye Producer instance ka use karega.
+Consumer-2 `payments` Topic me publish karte waqt ek naye Producer instance ka use karega.
 
-Kafka us Producer instance ko ek naya Producer ID (PID) assign karega.
+Kafka is naye Producer ko ek naya Producer ID (PID) assign karega.
 
-Example:
+Previous Producer:
 
-Consumer-1 : PID = 5001
+Consumer-1
 
-Consumer-2 : PID = 7001
+Producer ID = 5001
 
-Ab Broker dekhega:
+New Producer:
+
+Consumer-2
 
 Producer ID = 7001
+
+Leader Replica request receive karti hai.
+
+Leader Replica check karti hai:
+
+Producer ID = 7001
+
+Sequence Number = 0
+
+Leader Replica ke paas is Producer ID ka koi previous record nahi hota.
 
 Ye Producer-5001 ka retry nahi hai.
 
 Ye ek completely naya Producer hai.
 
-Isliye Broker duplicate detect nahi kar paayega.
+Isliye Leader Replica duplicate detect nahi kar paayegi.
 
-Result:
+## RESULT:
+------------
 
-payment-topic
- |
- partition-0
- |
- |- Offset 0 -> Payment-101
- |- Offset 1 -> Payment-101
+payments
+|
+Partition-0
+  |
+  |- Offset 0 -> Payment-101
+  |- Offset 1 -> Payment-101
 
-Duplicate event create ho jayega.
 
+Duplicate message payments Topic me store ho jayega.
 
 ## CONCLUSION
-----------------
+--------------
 
-Idempotent Producer sirf same Producer ke retries ko
-deduplicate karta hai.
+Idempotent Producer sirf same Producer ke retries ki wajah se hone wale duplicate messages ko prevent karta hai.
 
-Lekin Consumer Crash + Rebalancing ke baad jo naya Producer create hota hai,
-uske liye naya Producer ID generate hota hai.
+Lekin agar Consumer crash ho jaye aur Rebalancing ke baad wahi message kisi dusre Consumer ko assign ho, to wo ek naye Producer instance ka use karke event publish karega.
 
-Isliye Broker duplicate identify nahi kar pata.
+Kyuki is naye Producer ko ek naya Producer ID (PID) assign hota hai, isliye Leader Replica ise previous Producer ka retry nahi maan pati aur duplicate detect nahi kar paati.
 
-Yahi problem Kafka Transactions solve karta hain.
+Yahi problem Kafka Transactions solve karti hain.
 
-Kafka Transactions ensure karta hain ki:
+Kafka Transactions ensure karti hain ki:
 
-1. payment-topic me event publish karna
+1. `payments` Topic me event publish karna
 
 aur
 
-2. Offset Commit karna
+2. `orders` Topic ka Offset Commit karna
 
 ye dono ek hi Atomic Transaction ka part hon.
 
@@ -5471,22 +5468,17 @@ Either:
 
 ✔ Event Publish + Offset Commit
 
-Dono Success
+Dono Successfully Complete Hon
 
 OR
 
 ✖ Event Publish + Offset Commit
 
-Dono Rollback
+Dono Rollback Ho Jaayein
 
-Isliye Exactly-Once Semantics achieve karne ke liye:
+Isliye Exactly-Once Semantics achieve karne ke liye sirf Idempotent Producer kaafi nahi hai.
 
-✔ Idempotent Producer
-
-alone enough nahi hai.
-
-Hume Kafka Transactions ki bhi zarurat padti hai.
-
+Idempotent Producer ko Kafka Transactions ke saath use karna padta hai.
 
 
 ## KAFKA TRANSACTIONS :
