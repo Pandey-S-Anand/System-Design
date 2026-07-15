@@ -4832,6 +4832,20 @@ payments
 Partition-0
 
 
+Ek Consumer Group hai: payment-processors
+
+Aur us group me 1 Consumer hai: Consumer-3 
+
+payment-processors
+|
+|- Consumer-3
+
+
+Is consumer-group ka group-coordinator partition assignment kuch aisa kar sakta hai :
+
+Partition-0 -> Consumer-3
+
+
 ## BUSINESS REQUIREMENT
 --------------------------
 
@@ -4843,7 +4857,7 @@ Consumer ko:
 
 3. Order status update karna hai DB mai
 
-4. payments topic me Payment-101 event publish karna hai
+4. payments topic me Payment-101 message publish karna hai
 
 5. Offset Commit karna hai
 
@@ -5020,13 +5034,16 @@ Payment-101
 
 payments topic me.
 
-Broker ka Leader Replica message successfully receive karke store kar leta hai.
+Leader Replica message successfully receive karke store kar leta hai.
 
 Current State:
 
 payments
   |
-  |- Offset 0 -> Payment-101
+  partition-0 
+    |
+    |- Offset 0 -> Payment-101
+
 
 Lekin Leader Replica dwara bheja gaya ACK network issue ki wajah se Producer (Consumer-1) tak pahunch nahi pata.
 
@@ -5444,7 +5461,8 @@ Partition-0
 
 Duplicate message payments Topic me store ho jayega.
 
-## CONCLUSION
+
+## CONCLUSION 
 --------------
 
 Idempotent Producer sirf same Producer ke retries ki wajah se hone wale duplicate messages ko prevent karta hai.
@@ -5457,7 +5475,7 @@ Yahi problem Kafka Transactions solve karti hain.
 
 Kafka Transactions ensure karti hain ki:
 
-1. `payments` Topic me event publish karna
+1. `payments` Topic me message publish karna
 
 aur
 
@@ -5467,13 +5485,13 @@ ye dono ek hi Atomic Transaction ka part hon.
 
 Either:
 
-✔ Event Publish + Offset Commit
+✔ Message Publish + Offset Commit
 
 Dono Successfully Complete Hon
 
 OR
 
-✖ Event Publish + Offset Commit
+✖ Message Publish + Offset Commit
 
 Dono Rollback Ho Jaayein
 
@@ -5485,41 +5503,43 @@ Idempotent Producer ko Kafka Transactions ke saath use karna padta hai.
 2: KAFKA TRANSACTIONS :
 -------------------------
 
-## FLOW WITH KAFKA TRANSACTION:
-
+## KAFKA TRANSACTION – SUCCESS SCENARIO
+------------------------------------------
 
 Consumer-1 Begins Transaction
        |
        v
-Reads Order-101
+Consumes `Order-101` from the `orders` Topic (Offset-0) ✔
        |
        v
-Reduces Inventory and Updates Order status  
+Reduces Inventory and Updates Order status ✔
        |
        v
-Publish event : Payment-101
+Publish event : Payment-101 ✔
        |
        v
-Leader Replica receives the message
+Leader Replica receives the message ✔
        |
        V
-Leader sends ACK (according to acks configuration)
+Leader Replica sends ACK to Producer (according to acks configuration) ✔
        |
        V
-Add Offset To Transaction
+Producer receives ACK ✔
        |
        v
-Commit Transaction
+Register Consumer Offset with the Transaction (sendOffsetsToTransaction) ✔
+       |
+       v
+Commit Transaction ✔
 
 
 Ye jo:
 
-Add Offset To Transaction hai.
+"Register Consumer Offset with the Transaction"
 
 Iska matlab sirf itna hai:
 
-"Kafka, jab ye transaction successfully commit hogi, tab is Consumer Offset ko bhi commit kar dena."
-
+"Kafka, agar ye transaction successfully commit ho jaye, to is Consumer Offset ko bhi transaction ke saath atomically commit kar dena."
 
 Is step ke baad:
 
@@ -5528,17 +5548,18 @@ Is step ke baad:
 
 dono ek hi Kafka Transaction ke members ban jaate hain.
 
-Transaction successfully commit hone par hi:
 
-✔ Payment-101 event committed hoga
+Transaction successfully commit hone ke baad:
+✔ `Payment-101` event consumers (read_committed) ke liye visible ho jayega.
+✔ Consumer Offset bhi atomically commit ho jayega.
 
-✔ Consumer Offset commit hoga
+Is point par Kafka ke hisaab se:
 
-permanently visible honge.
+✔ `Order-101` successfully process ho chuka hai.
 
 
-##IMPORTANT
-------------
+## IMPORTANT :
+--------------
 
 BUSINESS TRANSACTION ≠ KAFKA TRANSACTION
 
@@ -5565,7 +5586,6 @@ Kafka sirf Kafka resources ko transaction me daal sakta hai.
 Matlab:
 
 ✔ Kafka Topic me Produce
-
 ✔ Kafka Consumer Offset Commit
 
 Ye transaction ka part ban sakte hain.
@@ -5573,137 +5593,89 @@ Ye transaction ka part ban sakte hain.
 Lekin:
 
 ✖ Database Update
-
 ✖ REST API Calls
-
 ✖ Kisi bhi external system ke operations
+
+
+ye operations Kafka ke control ke bahar hote hain.
+
+In operations ko rollback karne ki responsibility
+unke respective systems ya application ki hoti hai,
+Kafka ki nahi.
 
 Inhe Kafka Transaction rollback nahi kar sakta.
 
 
-## SCENARIO-1 : SAB KUCH SUCCESSFUL RAHA
+
+## KAFKA TRANSACTION – FAILURE SCENARIO
 ------------------------------------------
 
-Consumer-1 :
-
-Begin Transaction
-      |
-      v
-Read Order-101 from Offset-0
-      |
-      v
-Inventory Reduce ✔
-      |
-      v
-Update Order Status ✔
-      |
-      v
-Publish Payment-101 ✔
-      |
-      v
+Consumer-1 Begins Transaction
+       |
+       v
+Consumes `Order-101` from the `orders` Topic (Offset-0)
+       |
+       v
+Reduces Inventory and Updates Order status  ✔
+       |
+       v
+Publish event : Payment-101 ✔
+       |
+       v
 Leader Replica receives the message ✔
        |
        V
-Leader sends ACK (according to acks configuration) ✔
-      |
-      v
-Add Offset To Transaction ✔
-      |
-      v
-Commit Transaction ✔
-
-
-
-- Payment-101 payment-topic me permanently visible ho gaya.
-
-- Offset bhi commit ho gaya.
-
-- Kafka ke hisaab se:
-
-  Order-101 successfully process ho chuka hai.
-
-
-## AB CRASH SCENARIO
-------------------------------
-
-Consumer-1
-
-Begin Transaction
-      |
-      v
-Read Order-101 from Offset-0
-      |
-      v
-Inventory Reduce ✔
-      |
-      v
-Update Order Status ✔
-      |
-      v
-Publish Payment-101 ✔
-      |
-      v
-Leader Replica receives the message ✔
-      |
-      V
-Leader sends ACK (according to acks configuration) ✔
-      |
-      v
-Add Offset To Transaction ✔
-      |
-      v
+Leader Replica sends ACK to Producer (according to acks configuration) ✔
+       |
+       V
+Producer receives ACK ✔
+       |
+       v
+Register Consumer Offset with the Transaction (sendOffsetsToTransaction) ✔
+       |
+       v
 Consumer-1 Crash ❌
 
 
-Notice karo.
-
+## NOTE :
+----------
 Transaction commit hi nahi hua
 
 
-Ab :
+## BUSINESS SIDE :
+------------------
 
-Consumer Group Coordinator
-       ↓
-Detect karta hai ki Consumer-1 heartbeats bhejna band kar chuka hai.
-       ↓       
-Triggers Rebalancing
-       ↓
-Partition-0 reassigned 
+✔ Inventory already reduced
+✔ Order Status already updated
+✔ Payment-101 message publish successful
 
 
-Suppose:
-
-Partition-0 → Consumer-2
-
-
-## KAFKA KE HISSAB SE
+## KAFKA SIDE
+---------------
+✖ Kyuki Transaction commit nahi hua, isliye Order-101 ka Offset bhi commit nahi hua. 
+  Isliye Kafka abhi bhi Order-101 ko unprocessed message maanta hai.
 
 
-Order-101 abhi process hi nahi hua.
+## IMPORTANT
+--------------
+Dhyan do ki is point par Transaction commit nahi hua hai.
 
-Kyuki Offset Commit nahi hua tha.
+Isliye:
 
+✖ `Order-101` ka Offset Commit nahi hua.
 
-Kafka check karta hai:
-
-Last Committed Offset = -1
-
-Isliye Kafka phir se Consuemr-2 ko dega:
-
-order-topic
- |
- partition-0
-  |
-  Offset 0 -> Order-101
+Lekin `Payment-101` message `payments` Topic me publish ho chuka hai.
 
 
-## Question 1:
+## QUESTION 1
+--------------
 
-Kya 'Payment-Consumer-1' (jo payment-topic ko consume kar raha hai) Payment-101 event ko dekh aur process kar payega?
+Kya `Consumer-3` (jo `payments` Topic ko consume kar raha hai)
+`Payment-101` message ko dekh aur process kar payega?
 
-Answer:
+Answer: NO
 
-NO, agar uske consumer par:
+Agar us Consumer par:
 
 isolation.level=read_committed
 
@@ -5719,96 +5691,99 @@ Message physically Broker ki disk par present ho sakta hai,
 
 lekin logically abhi committed nahi hai.
 
-Isliye read_committed consumers ke liye
-ye message transaction commit hone tak visible nahi hota.
+Kyuki Transaction successfully commit nahi hua, isliye
+`read_committed` Consumers (jaise `Consumer-3`) ko
+`Payment-101` message kabhi bhi visible nahi hoga.
 
 
-## Question 2:
+## REBALANCING
+---------------
 
-Consumer-1 to Payment-101 publish kar chuka tha.
+Consumer-1 crash hone ke baad Consumer Group me Rebalancing trigger hoti hai.
 
-Ab Consumer-2 jab Order-101 dobara process karega, to kya payment-topic me duplicate Payment-101 create ho jayega?
+Rebalancing ke dauran Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 kisi aur Consumer ko assign kar deta hai.
 
-Answer: NO.
+Example:
 
+Partition-0 -> Consumer-2
 
-Payment-101 Broker me physically store ho chuka tha.
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
-Lekin transaction abhi commit nahi hui thi.
+Kafka dekhta hai:
 
-Isliye Kafka us message ko:
+Last Committed Offset = -1
 
-UNCOMMITTED
+Isliye Kafka Consumer-2 ko Offset-0 par stored wahi message dobara deliver karega.
 
-state me rakhta hai.
+Offset 0 -> Order-101
 
-Transaction commit hone se pehle:
-
-✔ Message disk par physically store ho sakta hai.
-
-Lekin:
-
-✖ Wo committed nahi hota.
-
-✖ Wo transactional visibility rules follow karta hai.
-
-Consumer-1 crash hone ke baad,
-
-Transaction Coordinator
-
-us incomplete transaction ko:
-
-ABORT
-
-kar deta hai.
-
-## RESULT
-----------
-
-✖ Payment-101 discard ho jata hai.
-
-✖ Consumer Offset bhi commit nahi hota.
-
-Ab Consumer-2
-
-Order-101
-
-dobara process karega.
-
-Is baar naya transaction successfully commit hoga.
-
-Tabhi:
-
-✔ Payment-101 payment-topic me visible hoga.
-
-✔ Consumer Offset commit hoga.
-
-Dono operations ek saath complete honge.
-
-Isi atomicity ki wajah se Kafka Exactly-Once Semantics provide kar pata hai.
+Consumer-2 phir se wahi message process karega.
 
 
-## IMPORTANT NOTE
+## BUSINESS AND PRODUCER IDEMPOTENCY :
+--------------------------------------
+
+Kyuki Business Idempotency implement ki gayi hai, isliye:
+
+✔ Inventory Reduce → Skip
+
+✔ Order Status Update → Skip
+
+Ye operations dobara execute nahi honge.
+
+
+Consumer-2 jab Payment-101 publish karega, to wo ek naye Kafka Producer instance ka use karega. 
+Producer Idempotency enable hone ki wajah se Kafka us Producer ko ek naya Producer ID (PID) assign karega. 
+Is Producer ke pehle message ka Sequence Number 0 hoga.
+
+Example:
+ Producer ID = 7001
+ Sequence Number = 0
+
+
+## QUESTION 2
+--------------
+
+Consumer-1 to `Payment-101` publish kar chuka tha.
+
+Ab jab Consumer-2 `Order-101` ko dobara process karega,
+to kya `payments` Topic me duplicate `Payment-101` create ho jayega?
+
+Answer: NO
+
+Consumer-1 crash hone ki wajah se Transaction successfully commit nahi ho pati. 
+Baad me Kafka Transaction Coordinator is incomplete transaction ko abort kar deta hai.
+
+Pehle publish hua Payment-101 message Topic me physically present rehta hai, 
+lekin Transaction abort hone ki wajah se read_committed consumers ke liye permanently invisible ho jata hai.
+
+
+Ab Consumer-2 `Payment-101` ko dobara `payments` Topic me publish karega.
+
+Is baar Transaction successfully commit ho jaati hai.
+
+Result:
+
+✔ `Payment-101` message `payments` Topic me visible ho jayega aur
+   `Consumer-3` ise consume kar payega.
+
+✔ `Order-101` ka Consumer Offset bhi commit ho jayega.
+
+Dono operations atomically ek saath commit honge.
+
+Isi atomicity ki wajah se Kafka Exactly-Once Semantics provide karta hai.
+
+
+## IMPORTANT :
 -------------------
 
-Kafka sirf Kafka resources ko rollback kar sakta hai.
+Kafka Transactions sirf Kafka resources (Topics aur Consumer Offsets) ko rollback kar sakti hain.
 
-Agar transaction commit hone se pehle:
-
-✔ Database Update
-
-✔ Inventory Reduce
-
-✔ REST API Call
-
-already execute ho chuke hain,
-
-to Kafka unhe rollback nahi kar sakta.
+Database Updates, REST API Calls aur kisi bhi external system ke operations ko Kafka rollback nahi kar sakta.
 
 Isliye non-Kafka operations ko safely handle karne ke liye
 Business Idempotency, Saga Pattern ya Compensating Transactions
 jaise application-level approaches ka use kiya jata hai.
-
 
 ===============================================================================
 15. HIGH WATERMARK
