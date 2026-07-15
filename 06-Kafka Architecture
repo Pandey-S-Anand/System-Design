@@ -5004,7 +5004,7 @@ Aur isi problem ko solve karne ke liye Kafka provide karta hai:
 Jinke combination se Exactly-Once Semantics achieve ki ja sakti hai.
 
 
-## IDEMPOTENT PRODUCER :
+1: IDEMPOTENT PRODUCER :
 ------------------------
 
 Consider the previous example where Consumer-1 publishes events to payments topic.
@@ -5430,6 +5430,7 @@ Ye ek completely naya Producer hai.
 
 Isliye Leader Replica duplicate detect nahi kar paayegi.
 
+
 ## RESULT:
 ------------
 
@@ -5481,7 +5482,7 @@ Isliye Exactly-Once Semantics achieve karne ke liye sirf Idempotent Producer kaa
 Idempotent Producer ko Kafka Transactions ke saath use karna padta hai.
 
 
-## KAFKA TRANSACTIONS :
+2: KAFKA TRANSACTIONS :
 -------------------------
 
 ## FLOW WITH KAFKA TRANSACTION:
