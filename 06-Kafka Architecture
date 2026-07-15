@@ -4817,29 +4817,6 @@ even if:
 occur karen.
 
 
-## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
------------------------------------------------------------------------------------------------------------------------
-
-Business Idempotency ek application-level workaround hai.
-
-Exactly-Once Semantics (EOS) ek Kafka-level guarantee hai.
-
-Dono duplicate-related problems ko address karte hain,
-lekin different levels par.
-
-Business Idempotency:
-
-✖ Duplicate ko PREVENT nahi karti
-
-✔ Duplicate ko TOLERATE karti hai
-
-Exactly-Once Semantics:
-
-✔ Duplicate create hone se hi rokne ki koshish karti hai
-
-Ye bahut bada difference hai.
-
-
 ## EXAMPLE
 -------------
 
@@ -4917,29 +4894,32 @@ Consumer ko:
 
 2. Inventory reduce karni hai
 
-3. Order status update karna
+3. Order status update karna hai DB mai
 
 4. payment-topic me Payment-101 event publish karna hai
 
 5. Offset Commit karna hai
 
 
-## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY
--------------------------------------------
+## AT-LEAST-ONCE + BUSINESS IDEMPOTENCY SE TO DUPLICATE PROBLEM SOLVE HO GAYI. FIR EXACTLY-ONCE KI ZARURAT HI KYA HAI?
+-----------------------------------------------------------------------------------------------------------------------
 
-At-Least-Once me:
+Business Idempotency ek application-level workaround hai.
 
-Order-101
+Exactly-Once Semantics (EOS) ek Kafka-level guarantee hai.
 
-multiple baar deliver ho sakta hai.
+Dono duplicate-related problems ko address karte hain,
+lekin different levels par.
 
-Business Idempotency bolti hai:
+Business Idempotency:
 
-"Aane do, main duplicate processing handle kar lunga."
+✔ Duplicate ko PREVENT nahi TOLERATE karti hai
 
-Lekin Exactly-Once ka goal isse bhi bada hai.
+Exactly-Once Semantics:
 
-Kafka bolta hai: "Duplicate event create hi mat hone do."
+✔ Duplicate event create hi mat hone do.
+
+Ye bahut bada difference hai.
 
 
 ## REAL PROBLEM JAHAN BUSINESS IDEMPOTENCY KAFFI NAHI HOTI
@@ -4963,47 +4943,46 @@ Payment-101
 
 event ko payment-topic me publish kar deta hai.
 
-Current State:
-
-payment-topic
-     |
-  Partition-0
-     |
-     Offset 0 -> Payment-101
-
-
 Lekin event publish hone ke turant baad:
 
 ✖ Consumer-1 Crash
 
-Important:
+
+Consumer Group me Rebalancing trigger hoti hai.
+
+Rebalancing ke baad Consumer Group Coordinator configured Partition Assignment Strategy (Range, Round Robin, Sticky ya Cooperative Sticky) ka use karke Partition-0 ko kisi aur Consumer ko assign kar deta hai.
+
+Example:
+
+Partition-0 -> Consumer-2
+
+
+## BUSINESS SIDE :
+------------------
+
+✔ Inventory Reduce
+
+✔ Order status update 
 
 ✔ Payment-101 event successfully publish ho chuka hai
 
-✖ Offset Commit abhi tak nahi hua
+
+## KAFKA SIDE:
+
+✖ Offset Commit abhi tak hua hi nahi tha.
 
 
-## Kafka KE HISAAB SE
+Jaise hi Consumer-2 ko Partition-0 assign hoti hai, Kafka us Consumer Group ke liye Partition-0 ka last committed offset check karta hai.
 
-Order-101 abhi process hi nahi hua.
-
-Kyuki Offset Commit nahi hua tha.
-
-Consumer-1 restart hota hai.
-
-Kafka check karta hai:
+Kafka dekhta hai:
 
 Last Committed Offset = -1
 
-Isliye Kafka phir se dega:
+Isliye Kafka Consumer-2 ko bhi Offset-0 par stored wahi message dubara deliver karega.
 
 Offset 0 -> Order-101
 
-
-## PROBLEM
-------------
-
-Consumer-1 phir se wahi message process karega.
+Consumer-2 phir se wahi message process karega.
 
 Kyuki Business Idempotency implement ki gayi hai,
 isliye:
@@ -5014,17 +4993,18 @@ Order status update ✖
 
 dobara execute nahi honge.
 
-Lekin Consumer-1 ko ye nahi pata ki:
+Lekin Consumer-2 ko ye nahi pata ki:
 
 Payment-101 event successfully publish hua tha ya nahi.
 
-Isliye safety ke liye Consumer-1 dobara publish karega:
+Isliye Consumer-2 dobara publish karega:
 
 Payment-101
 
 payment-topic me.
 
-Result:
+## RESULT:
+-----------
 
  payment-topic
  |
