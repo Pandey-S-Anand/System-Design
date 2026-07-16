@@ -44,6 +44,7 @@
 ===============
 1: Zookeeper
 ===============
+
 ZooKeeper = "Cluster ka Manager"
 
 Purane Kafka versions me zookeeper hua karta tha 
