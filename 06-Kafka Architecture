@@ -44,6 +44,7 @@
 ===============
 1: Zookeeper
 ===============
+ZooKeeper = "Cluster ka Manager"
 
 Purane Kafka versions me zookeeper hua karta tha 
 
@@ -120,6 +121,72 @@ Aajkal (Kafka 3.x+) mostly KRaft Mode use hota hai.
                     └──────────────────────┘
 
 Zookeeper ki dependency remove kar di gayi hai.
+
+---------------------------------------
+## ZOOKEEPER KI MAIN RESPONSIBILITIES:
+---------------------------------------
+
+1: CLUSTER METADATA MAINTAIN KARNA
+-----------------------------------
+
+ZooKeeper Kafka Cluster ka metadata maintain karta tha. Iske paas actual messages nahi hote the, sirf cluster se related information hoti thi, jaise:
+
+a: Cluster me kitne Brokers hain.
+b: Kaun sa Broker alive hai aur kaun down hai.
+c: Cluster me kaun-kaun se Topics hain.
+d: Har Topic me kitni Partitions hain.
+e: Har Partition ka Leader aur Followers (Replicas) kaun hain.
+
+Ye saari metadata information ZooKeeper maintain karta tha.
+
+Modern Kafka (KRaft Mode) me ye responsibility ZooKeeper ki jagah Kafka Controller handle karta hai.
+
+
+2: BROKER REGISTRATION
+------------------------
+Jab koi naya Broker start hota tha, to wo ZooKeeper ke paas apne aap ko register karta tha taaki Cluster ko pata chal sake ki ek naya Broker available hai.
+KRaft Mode me ye Broker Registration Kafka Controller handle karta hai.
+
+
+3: BROKER FAILURE DETECTION
+----------------------------
+
+Har Broker periodically ZooKeeper ko heartbeat bhejta tha.
+Agar kisi Broker ki heartbeat configured timeout tak receive na ho, to ZooKeeper us Broker ko dead mark kar deta tha.
+Modern Kafka (KRaft) me ye responsibility Kafka Controller perform karta hai.
+
+
+4. DETECTING PARTITION LEADER REPLICA FAILURE
+-----------------------------------------------
+
+Suppose:
+
+Partition-0
+
+Leader  -> Broker-1
+Followers -> Broker-2, Broker-3
+
+Agar Leader Replica (Broker-1) crash ho jaye, to ZooKeeper is failure ko detect karta tha. Uske baad Kafka Controller ISR (In-Sync Replicas) me se kisi suitable Follower Replica ko naya Leader elect karta tha.
+Modern Kafka (KRaft Mode) me Kafka Controller khud failure detect karta hai aur ISR me se naya Leader elect karta hai.
+
+
+5. KAFKA CONTROLLER ELECTION
+------------------------------
+ZooKeeper Mode me Kafka Controller ka election ZooKeeper karta tha.
+
+Example:
+
+Broker-1
+Broker-2
+Broker-3
+
+ZooKeeper elect karta tha:
+
+Controller = Broker-2
+
+Agar Controller Broker crash ho jata tha, to ZooKeeper kisi aur Broker ko naya Controller elect kar deta tha.
+KRaft Mode me Controller Election Kafka Controller Quorum khud perform karta hai.
+
 
 =============================
 2: Kafka Cluster and Broker
