@@ -1121,9 +1121,10 @@ Offset Commit do tariko se ho sakta hai:
 
 enable.auto.commit = true
 
-Ya
 
 ## 2. Manual Commit
+
+enable.auto.commit = false
 
 consumer.commitSync();
 
