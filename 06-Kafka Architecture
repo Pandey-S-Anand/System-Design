@@ -939,16 +939,32 @@ Consumer-1 process karta hai:
 Order-101
 Order-102
 
-Aur phir:
+Ab internally KafkaConsumer Commit Request bhejega:
 
-Committed Offset = 1
+Partition-0 -> Offset-2
 
-Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
+Iska matlab:
 
-Next Read:
+"Main Offset-1 tak ke saare messages successfully process kar chuka hoon.
+Isliye agli baar mujhe Offset-2 se messages read karne hain."
 
-Offset 2 -> Order-103
+i.e.
 
+Committed Offset = Next Offset To Read
+
+Kafka is Committed Offset ko us Consumer Group ki corresponding Partition ke liye internally store kar leta hai.
+
+i.e.
+
+Consumer Group   : order-processors
+Partition        : 0
+Committed Offset : 2
+
+## NOTE:
+----------
+KafkaConsumer ye Commit Request Auto Commit, commitSync() ya commitAsync()
+kisi bhi Offset Commit Strategy ki wajah se bhej sakta hai.
+Hum in teeno strategies ko next section me detail me samjhenge.
 
 -----------
 
@@ -956,15 +972,19 @@ Consumer-2 process karta hai:
 
 Order-201
 
-Aur phir:
+Ab internally KafkaConsumer Commit Request bhejega:
 
-Committed Offset = 0
+Partition-1 -> Offset-1
 
-Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
+(Ye Commit Request Auto Commit, commitSync() ya commitAsync() kisi bhi Offset Commit Strategy ki wajah se bheji ja sakti hai.)
 
-Next Read:
+Kafka is Committed Offset ko us Consumer Group ki corresponding Partition ke liye internally store kar leta hai.
 
-Offset 1 -> Order-202
+i.e.
+
+Consumer Group   : order-processors
+Partition        : 1
+Committed Offset : 1
 
 
 -----------
@@ -974,37 +994,39 @@ Consumer-3 process karta hai:
 Order-301
 Order-302
 
-Aur phir:
+Ab internally KafkaConsumer Commit Request bhejega:
 
-Committed Offset = 1
+Partition-2 -> Offset-2
 
-Kafka is Committed Offset ko us Consumer Group ke liye internally store kar leta hai.
+(Ye Commit Request Auto Commit, commitSync() ya commitAsync() kisi bhi Offset Commit Strategy ki wajah se bheji ja sakti hai.)
 
-Next Read:
+Kafka is Committed Offset ko us Consumer Group ki corresponding Partition ke liye internally store kar leta hai.
 
-No Message Available
-(Kyunki Partition-2 me Offset 1 ke baad koi message nahi hai.)
+i.e.
 
+Consumer Group   : order-processors
+Partition        : 2
+Committed Offset : 2 (No Message Available)
 
 -----------
 
-Kafka internally kuch is tarah record maintain karta hai:
+Kafka internally kuch is tarah record maintain karega:
 
 Consumer Group : order-processors
 |
 Partition-0
 |  |
-|  Committed Offset = 1
+|  Committed Offset = 2
 |
 |
 Partition-1
 |  |
-|  Committed Offset = 0
+|  Committed Offset = 1
 |
 |
 Partition-2
    |
-   Committed Offset = 1
+   Committed Offset = 2
 
 
 
@@ -1027,7 +1049,7 @@ Consumer Group : order-processors
 |
 Partition-1
   |
-  Committed Offset = 0
+  Committed Offset = 1
 
 
 Isliye Consumer-1:
@@ -1063,6 +1085,111 @@ __consumer_offsets
 Isi Topic ki help se Kafka Consumer Group ke offsets ko track karta hai.
 
 
+-----------------------------------------------------------------------------------------------------------
+## OFFSET COMMIT STRATEGIES - CONSUMER NE KAFKA KO KAISE BATAYA KI MESSAGE SUCCESSFULLY PROCESS HO GAYA?
+-----------------------------------------------------------------------------------------------------------
+
+Jab Consumer kisi Message ko successfully process kar leta hai, tab usse Kafka ko batana hota hai ki:
+
+"Main is Partition me is Offset tak ke Messages successfully consume kar chuka hoon."
+
+Is process ko Offset Commit kehte hain.
+
+Offset Commit karne ke 3 tareeke hote hain:
+
+1. enable.auto.commit = true
+2. consumer.commitSync()
+3. consumer.commitAsync()
+
+
+---------------------------------------------------
+1. enable.auto.commit = true
+---------------------------------------------------
+KafkaConsumer Client automatically regular intervals par latest consumed offset ko Kafka me commit kar deta hai.
+
+Is interval ko control karne ke liye ye property use hoti hai:
+
+auto.commit.interval.ms
+
+Default Value:
+
+5000 ms (5 Seconds)
+
+## EXAMPLE:
+------------
+
+enable.auto.commit=true
+auto.commit.interval.ms=5000
+
+KafkaConsumer Client approximately har 5 seconds baad
+next offset to read Kafka me commit karne ki koshish karta hai.
+
+Yaani Kafka ye maan leta hai ki us Partition me committed offset se
+pehle ke sabhi messages successfully process ho chuke hain.
+
+
+## NOTE:
+---------
+Offset har message process hote hi immediately commit nahi hota.
+Offset defined regular intervals (default: 5 seconds) par commit hota hai.
+
+---------------------------------------------------
+2. consumer.commitSync()
+---------------------------------------------------
+Developer khud manually Kafka ko Commit Request bhejta hai.
+
+Jab developer ko lagta hai ki message successfully process ho gaya hai,
+tab woh explicitly call karta hai:
+
+Flow:
+
+Process Message
+      |
+      V
+consumer.commitSync()
+      |
+      V
+Kafka stores committed offset
+
+Ye synchronous call hai.
+
+Ye synchronous commit hai.
+Matlab jab tak Offset successfully commit nahi ho jata,
+ye method return nahi karta i.e commit complete hone tak current thread wait karti hai.
+
+
+---------------------------------------------------
+3. consumer.commitAsync()
+---------------------------------------------------
+
+Developer khud manually Kafka ko Commit Request bhejta hai.
+
+Jab developer ko lagta hai ki message successfully process ho gaya hai,
+tab woh explicitly call karta hai:
+
+consumer.commitAsync();
+
+Flow:
+
+Process Message
+      |
+      V
+consumer.commitAsync()
+      |
+      V
+Consumer immediately continues processing next messages
+      |
+      V
+Kafka commits offset in background
+
+
+Ye asynchronous commit hai.
+
+Matlab ye method immediately return kar jata hai i.e Current Thread commit complete hone ka wait nahi karti.
+
+High throughput provide karta hai, lekin commit failure handle karna developer ki responsibility hoti hai.
+
+
 ----------------------------------------------------------------------------------------------------------------------
 ## HOW KAFKA HANDLES OFFSET MANAGEMENT, HEARTBEATS, REBALANCING & PARTITION ASSIGNMENT FOR STANDALONE CONSUMERS
 ----------------------------------------------------------------------------------------------------------------------
@@ -1076,13 +1203,11 @@ Kafka kabhi bhi offsets ko kisi individual Consumer ke naam se store nahi karta.
 
 Isliye Offset Commit ke liye Consumer Group identity (group.id) hona zaruri hai.
 
-Standalone Consumer ke paas group.id configured hone se wo Consumer Group ka member nahi ban jata.
-
-group.id sirf Offset Commit ke context me use hota hai.
+Standalone Consumer ke paas group.id configured hone se wo Consumer Group ka member nahi ban jata. Is case me group.id sirf Offset Commit ke liye use hota hai.
 
 Consumer Group ka member banne ke liye Consumer ko subscribe() API use karke Consumer Group join karna padta hai.
 
-Heartbeat, Rebalancing aur Automatic Partition Assignment sirf Consumer Groups (subscribe() API) ke liye hote hain.
+Heartbeat, Automatic Rebalancing aur Automatic Partition Assignment sirf Consumer Groups (subscribe() API) ke liye hote hain.
 
 
 ## CASE-1
@@ -1113,28 +1238,17 @@ Lekin kyunki group.id configured hai, isliye jab Consumer messages process karke
 to Kafka us Committed Offset ko us Consumer Group ke liye
 apne __consumer_offsets internal topic me store kar lega.
 
-Sirf group.id configure kar dene se offsets automatically commit nahi honge. Consumer ko offsets commit karne ke liye ya to Auto Commit enable karna hoga ya phir Manual Commit use karna hoga.
+Sirf group.id configure kar dene se Offsets automatically commit nahi honge.
+
+Consumer ko Offsets commit karne ke liye ya to Auto Commit enable karna hoga ya phir Manual Commit use karna hoga.
 
 Offset Commit do tariko se ho sakta hai:
 
-## 1. Auto Commit
+## 1. Auto Commit (enable.auto.commit = true)
 
-enable.auto.commit = true
+## 2. Manual Commit (enable.auto.commit = false + consumer.commitSync() / consumer.commitAsync())
 
-
-## 2. Manual Commit
-
-enable.auto.commit = false
-
-consumer.commitSync();
-
-Ya
-
-consumer.commitAsync();
-
-
-Consumer restart hone par Kafka Committed Offset check karega
-aur uske next Offset se reading continue karwa dega.
+Consumer restart hone par Kafka us Consumer Group ke us particular Partition ka last Committed Offset (Next Offset to Read) check karega aur usi Offset se reading resume karwa dega.
 
 
 ## CASE-2
@@ -1153,18 +1267,19 @@ group.id
 configured nahi hai.
 
 Ab kyunki Kafka ke paas koi Consumer Group identity hi nahi hai,
-isliye Kafka uske Offsets automatically commit ya store nahi kar sakta.
+isliye Kafka uske commited offsets store nahi kar sakta.
+
 
 Is wajah se:
 
 - Kafka automatic Partition Assignment nahi karega.
 - Heartbeats nahi hongi.
 - Rebalancing nahi hogi.
-- Auto Commit aur Manual Commit (commitSync()/commitAsync()) bhi use nahi kiye ja sakte. 
-  i.e Offsets maintain karne ki responsibility application ki hoti hai.
+- Auto Commit aur Manual Commit (commitSync()/commitAsync()) use nahi kiye ja sakte, kyunki Offset Commit ke liye valid group.id mandatory hai.
+  Isliye Offsets maintain karne ki responsibility application ki hoti hai.
 
 
-Example:
+## EXAMPLE:
 
 Database:
 
@@ -1189,6 +1304,7 @@ Partition-0 -> Offset = 125
 
 Consumer restart hone par application isi stored Offset ko read karegi
 aur uske next Offset se reading continue karwayegi.
+
 
 ----------------------------------------------------------------------------
 ## WHY DO WE NEED CONSUMER GROUPS? WHY ARE STANDALONE CONSUMERS NOT ENOUGH?
