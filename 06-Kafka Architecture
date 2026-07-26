@@ -878,7 +878,7 @@ Isliye rebalance trigger ho sakta hai.
 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------
-## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE TOPIC KI HAR PARTITION ME KAHA TAK MESSAGES CONSUME KIYE HAIN?
+## OFFSET COMMIT & CONSUMER GROUP - KAFKA KO KAISE PATA CHALTA HAI KI CONSUMER GROUP NE TOPIC KI HAR PARTITION ME KAHA TAK MESSAGES CONSUME KIYE HAIN ?
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Maan lo Topic hai:
@@ -1194,13 +1194,12 @@ consumption resume karega.
 ## WHY AUTO COMMIT IS RISKY ?
 ------------------------------
 
-Example:
+Manlo ek single poll() call me Kafka ne ye records return kiye consumer ko:
 
 Offset 0 -> A
 Offset 1 -> B
 Offset 2 -> C
 
-Consumer ne poll() karke tino messages receive kar liye.
 
 Current Consumer Position = 3
 
@@ -1250,31 +1249,77 @@ jata, kyunki crash ke case me message loss ho sakta hai.
 2. consumer.commitSync()
 -------------------------
 
-Developer khud manually Kafka ko Commit Request bhejta hai.
+Developer khud manually Kafka ko Offset Commit Request bhejta hai.
 
-Jab developer ko lagta hai ki message successfully process ho gaya hai,
-tab woh explicitly call karta hai:
+Jab developer ko lagta hai ki messages successfully process ho gaye hain,
+tab woh explicitly consumer.commitSync() call karta hai.
 
 Flow:
 
-Process Message
-      |
-      V
+Process Messages
+       |
+       V
 consumer.commitSync()
-      |
-      V
-Kafka stores committed offset
-
-Ye synchronous call hai.
+       |
+       V
+Kafka stores the committed offset
 
 Ye synchronous commit hai.
-Matlab jab tak Offset successfully commit nahi ho jata,
-ye method return nahi karta i.e commit complete hone tak current thread wait karti hai.
+
+Matlab jab tak offset successfully Kafka me commit nahi ho jata,
+ye method return nahi karta. Current thread broker se commit acknowledgement
+aane tak wait karti hai.
 
 
----------------------------------------------------
+## WHAT HAPPENS IF PROCESSING FAILS BEFORE consumer.commitSync() IS EXECUTED?
+------------------------------------------------------------------------------------
+
+Suppose ek single poll() call me Kafka ne consumer ko ye records return kiye:
+
+Offset-0 -> A
+Offset-1 -> B
+Offset-2 -> C
+
+Ab application in records ko sequentially process karna start karti hai.
+
+Processing:
+
+Offset-0  ✔ Successfully Processed
+
+Offset-1  ✔ Successfully Processed
+
+Offset-2  ❌ Exception Occurred
+
+Kyuki Offset-2 process karte time exception aa gaya,
+isliye execution consumer.commitSync() tak pahucha hi nahi.
+
+Matlab is poll() batch ke liye Kafka ko koi naya Offset Commit Request nahi bheja gaya.
+
+Ab maan lo application crash ho gayi ya restart ho gayi.
+
+Is situation me Kafka dekhta hai ki consumer ne is poll() batch ke baad
+koi bhi naya offset commit nahi kiya.
+
+Isliye Kafka last committed offset se records fir se deliver deliver karega:
+
+Offset-0 -> A
+Offset-1 -> B
+Offset-2 -> C
+
+Dhyan dene wali baat ye hai ki Offset-0 aur Offset-1 actually
+successfully process ho chuke the, lekin unka offset commit nahi hua tha.
+
+Is wajah se ye records dobara consume aur process honge.
+Isse Duplicate Processing kehte hain.
+
+Lekin is approach ka sabse bada advantage ye hai ki koi bhi message lose nahi hota.
+
+Isi wajah se consumer.commitSync() At-Least-Once Delivery guarantee provide karta hai.
+
+
+---------------------------
 3. consumer.commitAsync()
----------------------------------------------------
+---------------------------
 
 Developer khud manually Kafka ko Commit Request bhejta hai.
 
