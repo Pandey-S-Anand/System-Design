@@ -1227,8 +1227,8 @@ hi nahi hua tha.
 Message Lost.
 
 
-## WHEN TO USE AUTO COMMIT
---------------------------
+## WHEN TO USE AUTO COMMIT ?
+-----------------------------
 
 Auto Commit un applications ke liye suitable hai jahan
 occasionally kuch messages miss ho jana acceptable ho.
@@ -1369,6 +1369,34 @@ handle karna developer ki responsibility hoti hai.
 
 Ye approach generally high-throughput applications me use ki jati hai,
 jahan performance reliability se zyada important hoti hai.
+
+
+----------------------------------------------------------
+## WHY NOT ALWAYS USE consumer.commitSync()?
+----------------------------------------------------------
+
+consumer.commitSync() reliable hai, lekin ye synchronous commit hai.
+
+Har offset commit ke baad Consumer Thread broker acknowledgement ka wait
+karti hai. Is synchronous waiting ki wajah se next poll() aur message
+processing tab tak start nahi hoti jab tak offset successfully commit
+na ho jaye.
+
+Agar application bahut high throughput (e.g. lakhs of messages per second)
+handle kar rahi ho, to ye waiting overall throughput ko noticeably reduce
+kar sakti hai.
+
+Isliye high-throughput systems me commonly ye pattern use kiya jata hai:
+
+• Regular Offset Commits
+      → consumer.commitAsync() (Better Performance)
+
+• Final Offset Commit During Application Shutdown (@PreDestroy)
+      → consumer.commitSync() (Guaranteed Offset Commit)
+
+Ye approach performance aur reliability ke beech ek achha balance provide
+karti hai aur production systems me kaafi commonly use ki jati hai.
+
 
 ----------------------------------------------------------------------------------------------------------------------
 ## HOW KAFKA HANDLES OFFSET MANAGEMENT, HEARTBEATS, REBALANCING & PARTITION ASSIGNMENT FOR STANDALONE CONSUMERS
