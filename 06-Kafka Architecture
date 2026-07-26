@@ -1321,33 +1321,54 @@ Isi wajah se consumer.commitSync() At-Least-Once Delivery guarantee provide kart
 3. consumer.commitAsync()
 ---------------------------
 
-Developer khud manually Kafka ko Commit Request bhejta hai.
+consumer.commitAsync() ka behaviour almost consumer.commitSync() jaisa hi hai.
 
-Jab developer ko lagta hai ki message successfully process ho gaya hai,
-tab woh explicitly call karta hai:
+Processing, offset commit aur failure scenarios sab exactly same rehte hain.
 
-consumer.commitAsync();
+The only difference is that consumer.commitAsync() broker acknowledgement
+ka wait nahi karta. Offset commit background me hota hai.
 
-Flow:
+Isliye ye asynchronous commit hai.
 
-Process Message
-      |
-      V
+Matlab Consumer Thread Kafka Broker ko Offset Commit Request bhejti hai aur
+ye method immediately return kar deta hai. Consumer Thread commit complete
+hone ya broker acknowledgement ka wait nahi karti aur next messages process
+karna continue kar deti hai.
+
+## FLOW:
+-------------
+
+Consumer Thread
+
+Process Messages
+       |
+       V
 consumer.commitAsync()
-      |
-      V
+       |
+       V
+Offset Commit Request Sent to Kafka Broker
+       |
+       +------------------------------>
+       |                              |
+       |                              V
+       |                    Kafka commits offset
+       |                    in the background
+       |
+       V
 Consumer immediately continues processing next messages
-      |
-      V
-Kafka commits offset in background
 
 
-Ye asynchronous commit hai.
+Is wajah se commitAsync(), commitSync() ke comparison me faster hota hai
+aur high throughput provide karta hai.
 
-Matlab ye method immediately return kar jata hai i.e Current Thread commit complete hone ka wait nahi karti.
+## NOTE:
+-----------
 
-High throughput provide karta hai, lekin commit failure handle karna developer ki responsibility hoti hai.
+Since offset commit happens asynchronously, commit failure ko reliably
+handle karna developer ki responsibility hoti hai.
 
+Ye approach generally high-throughput applications me use ki jati hai,
+jahan performance reliability se zyada important hoti hai.
 
 ----------------------------------------------------------------------------------------------------------------------
 ## HOW KAFKA HANDLES OFFSET MANAGEMENT, HEARTBEATS, REBALANCING & PARTITION ASSIGNMENT FOR STANDALONE CONSUMERS
