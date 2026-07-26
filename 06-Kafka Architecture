@@ -1102,10 +1102,13 @@ Offset Commit karne ke 3 tareeke hote hain:
 3. consumer.commitAsync()
 
 
----------------------------------------------------
+------------------------------
 1. enable.auto.commit = true
----------------------------------------------------
-KafkaConsumer Client automatically regular intervals par latest consumed offset ko Kafka me commit kar deta hai.
+------------------------------
+
+KafkaConsumer Client automatically regular intervals par
+consumer ki current position (next offset to read) Kafka me
+commit kar deta hai.
 
 Is interval ko control karne ke liye ye property use hoti hai:
 
@@ -1115,27 +1118,138 @@ Default Value:
 
 5000 ms (5 Seconds)
 
-## EXAMPLE:
-------------
+
+## EXAMPLE
+-----------
+
+Topic : Letters
+
+Letters
+|
+└── Partition-0
+     |
+     ├── Offset 0 -> A
+     ├── Offset 1 -> B
+     ├── Offset 2 -> C
+     ├── Offset 3 -> D
+     ├── Offset 4 -> E
+     └── Offset 5 -> F
+
+
+Consumer Configuration
 
 enable.auto.commit=true
 auto.commit.interval.ms=5000
 
-KafkaConsumer Client approximately har 5 seconds baad
-next offset to read Kafka me commit karne ki koshish karta hai.
 
-Yaani Kafka ye maan leta hai ki us Partition me committed offset se
-pehle ke sabhi messages successfully process ho chuke hain.
+Suppose consumer ne poll() karke offsets 0, 1 aur 2 read kar liye.
+
+Current Consumer Position (Next Offset To Read) = 3
+
+5 seconds complete hone par KafkaConsumer current position
+(i.e. next offset to read) Kafka me commit kar dega.
+
+Committed Offset = 3
+
+Matlab: 
+  Consumer ki next reading offset 3 se shuru hogi.
 
 
-## NOTE:
----------
-Offset har message process hote hi immediately commit nahi hota.
-Offset defined regular intervals (default: 5 seconds) par commit hota hai.
+## CONSUMER APPLICATION RESTART
+--------------------------------
 
----------------------------------------------------
+• Standalone Consumer (assign())
+
+Agar standalone consumer crash hone ke baad dobara start
+(recover) ho jata hai, to woh apni manually assigned
+partition ko committed offset (3) se consumption resume karega.
+
+Agar standalone consumer permanently unavailable ho jaye aur
+baad me kisi doosre standalone consumer ko wahi partition
+manually assign kiya jaye, to woh bhi committed offset (3)
+se hi consumption shuru karega.
+
+
+• Consumer Group (subscribe())
+
+Agar Consumer Group ka koi consumer crash ho jaye ya restart
+ho jaye, to rebalance ke baad us partition ka ownership
+Consumer Group ke kisi consumer ko assign kar diya jata hai.
+
+Jo bhi consumer us partition ka naya owner banega (chahe wahi
+consumer ho ya koi doosra), woh committed offset (3) se hi
+consumption resume karega.
+
+
+## NOTE
+--------
+
+• Kafka generally "next offset to read" commit karta hai,
+  na ki "last consumed/processed offset".
+
+• Offset har message ke baad immediately commit nahi hota.
+  Ye regular intervals par commit hota hai (default: 5 seconds).
+
+
+## WHY AUTO COMMIT IS RISKY ?
+------------------------------
+
+Example:
+
+Offset 0 -> A
+Offset 1 -> B
+Offset 2 -> C
+
+Consumer ne poll() karke tino messages receive kar liye.
+
+Current Consumer Position = 3
+
+Ab application abhi Offset-2 (Message C) process hi kar rahi
+thi ki 5 seconds complete ho gaye.
+
+KafkaConsumer automatically current position commit kar dega.
+
+Committed Offset = 3
+
+Uske turant baad agar application crash ho jaye,
+
+Restart ke baad consumer Offset-3 se consumption resume karega.
+
+Result:
+
+Offset-2 (Message C) dubara consume nahi hoga kyunki Kafka ke
+hisab se Committed Offset = 3 hai, jiska matlab hai ki Offset-0,
+Offset-1 aur Offset-2 successfully process ho chuke hain aur
+next consumption Offset-3 se shuru honi chahiye.
+
+Lekin actual me Message C (Offset-2) ka processing complete
+hi nahi hua tha.
+
+Message Lost.
+
+
+## WHEN TO USE AUTO COMMIT
+--------------------------
+
+Auto Commit un applications ke liye suitable hai jahan
+occasionally kuch messages miss ho jana acceptable ho.
+
+Examples:
+
+• Application Logs
+• Metrics Collection
+• Monitoring
+• Analytics Pipelines
+
+Banking, Payments, Order Processing ya kisi bhi critical
+business workflow me generally Auto Commit use nahi kiya
+jata, kyunki crash ke case me message loss ho sakta hai.
+
+
+-------------------------
 2. consumer.commitSync()
----------------------------------------------------
+-------------------------
+
 Developer khud manually Kafka ko Commit Request bhejta hai.
 
 Jab developer ko lagta hai ki message successfully process ho gaya hai,
