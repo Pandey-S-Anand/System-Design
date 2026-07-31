@@ -186,6 +186,7 @@ ZooKeeper elect karta tha:
 Controller = Broker-2
 
 Agar Controller Broker crash ho jata tha, to ZooKeeper kisi aur Broker ko naya Controller elect kar deta tha.
+Controller bhi ek normal Kafka Broker hi hota hai with additional responsibilities. Ye Cluster Metadata ko manage karta hai aur cluster-wide operations coordinate karta hai.
 KRaft Mode me Controller Election Kafka Controller Quorum khud perform karta hai.
 
 
