@@ -638,9 +638,9 @@ Is approach se:
     - Single Point of Failure avoid hota hai.
 
 
-================================================================================
-CASE 4: Microservices Architecture with CDN + API Gateway + Service Load Balancers
-================================================================================
+-----------------------------------------------------------------------------
+CASE 4: MICROSERVICES ARCHITECTURE WITH CDN, API GATEWAY AND LOAD BALANCERS
+-----------------------------------------------------------------------------
 
 Suppose ek microservices architecture hai jisme multiple services hain,
 har service ke multiple instances hain, har service ke paas apna Load Balancer hai,
@@ -650,104 +650,239 @@ Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
 
 CDN ka full form hai Content Delivery Network.
 
-CDNs basically geographically distributed servers hote hain jo different edge locations
-par placed hote hain.
+CDNs geographically distributed servers hote hain jo different
+geographical locations (e.g. Mumbai, Singapore, London, Virginia)
+me deployed hote hain.
 
-CDN ka main kaam:
+In geographical deployment locations ko CDN Edge Locations bola jata hai.
 
-    - Static content cache karna
-    - Network latency reduce karna
-    - Origin server par unnecessary load kam karna
-    - Response fast karna
+CDN ka primary purpose frequently requested content ko user ke
+nearby CDN Edge se serve karna hota hai.
 
-Examples of cacheable content:
+
+
+## MAIN BENEFITS OF CDN
+--------------------------
+
+1. Static content ko cache karna.
+
+Examples:
 
     - Images
     - Videos
     - CSS files
     - JavaScript files
+    - Fonts
     - Public static files
 
-DNS and CDN behaviour:
 
-    Case 4.1: Anycast IP based CDN
+Iske benefits:
 
-        Multiple CDN edge locations same IP address announce kar sakti hain.
-        Ye same IP DNS me configured ho sakta hai.
+    1. Cached content CDN Edge se serve hota hai.
 
-        DNS resolution ke baad CDN ka IP return hota hai.
+       Isliye Origin tak baar-baar request nahi jaati. 
+       Origin = Wo original source jahan se CDN first time content fetch karta hai.
 
-        Then BGP routing user request ko nearest/optimal CDN edge location par route karti hai.
+       Result:
 
-        Example:
+           - Origin par unnecessary load reduce hota hai.
 
-            User in India -> Mumbai/Singapore CDN edge
-            User in US    -> US CDN edge
 
-        Same IP ho sakta hai, but network routing nearest CDN edge select kar leti hai.
+    2. CDN Edge generally user ke geographically nearby located hota hai.
 
-    Case 4.2: Geo DNS based CDN
+       Isliye request ko har baar distant Origin tak
+       travel nahi karna padta.
 
-        CDN ke different edge locations ke different IPs ho sakte hain.
-        DNS resolver user ke approximate location ke basis par nearby CDN IPs return
-        kar sakta hai.
+       Result:
 
-        Example:
+           - Network latency reduce hoti hai.
 
-            User India me hai:
-                DNS returns India/Singapore CDN IPs
 
-            User Europe me hai:
-                DNS returns Europe CDN IPs
+    3. Reduced network latency ki wajah se response faster milta hai.
 
-Flow:
 
-    User
-      |
-      v
-    DNS
-      |
-      | returns CDN IP
-      v
-    Nearby CDN Edge
-      |
-      | cache hit
-      |------------------> Response returned from CDN
-      |
-      | cache miss
-      v
-    API Gateway
-      |
-      |----------------------|----------------------|
-      v                      v                      v
-    User Service LB       Order Service LB       Payment Service LB
-      |                      |                      |
-      v                      v                      v
-    User Instances        Order Instances        Payment Instances
+## NOTE:
 
-Why CDN helps:
+Whether content should be cached and for how long
+is generally controlled using HTTP caching headers
+(e.g. Cache-Control, Expires).
 
-    Suppose ek image repeatedly same geographical location se request ho rahi hai.
 
-    Without CDN:
 
-        User -> Server -> Image fetched from origin every time
+## DNS AND CDN BEHAVIOUR
+--------------------------
 
-    With CDN:
+Case 4.1 : Anycast IP Based CDN
 
-        First request:
-            CDN image ko origin server se fetch karta hai.
+    Multiple CDN Edge Locations same IP address announce kar sakti hain.
 
-        Subsequent requests:
-            CDN same image apne cache se return kar deta hai.
+    Ye same IP DNS me configured ho sakta hai.
 
-Example:
+    DNS resolution ke baad CDN ka IP return hota hai.
 
-    Agar image service ka origin server US me hai aur user India me hai,
-    to har baar US server tak request bhejna slow hoga.
+    Uske baad BGP routing automatically request ko
+    nearest/optimal CDN Edge tak route karti hai.
 
-    CDN use karne se image India/Singapore ke nearby CDN edge se serve ho sakti hai.
+    Example:
 
+        User in India
+
+            -> Nearby CDN Edge
+               (e.g. Mumbai / Singapore)
+
+        User in US
+
+            -> Nearby CDN Edge
+               (e.g. Virginia)
+
+    User ko generally pata bhi nahi hota
+    ki request kis CDN Edge ne serve ki.
+
+    Network routing automatically
+    appropriate CDN Edge select karti hai.
+
+
+
+Case 4.2 : Geo DNS Based CDN
+
+    Different CDN Edge Locations ke different IP addresses
+    ho sakte hain.
+
+    DNS resolver user ki approximate geographical location
+    ke basis par nearby CDN IP return kar sakta hai.
+
+    Example:
+
+        User India me hai
+
+            DNS returns India / Singapore CDN IP
+
+
+        User Europe me hai
+
+            DNS returns Europe CDN IP
+
+
+## REQUEST FLOW
+------------------
+
+
+                    User
+                      |
+                      v
+                     DNS
+                      |
+                      | returns CDN IP
+                      v
+               Nearby CDN Edge
+                      |
+          -----------------------------
+          |                           |
+          | Cache Hit                 | Cache Miss
+          |                           |
+          |                           v
+          |                     API Gateway
+          |                           |
+          |          -----------------------------------
+          |          |                 |               |
+          |          v                 v               v
+          |     User Service LB   Order Service LB  Payment Service LB
+          |          |                 |               |
+          |          v                 v               v
+          |     User Instances   Order Instances  Payment Instances
+          |
+          |
+          +-----------------------------> Response returned directly from CDN
+
+
+
+Cache Hit:
+
+    Requested content already available
+    at the CDN Edge.
+
+    Response directly CDN se serve ho jata hai.
+
+    Origin ko request nahi jaati.
+
+
+
+Cache Miss:
+
+    Requested content CDN Edge par available nahi hota.
+
+    CDN Origin se content fetch karta hai.
+
+    Response client ko return karta hai.
+
+    Saath hi content future requests ke liye
+    CDN Edge par cache bhi kar leta hai.
+
+
+
+
+## WHY CDN HELPS
+-----------------
+
+Suppose ek image repeatedly same geographical region
+se request ho rahi hai.
+
+
+Without CDN:
+
+Har User request Origin tak travel karegi.
+
+
+With CDN:
+
+First Request:
+
+        User Request
+
+            ↓
+
+         Nearest CDN Edge
+
+            ↓
+
+        Cache Miss
+
+            ↓
+
+         Origin
+
+            ↓
+
+        Image fetched
+
+            ↓
+
+        Cached at that CDN Edge.
+
+            ↓
+
+        Response returned
+
+
+Subsequent Requests (from the same geographical region):
+
+         User Request
+
+            ↓
+
+         Nearest CDN Edge
+
+            ↓
+
+         Cache Hit
+
+            ↓
+
+        Image directly returned
+
+Origin ko request nahi jaati.
+
+ 
 ================================================================================
 CASE 5: Microservices Architecture with CDN and Load Balancer doing URL Routing
 ================================================================================
