@@ -2,9 +2,9 @@
 DNS, CDN, Load Balancer, API Gateway - Component Level Understanding
 ========================================================================
 
----------------------
-## 1. DNS BAHAVIOUR
----------------------
+========================
+## DNS BAHAVIOUR
+========================
 
 DNS ka main kaam hota hai:
 
@@ -86,6 +86,27 @@ par run kar rahe hain.
 In multiple servers ke traffic ko manage karne ke liye ek Load Balancer configured hai.
 Load Balancers generally algorithms like Round Robin, Least Connections, etc. use karke
 servers ke beech load balance karte hain.
+
+## WHAT IS LOAD BALANCER ?
+---------------------------
+
+Traditionally, Load Balancers dedicated hardware appliances hote the.
+
+Inke andar specialized hardware (optimized processors, high-speed networking hardware, etc.)
+ke saath vendor-provided Load Balancing software pre-installed hota tha.
+
+Examples:
+
+    - F5 BIG-IP
+    - Citrix NetScaler
+    - A10 Thunder
+
+Aaj ke modern cloud environments me dedicated hardware Load Balancers ki jagah
+zyadatar software-based Load Balancers use kiye jaate hain.
+
+Ye software (jaise NGINX, HAProxy, Envoy, Traefik, etc.) normal Virtual Machines (VMs)
+ya Containers par run karte hain aur incoming client requests ko multiple backend servers
+ya service instances ke beech route aur distribute karte hain.
 
 Is case me DNS resolution ke baad Load Balancer ka IP return hota hai.
 
@@ -701,12 +722,63 @@ Iske benefits:
     3. Reduced network latency ki wajah se response faster milta hai.
 
 
+## HOW DOES CDN KNOW WHETHER CONTENT IS CACHEABLE ?
+----------------------------------------------------
+
+CDN khud decide nahi karta ki content cache karna hai ya nahi.
+
+Origin Server HTTP caching headers (e.g. Cache-Control, Expires)
+ke through CDN ko batata hai ki:
+
+    - Response cache karna hai ya nahi.
+    - Agar cache karna hai, to kitni der tak.
+
+Examples:
+
+    Cache-Control: public, max-age=86400
+
+        -> CDN response ko 24 hours tak cache kar sakta hai.
+
+    Cache-Control: no-store
+
+        -> CDN response cache nahi karega.
+        -> Har request Origin Server tak jayegi.
+
+NOTE:
+
+CDNs most commonly static content (Images, CSS, JS, Videos, etc.)
+cache karte hain.
+
+However, cacheable dynamic GET responses bhi appropriate HTTP
+caching headers ke saath CDN par cache kiye ja sakte hain.
+
+Example:
+
+    GET /products
+
+Suppose product catalog frequently change nahi hota.
+
+Origin Server response ke saath bhejta hai:
+
+    Cache-Control: public, max-age=60
+
+Meaning:
+
+    CDN is API response ko 60 seconds tak cache kar sakta hai.
+
+Is duration ke andar same API ke subsequent requests
+directly CDN se serve ho sakte hain, aur request ko
+API Gateway, Load Balancer, Service aur Database tak jane ki zarurat
+nahi padti.
+
 ## NOTE:
+----------
 
-Whether content should be cached and for how long
-is generally controlled using HTTP caching headers
-(e.g. Cache-Control, Expires).
-
+Generally POST, PUT, PATCH aur DELETE requests cache
+nahi ki jaati. Dynamic GET responses hi cache kiye
+ja sakte hain, woh bhi sirf tab jab Origin Server
+appropriate HTTP caching headers ke through explicitly
+allow kare.
 
 
 ## DNS AND CDN BEHAVIOUR
@@ -806,7 +878,6 @@ Cache Hit:
     Origin ko request nahi jaati.
 
 
-
 Cache Miss:
 
     Requested content CDN Edge par available nahi hota.
@@ -817,8 +888,6 @@ Cache Miss:
 
     Saath hi content future requests ke liye
     CDN Edge par cache bhi kar leta hai.
-
-
 
 
 ## WHY CDN HELPS
@@ -883,62 +952,131 @@ Subsequent Requests (from the same geographical region):
 Origin ko request nahi jaati.
 
  
-================================================================================
-CASE 5: Microservices Architecture with CDN and Load Balancer doing URL Routing
-================================================================================
+---------------------------------------------------------------------------------------------------
+CASE 5: MICROSERVICES ARCHITECTURE WITH A LAYER-7 LOAD BALANCER (WITHOUT A DEDICATED API GATEWAY)
+---------------------------------------------------------------------------------------------------
 
 Suppose ek microservices architecture hai jisme multiple services hain.
 
-Har service ke multiple instances different servers par run kar rahe hain.
-
-In services ke traffic ko route karne ke liye ek Load Balancer use ho raha hai
-jo URL/path based routing support karta hai.
-
-Is case me separate API Gateway mandatory nahi hai.
-
-Load Balancer khud URL based routing kar sakta hai.
-
 Example:
 
-    /users/**     -> User Service instances
-    /orders/**    -> Order Service instances
-    /payments/**  -> Payment Service instances
+    User Service
+    Order Service
+    Payment Service
 
-Is setup me CDN bhi present hai.
+Har service ke multiple instances different servers par run kar rahe hain.
 
-Flow:
+In services ke traffic ko handle karne ke liye ek Layer-7
+(Application Layer) Load Balancer use kiya ja raha hai.
 
-    User
-      |
-      v
-    DNS
-      |
-      | returns CDN IP
-      v
-    Nearby CDN Edge
-      |
-      | cache miss
-      v
-    Load Balancer with URL Routing
-      |
-      |----------------------|----------------------|
-      v                      v                      v
-    User Service          Order Service          Payment Service
-    Instances             Instances              Instances
+Ye Load Balancer URL / Path based routing support karta hai.
 
-Explanation:
+Is architecture me separate API Gateway mandatory nahi hai.
 
-    Yahan API Gateway nahi hai.
-    Load Balancer hi path based routing kar raha hai.
+Relatively simple applications me Layer-7 Load Balancer
+khud hi incoming requests ko appropriate backend service
+tak route kar sakta hai.
 
-    Modern Load Balancers, jaise AWS ALB, path based routing support karte hain.
 
-    But API Gateway ke advanced features jaise rate limiting, API keys,
-    request transformation, etc. Load Balancer me limited ho sakte hain.
+Example Routing Rules:
 
-================================================================================
-CASE 6: Monolithic Architecture with CDN and Load Balancer
-================================================================================
+    /users/**
+
+            -> User Service
+
+    /orders/**
+
+            -> Order Service
+
+    /payments/**
+
+            -> Payment Service
+
+  
+Layer-7 Load Balancer pehle incoming request ka URL
+check karta hai aur determine karta hai ki request
+kis service ko bhejni hai.
+
+Uske baad woh us service ke available instances me se
+kisi ek healthy instance ko select karta hai using
+load balancing algorithms like:
+
+    - Round Robin
+    - Least Connections
+    - Weighted Routing
+    etc.
+
+
+
+## FLOW :
+----------
+
+                User
+                  |
+                  v
+                 DNS
+                  |
+                  | returns CDN IP
+                  v
+            Nearby CDN Edge
+                  |
+                  | Cache Miss
+                  v
+          Layer-7 Load Balancer
+                  |
+      -----------------------------------------
+      |                  |                    |
+      |                  |                    |
+      v                  v                    v
+
+  User Target Group  Order Target Group  Payment Target Group
+
+      |                  |                    |
+  ----------        ----------            ----------
+   User-1            Order-1              Payment-1
+   User-2            Order-2              Payment-2
+   User-3            Order-3              Payment-3
+
+
+
+
+## LIMITATIONS :
+----------------
+
+Compared to a dedicated API Gateway,
+a Layer-7 Load Balancer generally provides limited support
+for advanced API management features such as:
+
+    - Authentication
+    - Authorization
+    - Rate Limiting
+    - API Versioning
+    - Request Transformation
+    - Response Transformation etc.
+
+Exact capabilities Load Balancer implementation
+par depend karti hain.
+
+## COMMON EXAMPLES OF LAYER-7 LOAD BALANCERS
+---------------------------------------------
+
+Software Layer-7 Load Balancers
+
+    - NGINX
+    - HAProxy
+    - Traefik
+    - Envoy
+
+Cloud Managed Layer-7 Load Balancers
+
+    - AWS Application Load Balancer (ALB)
+    - Azure Application Gateway
+    - Google Cloud HTTP(S) Load Balancer
+
+
+--------------------------------------------------------------
+CASE 6: MONOLITHIC ARCHITECTURE WITH CDN AND LOAD BALANCER
+--------------------------------------------------------------
 
 Suppose ek monolithic application hai.
 
@@ -951,34 +1089,62 @@ Is case me DNS resolution ke baad CDN ka IP return hota hai.
 
 Flow:
 
-    User
-      |
-      v
-    DNS
-      |
-      | returns CDN IP
-      v
-    Nearby CDN Edge
-      |
-      | cache miss
-      v
-    Load Balancer
-      |
-      |------------------|------------------|
-      v                  v                  v
-    Monolith App 1     Monolith App 2     Monolith App 3
+                    User
+                      |
+                      v
+                     DNS
+                      |
+                      | returns CDN IP
+                      v
+               Nearby CDN Edge
+                      |
+          -----------------------------
+          |                           |
+          | Cache Hit                 | Cache Miss
+          |                           |
+          |                           v
+          |                     Load Balancer
+          |                           |
+          |          -----------------------------------
+          |          |                 |               |
+          |          v                 v               v
+          |     Monolith-1       Monolith-2      Monolith-3
+          |
+          |
+          +-----------------------------> Response returned directly from CDN
+
 
 Explanation:
 
-    Load Balancer ka kaam sirf monolithic application ke multiple instances ke beech
-    traffic distribute karna hai.
+    Load Balancer incoming requests ko monolithic application ke multiple running instances ke beech distribute karta hai.
+
+    Agar koi ek instance down ho jaye, to Load Balancer remaining healthy instances ko traffic forward kar sakta hai.
 
     URL routing application ke andar hoti hai.
 
+
+## NOTE :
+---------
+
+Unlike a microservices architecture,
+all business modules (Users, Orders, Payments, etc.)
+are part of the same application deployment.
+
+Although multiple instances of the application
+may be running, every instance contains
+the complete application.
+
+
 Example in Spring Boot:
 
-    /users      -> UserController
-    /orders     -> OrderController
-    /payments   -> PaymentController
+Saare endpoints same monolithic application
+ke different controllers/modules ke through
+handle kiye jaate hain.
 
-    Ye sab same Spring Boot application ke andar handle hote hain.
+Example:
+
+    /users      -> UserController
+
+    /orders     -> OrderController
+
+    /payments   -> PaymentController
