@@ -1148,3 +1148,162 @@ Example:
     /orders     -> OrderController
 
     /payments   -> PaymentController
+
+
+======================
+## WHAT IS PROXY ?
+======================
+
+Proxy = Middleman (Intermediate Server)
+
+Yaani Client aur Actual Server ke beech ek aur server aa jata hai.
+
+Proxy ek intermediate server hota hai jo Client aur Actual Server ke beech baithkar requests aur responses ko forward karta hai.
+
+Instead of:
+
+Client
+   |
+   |
+Server
+
+It becomes:
+
+Client
+   |
+Proxy
+   |
+Server
+
+## TYPES OF PROXY :
+-------------------
+
+1. FORWARD PROXY
+-----------------
+
+Forward Proxy Client ki taraf se (on behalf of the Client) kaam karta hai.
+
+Jab bhi Client koi request bhejta hai, wo request pehle Forward Proxy ke paas jaati hai. Forward Proxy us request ko Actual Server tak forward karta hai.
+
+Server request ko process karta hai aur response wapas Forward Proxy ko bhejta hai. Uske baad Forward Proxy response ko Client tak forward kar deta hai.
+
+Flow:
+
+Client
+   |
+Forward Proxy
+   |
+Actual Server
+
+
+## IMPORTANT :
+--------------
+Server ko actual Client directly nahi dikhta. Server ko lagta hai ki request Forward Proxy se aa rahi hai.
+By default, Server ko Client ka original IP address ya identity directly pata nahi hoti. Ye information tabhi pata chalti hai jab Forward Proxy intentionally usse forward kare (e.g. through HTTP headers).
+
+
+USE CASE 1: CORPORATE INTERNET ACCESS CONTROL
+-----------------------------------------------
+
+Problem :
+
+Suppose ek company (e.g. SCB) nahi chahti ki employees office network se Facebook, Instagram ya malicious websites access karein.
+
+Agar employees directly Internet access karein:
+
+Employee Laptop
+       |
+       |
+   Internet
+
+To company ke paas Internet usage ko centrally control karne ka koi mechanism nahi hoga.
+
+Solution :
+
+Company beech me ek Forward Proxy deploy karti hai.
+
+Employee Laptop
+       |
+       |
+Forward Proxy
+       |
+       |
+   Internet
+
+Ab har request pehle Forward Proxy ke paas jaati hai.
+
+Example:
+
+Employee requests:
+
+facebook.com
+
+Forward Proxy apni configured security policies check karta hai.
+
+Rule:
+
+facebook.com = BLOCKED
+
+Result:
+
+403 Forbidden
+
+Request Facebook tak jaati hi nahi.
+
+Agar employee StackOverflow access kare:
+
+stackoverflow.com
+
+Aur policy usse allow karti hai, to Forward Proxy request Internet par forward kar deta hai.
+
+Benefits :
+
+Centralized Internet Access Control
+Website Filtering
+Security Enforcement
+Malware Protection
+Logging & Monitoring
+
+
+USE CASE 2: MASKING CLIENT IDENTITY (SIMPLIFIED)
+-------------------------------------------------
+
+Suppose Laptop ka private IP hai:
+
+192.168.1.5
+
+Router NAT/PAT ke through ise apne Public IP me convert karta hai:
+
+49.205.10.20
+
+## WITHOUT  FORWARD PROXY :
+
+Laptop (192.168.1.5)
+        |
+Router (Public IP: 49.205.10.20)
+        |
+      Google
+
+
+Google ko Router ka Public IP dikhega: 49.205.10.20
+
+## WITH FORWARD PROXY :
+
+Laptop
+   |
+Router (Public IP: 49.205.10.20)
+   |
+Forward Proxy (Public IP: 103.21.50.10)
+   |
+Google
+
+Ab Google ko Forward Proxy ka Public IP dikhega:
+
+103.21.50.10
+
+Original Client ki identity ya Router ka Public IP tabhi pata chalega jab Forward Proxy intentionally us information ko forward kare (for example, through HTTP headers like X-Forwarded-For).
+
+
+2. REVERSE PROXY
+-----------------
+
