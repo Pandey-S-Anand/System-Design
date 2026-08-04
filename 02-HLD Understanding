@@ -1198,8 +1198,12 @@ Actual Server
 
 ## IMPORTANT :
 --------------
-Server ko actual Client directly nahi dikhta. Server ko lagta hai ki request Forward Proxy se aa rahi hai.
-By default, Server ko Client ka original IP address ya identity directly pata nahi hoti. Ye information tabhi pata chalti hai jab Forward Proxy intentionally usse forward kare (e.g. through HTTP headers).
+
+Forward Proxy client ko represent karta hai, i.e. wo destination server se client ki taraf se communicate karta hai.
+
+Isliye server ko request Forward Proxy se aati hui dikhti hai, actual client se nahi.
+
+By default, server ko client ka original IP ya identity pata nahi hoti. Ye information tabhi pata chalti hai jab Forward Proxy intentionally usse forward kare (e.g. through HTTP headers like X-Forwarded-For).
 
 
 USE CASE 1: CORPORATE INTERNET ACCESS CONTROL
