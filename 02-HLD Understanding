@@ -1181,9 +1181,9 @@ Server
 1. FORWARD PROXY
 -----------------
 
-Forward Proxy Client ki taraf se (on behalf of the Client) kaam karta hai.
+Forward Proxy client ko represent karta hai, i.e. wo client ki taraf se destination server se communicate karta hai 
 
-Jab bhi Client koi request bhejta hai, wo request pehle Forward Proxy ke paas jaati hai. Forward Proxy us request ko Actual Server tak forward karta hai.
+Jab bhi Client koi request bhejta hai, wo request pehle Forward Proxy ke paas jaati hai. Forward Proxy us request ko Actual Server tak forward karta hai. Isliye server ko request Forward Proxy se aati hui dikhti hai, actual client se nahi.
 
 Server request ko process karta hai aur response wapas Forward Proxy ko bhejta hai. Uske baad Forward Proxy response ko Client tak forward kar deta hai.
 
@@ -1199,9 +1199,7 @@ Actual Server
 ## IMPORTANT :
 --------------
 
-Forward Proxy client ko represent karta hai, i.e. wo destination server se client ki taraf se communicate karta hai.
-
-Isliye server ko request Forward Proxy se aati hui dikhti hai, actual client se nahi.
+Forward Proxy client-side concerns jaise Filtering, Access Control aur Anonymity handle karta hai.
 
 By default, server ko client ka original IP ya identity pata nahi hoti. Ye information tabhi pata chalti hai jab Forward Proxy intentionally usse forward kare (e.g. through HTTP headers like X-Forwarded-For).
 
@@ -1310,4 +1308,43 @@ Original Client ki identity ya Router ka Public IP tabhi pata chalega jab Forwar
 
 2. REVERSE PROXY
 -----------------
+
+Reverse Proxy server ko represent karta hai, i.e. wo server ki taraf se client se communicate karta hai.
+
+In other words,
+
+Jo bhi component Backend Server(s) ki taraf se Client ki requests receive karta hai aur Backend Infrastructure ko Client se hide karta hai, wo Reverse Proxy hai.
+
+Ye Client aur Backend Servers ke beech ek intermediate server hota hai.
+
+
+                  Client
+                    |
+              Reverse Proxy
+                    |
+               Backend Server(s)
+
+
+Depending on the implementation, a Reverse Proxy can also act as:
+
+    - Load Balancer
+    - API Gateway
+    - CDN
+    - Ingress Controller
+
+
+## NOTE :
+-----------
+
+NGINX is one of the most popular software implementations
+that performs the role of a Reverse Proxy.
+
+Depending on its configuration, it can be used as:
+
+- Load Balancer
+- Basic API Gateway
+- Static File Server
+- SSL/TLS Terminator
+- Cache Server
+- Compression Server
 
