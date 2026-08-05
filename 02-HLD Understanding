@@ -603,7 +603,8 @@ TLS connection end (terminate) ho jata hai.
 
 
 ## WHY IS IT CALLED "TERMINATION"?
--------------------------------------
+------------------------------------
+
 Client aur API Gateway ke beech jo TLS connection establish hua tha,
 wo API Gateway par end (terminate) ho jata hai.
 
@@ -630,9 +631,8 @@ Agar architecture require karta hai, to Gateway backend ke saath ek naya TLS ses
 Isliye Client-Gateway aur Gateway-Backend do independent TLS connections ho sakte hain.
 
 
-===============================================================================
-WHY DO SSL/TLS TERMINATION?
-===============================================================================
+## WHY DO SSL/TLS TERMINATION?
+-------------------------------
 
 Suppose system me 100 Backend Services hain.
 
@@ -647,35 +647,13 @@ to har service ko:
 Ye management aur maintenance difficult bana deta hai.
 
 Isliye production systems me commonly API Gateway,
-Load Balancer ya Reverse Proxy SSL/TLS Termination
-perform karte hain.
+Load Balancer perform karte hain.
 
-Benefits:
 
+## BENIFITS :
+-------------
     - Centralized Certificate Management
     - Easier Certificate Renewal
-    - Backend Services simpler ho jaati hain.
-    - Operational overhead reduce hota hai.
-    - Performance aur management improve hoti hai.
-
-
-===============================================================================
-NOTE
-===============================================================================
-
-SSL/TLS Termination ka matlab ye nahi hai ki Backend tak
-hamesha HTTP hi use hoga.
-
-Termination ke baad request Backend tak
-
-    HTTP
-
-ya
-
-    HTTPS
-
-dono me se kisi bhi protocol ke through ja sakti hai,
-depending on the architecture and security requirements.
 
 ## NOTE:
 ---------
@@ -683,6 +661,7 @@ depending on the architecture and security requirements.
 Most modern API Gateway implementations support SSL/TLS termination.
 However, SSL/TLS termination is an additional capability, not the primary responsibility of an API Gateway (Request Routing + Cross-cutting concerns (Authentication, Authorization, Rate Limiting, etc). 
 In some architectures, SSL is terminated at a Load Balancer or another Reverse Proxy before the request reaches the API Gateway.
+
 
 
 12. CIRCUIT BREAKING (Depending on Implementation)
@@ -830,6 +809,107 @@ Is approach se:
     - High Availability improve hoti hai.
     - Scalability improve hoti hai.
     - Single Point of Failure avoid hota hai.
+
+
+
+14. COMPRESSION
+-----------------
+
+Compression ka matlab hota hai HTTP Request ya Response ke size ko
+kam karna before transmitting it over the network.
+
+Iska primary purpose hai:
+
+    - Network bandwidth reduce karna jiski wajah se response fast milta hai usse Overall network performance improve hota hai.
+
+
+## WITHOUT COMPRESSION
+-----------------------
+
+Suppose Backend Service response return karti hai:
+
+    500 KB JSON
+
+Flow:
+
+        Backend service
+           |
+        500 KB
+           |
+        Service LB
+           |
+        API Gateway
+           |
+        Internet
+           |
+         Client
+
+
+Poora 500 KB network ke through transfer hoga.
+
+
+## WITH COMPRESSION
+--------------------
+
+API Gateway response ko GZIP ya Brotli jaise compression
+algorithms use karke compress kar sakta hai.
+
+Example:
+
+        Backend Service
+           |
+        500 KB JSON
+           |
+        Service LB
+           |
+      API Gateway (GZIP / Brotli)
+           |
+         50 KB
+           |
+        Internet
+           |
+         Client
+
+
+Client ka Browser ya HTTP Client automatically compressed
+response ko decompress kar deta hai.
+
+Application Developer ko manually decompression
+karne ki zarurat nahi padti.
+
+
+## COMMONLY COMPRESSED CONTENT
+-------------------------------
+
+- JSON
+- HTML
+- CSS
+- JavaScript
+- XML
+- Text Responses
+
+
+## COMMONLY NOT COMPRESSED
+---------------------------
+
+Already compressed files ko generally dubara compress
+nahi kiya jata.
+
+Examples:
+
+- JPEG
+- PNG
+- MP4
+- ZIP
+- PDF (mostly)
+
+
+## COMMON COMPRESSION ALGORITHMS
+--------------------------------
+
+- GZIP (Most Common)
+
+- Brotli (Better Compression, Modern Browsers)
 
 
 -----------------------------------------------------------------------------
@@ -1509,15 +1589,21 @@ Depending on the implementation, a Reverse Proxy can also act as:
 ## NOTE :
 -----------
 
-NGINX is one of the most popular software implementations
+NGINX (pronounced: Engine-X) is one of the most popular software implementations
 that performs the role of a Reverse Proxy.
 
-Depending on its configuration, it can be used as:
+Ye Physical Server, Virtual Machine ya Container par run karta hai.
+
+Configuration ke basis par NGINX different networking roles
+perform kar sakta hai.
 
 - Load Balancer
 - Basic API Gateway
 - Static File Server
-- SSL/TLS Terminator
-- Cache Server
-- Compression Server
+
+Additionally, it supports features such as:
+
+- SSL/TLS Termination
+- Caching
+- Compression
 
