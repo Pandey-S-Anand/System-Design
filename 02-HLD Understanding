@@ -1607,3 +1607,418 @@ Additionally, it supports features such as:
 - Caching
 - Compression
 
+
+=============
+## SCALING
+=============
+
+---------------------------
+WHY DO WE NEED SCALING ?
+---------------------------
+
+Sabse pehle ek simple E-commerce Spring Boot Application lete hain jo ek
+single Physical Machine (PM) ya Virtual Machine (VM) par deployed hai.
+
+Architecture:
+
+             Users
+                |
+                |
+                v
+        ----------------
+        | Spring Boot  |
+        | Application  |
+        ----------------
+                |
+                |
+                v
+             Database
+
+Spring Boot application embedded application server (e.g. Tomcat) ke saath
+isi Physical/Virtual server par run kar rahi hai.
+
+Ab is server ke paas kuch limited resources hain.
+
+
+
+## SERVER RESOURCES
+---------------------
+
+CPU              : 2 Cores
+RAM              : 4 GB
+Disk             : 100 GB
+Network Card     : 1 Gbps
+
+
+
+## APPLICATION RESOURCES
+--------------------------
+
+1: WORKER THREADS :
+--------------------
+
+Har incoming HTTP request ko process karne ke liye Tomcat ko ek worker thread
+allocate karna padta hai.
+
+Suppose Tomcat configuration:
+
+    Maximum Threads = 200
+
+Matlab Tomcat ke paas maximum 200 worker threads available hain request
+processing ke liye.
+
+Tomcat ek time par maximum 200 requests actively process kar sakta hai
+(assuming each request occupies one worker thread).
+
+Baaki requests:
+
+    - Accept Queue me wait kar sakti hain
+      (OS / Tomcat configuration par depend karta hai)
+
+                OR
+
+    - Overload hone par reject bhi ho sakti hain.
+
+
+
+2: DATABASE CONNECTIONS :
+-------------------------
+
+Spring Boot application database se communicate karne ke liye
+connection pool use karti hai.
+
+Suppose configuration:
+
+    Maximum Pool Size = 100
+
+Matlab ek time par application maximum 100 active database connections
+use kar sakti hai.
+
+
+
+## INITIALLY EVERYTHING WORKS FINE :
+------------------------------------
+
+Suppose application ke sirf
+
+    100 Users
+
+hain.
+
+Traffic bhi kam hai.
+
+Server ke resources sufficient hain.
+
+Application smoothly chal rahi hai.
+
+
+
+## COMPANY STARTS GROWING :
+---------------------------
+
+Initially:
+
+    Users
+
+        100
+
+Server Traffic
+
+        10 Requests / Second
+
+Server easily handle kar raha tha.
+
+
+Kuch months baad:
+
+    Users
+
+        10,000
+
+Ab naturally application par incoming HTTP requests bhi badhne lagti hain.
+
+Suppose traffic increase hokar
+
+    500 Requests / Second
+
+ho gayi.
+
+Server ab bhi kaam kar raha hai, lekin CPU utilization aur memory usage
+increase hone lagi.
+
+
+Aur kuch months baad:
+
+    Users
+
+        100,000
+
+Suppose traffic aur badhkar
+
+    2,000 Requests / Second
+
+ho gayi.
+
+Ab actual problems start hoti hain.
+
+
+
+## WHAT EXACTLY STARTS FAILING ?
+----------------------------------
+
+
+1. CPU BECOMES A BOTTLENECK
+------------------------------
+
+Har incoming HTTP request ko process karne ke liye ek worker thread allocate
+hota hai aur wo thread CPU instructions execute karta hai.
+
+Initially:
+
+    Traffic
+
+        10 Requests / Second
+
+    CPU Utilization
+
+        15%
+
+Traffic increase hua:
+
+    Traffic
+
+        500 Requests / Second
+
+    CPU Utilization
+
+        75%
+
+Traffic aur badha:
+
+    Traffic
+
+        2,000 Requests / Second
+
+    CPU Utilization
+
+        100%
+
+Ab CPU continuously busy hai.
+
+Naye requests ko process karne ke liye immediately CPU time available nahi hai.
+
+Result:
+
+    Response Time increase hone lagta hai.
+
+    Latency badhne lagti hai.
+
+
+
+2. TOMCAT THREADS GET EXHAUSTED
+----------------------------------
+
+Suppose:
+
+    Tomcat Worker Threads = 200
+
+Ek request ko complete hone me
+
+    2 Seconds
+
+lag rahe hain.
+
+Agar ek hi time par
+
+    500 Requests
+
+aa jaati hain,
+
+to kya hoga?
+
+Pehli
+
+    200 Requests
+
+ko worker thread mil jayega.
+
+Baaki
+
+    300 Requests
+
+immediately process nahi ho paayengi.
+
+Wo:
+
+    - Accept Queue me wait karengi
+      (agar queue me jagah hai)
+
+                OR
+
+    - Queue bhi full ho gayi to reject ho sakti hain.
+
+
+## RESULT:
+-----------
+
+    High Response Time
+            ↓
+        Timeouts
+            ↓
+    5xx Errors (depending on situation)
+
+
+
+3. DATABASE CONNECTION POOL GETS EXHAUSTED
+---------------------------------------------
+
+Suppose:
+
+    Maximum DB Connections = 100
+
+Ab ek hi time par
+
+    300 Requests
+
+database access karna chahti hain.
+
+Kya application
+
+    300
+
+database connections bana legi?
+
+Nahi.
+
+Sirf
+
+    100
+
+connections available hain.
+
+Baaki requests connection available hone ka wait karengi.
+
+Agar bahut der tak connection available nahi hua,
+
+to request fail bhi ho sakti hai.
+
+
+## RESULT :
+------------
+
+    Slow Queries
+            ↓
+        Waiting
+            ↓
+    Connection Timeout
+
+
+
+4. RAM STARTS FILLING UP
+--------------------------
+
+Har request kuch memory consume karti hai.
+
+Example:
+
+    - Request Objects
+    - Response Objects
+    - Local Variables
+    - JSON Serialization
+    - Hibernate Objects
+    - Session Data
+
+Initially:
+
+    RAM Usage
+
+        1 GB / 4 GB
+
+Traffic badha:
+
+    RAM Usage
+
+        3.5 GB / 4 GB
+
+Aur badha:
+
+    RAM Usage
+
+        4 GB / 4 GB
+
+Ab JVM ko Garbage Collection frequently run karni padegi.
+
+GC jab memory reclaim karti hai, kuch phases me application threads ko temporarily stop karna pad sakta hai.
+
+Agar memory fir bhi insufficient hui,
+
+to application
+
+    OutOfMemoryError
+
+bhi throw kar sakti hai.
+
+
+
+5. NETWORK BANDWIDTH ALSO HAS A LIMIT
+----------------------------------------
+
+Suppose server ka Network Interface Card support karta hai
+
+    1 Gbps
+
+Lekin incoming + outgoing traffic ho gaya
+
+    3 Gbps
+
+Impossible.
+
+Network packets queue hone lagenge.
+
+Result:
+
+    Latency increase hogi.
+
+    Throughput degrade hoga.
+
+
+
+## FINAL OBSERVATION
+---------------------
+
+Ab dhyan se dekho.
+
+Application me koi bug nahi aaya.
+
+Problem sirf itni hai ki
+
+    Existing Workload
+
+            >
+
+    Server Capacity
+
+ho gayi hai.
+
+
+
+## WHAT IS THE ROOT CAUSE ?
+----------------------------
+
+Root Cause:
+
+Ek single machine ke resources finite (limited) hote hain.
+
+Chahe wo:
+
+    - CPU
+    - RAM
+    - Network
+    - Thread Pool
+    - Database Connections
+
+In sab ki ek upper limit hoti hai.
+
+Jaise-jaise traffic increase hota hai,
+
+ye resources gradually saturate hone lagte hain.
