@@ -1612,6 +1612,8 @@ Additionally, it supports features such as:
 ## SCALING
 =============
 
+Scaling is the process of increasing the system's capacity to handle the increased workload.
+
 ---------------------------
 WHY DO WE NEED SCALING ?
 ---------------------------
@@ -2022,3 +2024,430 @@ In sab ki ek upper limit hoti hai.
 Jaise-jaise traffic increase hota hai,
 
 ye resources gradually saturate hone lagte hain.
+
+
+
+Q1. CAN AN APPLICATION BECOME SLOW EVEN IF CPU USAGE IS ONLY 20% ?
+------------------------------------------------------------------
+
+Yes. It is possible , possible could be the potential reason behind the same.
+
+
+1. SLOW DATABASE (MOST COMMON)
+--------------------------------
+
+Suppose Tomcat ke paas:
+
+    200 Worker Threads
+
+Aur DB Connection Pool:
+
+    100 Connections
+
+Ab 200 requests aayi.
+
+Flow:
+
+    Request
+        ↓
+    Tomcat Thread
+        ↓
+    Business Logic
+        ↓
+    DB Query
+
+Ab maan lo Database bahut slow hai.
+
+
+## POSSIBLE REASONS WHY THE DATABASE BECOMES SLOW :
+---------------------------------------------------
+
+1. Slow Query
+----------------
+Query inefficient likhi gayi ho sakti hai.
+
+Example:
+
+    - Unnecessary joins
+    - Large table scan
+    - Poor query design
+
+Result:
+
+Ek query jo normally 20 ms me complete honi chahiye,
+wo 5–10 seconds tak le sakti hai.
+
+
+
+2. MISSING INDEX
+------------------
+Suppose query:
+
+    SELECT * FROM orders
+    WHERE customer_id = 101;
+
+Agar customer_id column par index nahi hai,
+to database ko poori table scan karni pad sakti hai.
+
+Large tables me is wajah se query execution bahut slow ho sakta hai.
+
+
+
+3. DATABASE LOCK CONTENTION
+----------------------------
+
+Sabse pehle samajhte hain ki Transaction kya hota hai.
+
+## WHAT IS TRANSACTION ?
+-------------------------
+
+Transaction database operations ka ek logical group hota hai
+jo ek single unit ki tarah execute hota hai.
+
+Simple language me:
+
+"Jo related database operations hum ek saath perform karna
+chahte hain aur chahte hain ki ya to sab successful hon,
+ya agar koi problem aaye to sab rollback ho jayein."
+
+Example:
+
+Suppose Anand ke account se ₹500 deduct karke
+Anurag ke account me ₹500 add karna hai.
+
+Ye do database operations hain:
+
+Step-1
+
+    Anand Account
+
+    Balance = Balance - 500
+
+Step-2
+
+    Anurag Account
+
+    Balance = Balance + 500
+
+Ab socho agar pehla step successful ho gaya
+aur server crash ho gaya.
+
+Result:
+
+✔ Anand ke account se paise kat gaye.
+
+❌ Anurag ke account me paise aaye hi nahi.
+
+Ye incorrect state hai.
+
+Isliye dono operations ko ek Transaction ke andar execute
+kiya jata hai.
+
+Agar dono successful hue:
+
+    COMMIT
+
+Agar beech me koi error aa gaya:
+
+    ROLLBACK
+
+Yaani database pehle wali state me wapas chala jayega.
+
+
+## EXAMPLE :
+------------
+
+Suppose Transaction-1 account id = 101 ko update kar rahi hai.
+
+Transaction-1
+
+    BEGIN;
+
+    UPDATE account
+    SET balance = balance - 500
+    WHERE id = 101;
+
+Database ne account id = 101 wali row par lock laga diya hai.
+
+Abhi Transaction-1 complete nahi hui hai.
+
+
+Isi beech Transaction-2 bhi same account ko update karna
+chahti hai.
+
+Transaction-2
+
+    UPDATE account
+    SET balance = balance + 100
+    WHERE id = 101;
+
+Ab Database kya karega?
+
+Database Transaction-2 ko immediately execute nahi karega.
+
+Use Transaction-1 ke COMMIT ya ROLLBACK hone ka wait karna padega.
+
+Yahi waiting Database Lock Contention kehlati hai.
+
+Result:
+
+    Transaction-2 waiting state me chali jaati hai.
+
+Agar bahut saari transactions same row ke lock ka wait
+karne lagen,
+
+to:
+
+    Queries slow ho jaati hain.
+            ↓
+    Database Response Time increase ho jata hai.
+            ↓
+    Application slow feel hone lagti hai.
+
+
+## DEFINITION :
+----------------
+
+Lock Contention occurs when multiple threads compete for the same lock. 
+If one thread holds the lock for a long time, the remaining threads are blocked until the lock is released. 
+This increases response time and can make the application slow even when CPU utilization is relatively low.
+
+
+4. Too Many Concurrent Queries
+--------------------------------
+Database ek limited number of queries efficiently process
+kar sakta hai.
+
+Agar ek hi time par bahut zyada queries aa jayein,
+to database sab queries immediately process nahi kar paata.
+
+Result:
+
+Queries queue me wait karti hain aur response time badh jata hai.
+
+
+
+5. CPU SATURATION ON DATABASE SERVER
+------------------------------------
+
+(This applies when the database is deployed on a separate server.)
+
+Suppose Database Server ka CPU continuously high utilization par chal raha hai.
+
+Is wajah se Database ko queries execute karne me zyada time lagne lagta hai.
+
+Result:
+
+    Query Execution Time increase ho jata hai.
+
+Aur kyunki application database ke response ka wait karti hai,
+
+Overall Application Response Time bhi increase ho jata hai.
+
+
+6. MEMORY PRESSURE
+--------------------
+Database frequently accessed data ko RAM me cache karta hai.
+
+Agar available memory kam pad jaye,
+to database ko data disk se read karna padta hai,
+jo RAM ke comparison me kaafi slow hota hai.
+
+Result:
+
+Query execution time increase ho jata hai.
+
+
+
+7. DISK I/O BOTTLENECK
+------------------------
+Database continuously disk par read/write operations karta hai.
+
+Agar disk already busy ho ya slow ho,
+to queries ko required data read/write karne me
+extra time lagta hai.
+
+Result:
+
+Database slow ho jata hai.
+
+
+
+8. NETWORK LATENCY BETWEEN APPLICATION AND DATABASE
+------------------------------------------------------
+Application aur Database alag machines par ho sakte hain.
+
+Agar network slow hai ya latency high hai,
+to request aur response travel karne me hi
+extra time lag sakta hai.
+
+Result:
+
+Application ko database slow feel hota hai.
+
+
+
+9. CONNECTION LEAK
+--------------------
+Application database connection lekar use properly
+close/release nahi karti.
+
+Result:
+
+Connection Pool ki available connections gradually
+kam hoti jaati hain.
+
+Eventually Connection Pool Exhaust ho sakta hai,
+aur naye requests ko connection available hone ka
+wait karna padta hai.
+
+
+Suppose ek query ko
+
+    10 Seconds
+
+lag rahe hain.
+
+Ab kya hoga?
+
+Pehli 100 requests ko DB connection mil gaya.
+
+Lekin kyunki query bahut slow hai, ye 100 connections
+10 seconds tak occupied rahenge.
+
+Baaki 100 requests ko DB connection nahi milega.
+
+Wo DB connection available hone ka wait karengi.
+
+Diagram:
+
+    200 Tomcat Threads
+
+            ↓
+
+    100 Threads
+    Waiting for Slow DB Response
+
+            ↓
+
+    100 Threads
+    Waiting for DB Connection
+
+Question:
+
+CPU kya kar raha hai?
+
+Almost kuch nahi.
+
+Kyun?
+
+Kyunki threads computation nahi kar rahe.
+
+Wo sirf DB response ya DB connection ka wait kar rahe hain.
+
+CPU Utilization:
+
+    20%
+
+DB Connection Pool:
+
+    100% Busy
+
+Application:
+
+    Very Slow
+
+IMPORTANT:
+
+Yahan primary root cause
+
+    Slow Database / Slow Query
+
+hai.
+
+DB Connection Pool ka full ho jana actual root cause nahi hai.
+
+Ye us slow database ka consequence (symptom) hai.
+
+
+## INTERVIEW TIP :
+------------------
+
+Agar interviewer bole:
+
+    "DB Connection Pool 100% busy hai."
+
+To immediately ye conclude mat karna ki
+connection pool size kam hai.
+
+Connection Pool Exhaustion aksar ek symptom hota hai.
+
+Actual root cause investigate karna chahiye, jaise:
+
+    - Slow Queries
+    - Missing Indexes
+    - Lock Contention
+    - Connection Leaks
+    - Network Latency
+
+Production me pehle root cause identify kiya jata hai,
+sirf connection pool size increase nahi kiya jata.
+
+
+
+Q2. DOES ADDING MORE USERS ALWAYS MEAN SCALING IS REQUIRED ?
+--------------------------------------------------------------
+NO.
+
+Example
+
+1000 users
+
+But only
+
+10 concurrent users.
+
+Scaling required?
+
+Maybe not.
+
+
+Q3. WHAT METRICS WOULD YOU MONITOR BEFORE DECIDING TO SCALE?
+--------------------------------------------------------------
+
+1. CPU UTILIZATION
+
+2. THREAD POOL USAGE
+
+3. NETWORK BANDWIDTH ALSO HAS A LIMIT
+
+4. RAM USAGE
+
+5. Slow DB
+   |
+   |- Slow Query
+   |- DB CONNECTION POOL EXHAUSTION
+   |- MISSING INDEX
+   |- Too Many Concurrent Queries
+   |- CPU SATURATION ON DATABASE SERVER
+   |- DISK I/O BOTTLENECK
+   |- Too Many Concurrent Queries
+   |- CPU SATURATION ON DATABASE SERVER
+   |- DISK I/O BOTTLENECK
+  
+
+3. DISK I/O
+
+4. NETWORK UTILIZATION
+
+5. REQUEST RATE (RPS)
+
+6. RESPONSE TIME
+
+7. P95 LATENCY
+
+8. P99 LATENCY
+
+11. QUEUE LENGTH
+
+12. ERROR RATE
