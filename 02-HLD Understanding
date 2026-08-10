@@ -2027,14 +2027,11 @@ ye resources gradually saturate hone lagte hain.
 
 
 
-Q1. CAN AN APPLICATION BECOME SLOW EVEN IF CPU USAGE IS ONLY 20% ?
-------------------------------------------------------------------
+Q1. CAN AN APPLICATION BECOME SLOW EVEN IF APPLICATION SERVER CPU USAGE IS ONLY 20% ?
+----------------------------------------------------------------------------------------
 
-Yes. It is possible , possible could be the potential reason behind the same.
+Yes. It is possible , slow database could possibly be the potential reason behind the same.
 
-
-1. SLOW DATABASE (MOST COMMON)
---------------------------------
 
 Suppose Tomcat ke paas:
 
@@ -2290,7 +2287,7 @@ Application ko database slow feel hota hai.
 9. CONNECTION LEAK
 --------------------
 Application database connection lekar use properly
-close/release nahi karti.
+close / release nahi karti.
 
 Result:
 
@@ -2377,8 +2374,7 @@ Agar interviewer bole:
 
     "DB Connection Pool 100% busy hai."
 
-To immediately ye conclude mat karna ki
-connection pool size kam hai.
+To immediately ye conclude mat karna ki connection pool size kam hai.
 
 Connection Pool Exhaustion aksar ek symptom hota hai.
 
@@ -2416,38 +2412,384 @@ Q3. WHAT METRICS WOULD YOU MONITOR BEFORE DECIDING TO SCALE?
 --------------------------------------------------------------
 
 1. CPU UTILIZATION
+-------------------
+Ye batata hai CPU kitna busy hai.
+Agar continuously bahut high (e.g. 90-100%) ho, to CPU bottleneck ho sakta hai.
 
-2. THREAD POOL USAGE
 
-3. NETWORK BANDWIDTH ALSO HAS A LIMIT
+2. MEMORY USAGE
+----------------
+Ye batata hai application/server kitni RAM use kar raha hai.
+Agar memory frequently fill hone lage, to JVM ko baar-baar Garbage Collection (GC) run karna padta hai.
+GC ke kuch phases me application threads temporarily pause ho sakte hain, jisse response time increase ho sakta hai.
+Aur agar memory fir bhi insufficient ho jaye, to application OutOfMemoryError throw kar sakti hai.
 
-4. RAM USAGE
 
-5. Slow DB
-   |
-   |- Slow Query
-   |- DB CONNECTION POOL EXHAUSTION
-   |- MISSING INDEX
-   |- Too Many Concurrent Queries
-   |- CPU SATURATION ON DATABASE SERVER
-   |- DISK I/O BOTTLENECK
-   |- Too Many Concurrent Queries
-   |- CPU SATURATION ON DATABASE SERVER
-   |- DISK I/O BOTTLENECK
-  
+3. THREAD POOL USAGE
+---------------------
+Ye batata hai kitne worker threads currently busy hain.
+Agar saare threads busy ho gaye, to naye requests wait ya reject ho sakte hain.
 
-3. DISK I/O
 
-4. NETWORK UTILIZATION
+4. DATABASE CONNECTION POOL USAGE
+----------------------------------
+Ye batata hai connection pool me kitne DB connections use ho rahe hain.
+Agar saare connections busy ho gaye, to requests connection ke liye wait karengi.
 
-5. REQUEST RATE (RPS)
 
-6. RESPONSE TIME
+5. DATABASE CPU UTILIZATION
+----------------------------
+Ye batata hai Database Server ka CPU kitna busy hai.
+High CPU indicate kar sakta hai ki database heavy load handle kar raha hai.
 
-7. P95 LATENCY
 
-8. P99 LATENCY
+6. DATABASE DISK I/O
+---------------------
+Ye batata hai database kitna fast disk read/write kar pa raha hai.
+High Disk I/O database ko slow bana sakta hai.
 
-11. QUEUE LENGTH
 
-12. ERROR RATE
+7. NETWORK UTILIZATION
+-----------------------
+Ye batata hai available network bandwidth ka kitna use ho raha hai.
+Agar bandwidth limit ke paas pahunch gayi, to latency increase ho sakti hai.
+
+
+8. REQUEST RATE (RPS)
+----------------------
+RPS (Requests Per Second) batata hai ek second me kitni requests aa rahi hain.
+Traffic increase ho raha hai ya nahi, ye samajhne me help karta hai.
+
+
+9. RESPONSE TIME
+-----------------
+Ek request ko complete hone me kitna time lag raha hai.
+Agar response time badh raha hai, to system slow ho raha hai.
+
+
+10. P95 LATENCY
+----------------
+95% requests kitne time ke andar complete ho rahi hain.
+Ye average se better picture deta hai.
+
+
+11. P99 LATENCY
+----------------
+99% requests kitne time ke andar complete ho rahi hain.
+Worst-case user experience ko samajhne ke liye use hota hai.
+
+
+12. QUEUE LENGTH
+-----------------
+Ye batata hai kitni incoming requests processing start hone ka wait kar rahi hain (i.e. worker thread available hone ka wait).
+Agar queue continuously badh rahi ho, to application incoming requests ko utni fast process nahi kar pa rahi jitni fast requests aa rahi hain.
+
+
+13. ERROR RATE
+---------------
+Kitni requests fail ho rahi hain (4xx/5xx etc.).
+Error rate increase hona system health ke liye warning sign hai.
+
+
+NOTE:
+-----
+
+Ye metrics generally Monitoring Dashboards me monitor kiye jaate hain.
+
+Examples:
+
+- Prometheus + Grafana (Most Common)
+- AWS CloudWatch
+- Datadog
+- New Relic
+
+
+
+Q4. IF CPU IS 100%, WILL SCALING ALWAYS SOLVE THE PROBLEM ?
+--------------------------------------------------------------
+
+Suppose Infinite loop likh diya.
+
+CPU 100%.
+
+Scaling se problem solve hogi?
+
+No.
+
+Bug fix karna padega.
+
+
+Q5. WHICH RESOURCE BECOMES THE BOTTLENECK FIRST ?
+------------------------------------------------------
+
+It depends on the application.
+
+Examples:
+
+CPU-intensive application
+
+→ CPU
+
+Database-heavy application
+
+→ DB 
+
+Large File Upload
+
+→ Network
+
+Memory-intensive application
+
+→ RAM
+
+Iska koi universal answer nahi hai.
+
+
+Q6. IS HIGH CPU ALWAYS A BAD THING ?
+-------------------------------------
+
+NO.
+
+CPU 80–90%
+
+Normal ho sakta hai.
+
+Problem tab hai jab
+
+- Response Time badh raha ho
+- Requests queue me wait kar rahi ho
+- Error rate badh raha ho
+
+CPU utilization alone decision nahi hota.
+
+
+Q7. IF YOUR APPLICATION'S RESPONSE TIME SUDDENLY INCREASES, HOW WOULD YOU IDENTIFY THE BOTTLENECK ?
+----------------------------------------------------------------------------------------------------
+
+Answer:
+
+I will not immediately assume that scaling is required. First, I will identify the actual bottleneck.
+
+Step 1:
+Check the monitoring dashboard and analyze:
+
+- CPU Utilization
+- Memory Usage
+- Thread Pool Utilization
+- Database Connection Pool Usage
+- Network Utilization
+- Request Queue Length
+- Response Time (P95/P99)
+- Error Rate
+
+Step 2:
+
+Based on these metrics, identify which resource is saturated.
+
+Step 3:
+
+If the bottleneck is still not clear, analyze:
+
+- Application Logs
+- Thread Dumps (if required)
+
+After identifying the root cause, I will decide whether the problem can be solved by code optimization, configuration tuning, or scaling.
+
+
+
+Q8. WHY NOT ALWAYS INCREASE THE TOMCAT THREAD POOL TO HANDLE MORE INCOMING REQUESTS ?
+---------------------------------------------------------------------------------------
+
+Suppose Tomcat configuration hai:
+
+    server.tomcat.threads.max = 200
+
+Aur application par ek hi time par
+
+    500 Requests
+
+aa rahi hain.
+
+## Question:
+
+Kya hum simply thread pool ko
+
+    200
+
+        ↓
+
+    1000
+
+kar dein?
+
+Isse to ek hi time par zyada requests process ho jayengi.
+
+Answer:
+
+Generally, NO.
+
+
+Iske peeche multiple reasons hain.
+
+
+
+1. MORE THREADS REQUIRE MORE STACK MEMORY
+------------------------------------------
+
+Har baar jab ek naya thread create hota hai, JVM uske liye ek dedicated private Thread Stack allocate karte hain.
+
+Ye Thread Stack method execution frames, local primitive variables aur object references store karta hai.
+
+Har thread ka apna alag stack hota hai, jo completely isolated hota hai aur doosre threads ke saath share nahi hota.
+
+Suppose:
+
+    Per Thread Stack Size = 1 MB
+
+Agar
+
+    1000 Threads
+
+create kar diye,
+
+to approximately
+
+    1 GB
+
+memory sirf thread stacks ke liye reserve ho sakti hai.
+
+OS JVM process ko ek limited memory allocate karta hai.
+
+Agar bahut zyada threads create kiye jaate hain, to unke thread stacks kaafi memory consume karne lagte hain, jisse overall memory pressure create ho sakta hai.
+
+
+2. MORE THREADS DO NOT MEAN MORE PARALLEL EXECUTION (CONTEXT SWITCHING OVERHEAD)
+----------------------------------------------------------------------------------
+
+Suppose server ke paas
+
+    CPU = 4 Cores
+
+hain.
+
+Aur Tomcat ke paas
+
+    1000 Worker Threads
+
+hain.
+
+## Question:
+
+Kya CPU ek hi time par
+
+    1000 Threads
+
+execute kar sakta hai?
+
+No.
+
+Ek 4-core CPU ek hi instant par approximately sirf 4 threads hi execute kar sakta hai (assuming one running thread per core).
+
+Baaki threads
+
+    Ready State
+
+me wait karte rehte hain.
+
+Yaani,
+
+    1000 Threads
+
+            ≠
+
+    1000 Parallel Executions
+
+Operating System CPU ko different threads ke beech share karta hai. Iske liye CPU ko baar-baar ek thread ki execution state save karke doosre thread ki state restore karni padti hai. Is process ko
+
+    Context Switching
+
+kehte hain.
+
+Har context switch CPU time consume karta hai.
+
+Agar runnable threads CPU cores ke comparison me bahut zyada ho jaayein, to CPU actual application logic execute karne ke bajay context switching me hi significant time spend karne lagta hai.
+
+Result:
+
+- CPU Overhead increase ho jata hai.
+- Throughput improve nahi hota.
+- Response Time aur bhi increase ho sakta hai.
+
+
+3. EVEN IF YOU INCREASE THE THREAD POOL, THE DATABASE CAN STILL BECOME THE BOTTLENECK
+---------------------------------------------------------------------------------------
+
+Suppose:
+
+    Tomcat Threads
+
+        1000
+
+But
+
+    DB Connections
+
+        100
+
+hi hain.
+
+Ab
+
+    1000 Requests
+
+database access karna chahti hain.
+
+Kya sabhi requests ko database connection mil jayega?
+
+No.
+
+Sirf
+
+    100
+
+requests ko connection milega.
+
+Baaki
+
+    900
+
+requests connection available hone ka wait karengi.
+
+Isliye thread pool increase karne ke baad bhi
+
+Database bottleneck hi rahega.
+
+
+
+4. DOWNSTREAM SERVICES CAN ALSO BECOME THE BOTTLENECK
+------------------------------------------------------
+
+Suppose application
+
+    Payment Service
+
+ko HTTP call karti hai.
+
+Agar
+
+    1000 Threads
+
+ek saath Payment Service ko request bhejne lagen,
+
+to ho sakta hai Payment Service hi overload ho jaye.
+
+Result:
+
+- Timeouts
+- Connection Failures
+- Cascading Failures
+
+Yaani problem sirf tumhari application tak limited nahi rahegi.
+
+Poora distributed system impact ho sakta hai.
+
