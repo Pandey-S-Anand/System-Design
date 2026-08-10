@@ -2793,3 +2793,228 @@ Yaani problem sirf tumhari application tak limited nahi rahegi.
 
 Poora distributed system impact ho sakta hai.
 
+
+-------------------------------------------------
+## HOW CAN WE HANDLE THE INCREASED WORKLOAD ?
+-------------------------------------------------
+
+Ab tak humne dekha ki jaise-jaise application par traffic increase hota gaya,
+ek single server ke limited resources gradually exhaust hone lage.
+
+Result:
+
+        Existing Workload
+
+                >
+
+        Server Capacity
+
+
+Question:
+
+Ab company ke paas kya options hain?
+
+Generally do approaches available hoti hain.
+
+
+## OPTION-1
+------------
+
+Existing server ke Hardware Resources ko increase kar do.
+
+Example:
+
+CPU
+
+    2 Cores
+
+        ↓
+
+    16 Cores
+
+RAM
+
+    4 GB
+
+        ↓
+
+    64 GB
+
+Network
+
+    1 Gbps
+
+        ↓
+
+    10 Gbps
+
+Yaani existing machine ko aur powerful bana diya.
+
+Is approach ko
+
+    Vertical Scaling (Scale Up)
+
+kehte hain.
+
+
+
+## OPTION-2
+------------
+
+Ek hi powerful server ko continuously upgrade karne ke bajay,
+
+application ke multiple instances different servers par deploy kar diye jaate hain.
+
+Example:
+
+Initially
+
+                Users
+                  |
+                  |
+                  v
+            ----------------
+            | Spring Boot  |
+            | Application  |
+            ----------------
+                  |
+                  v
+               Database
+
+
+
+After Scaling
+
+                   Users
+                      |
+                      |
+                      v
+               Load Balancer
+              /      |      \
+             /       |       \
+            v        v        v
+
+      SpringBoot SpringBoot SpringBoot
+        Server-1   Server-2   Server-3
+             \        |        /
+              \       |       /
+               --------|-------
+                      |
+                  Database
+
+
+Load Balancer incoming requests ko available application
+instances ke beech distribute karta hai.
+
+Is approach ko
+
+    Horizontal Scaling (Scale Out)
+
+kehte hain.
+
+
+## WHICH APPROACH SHOULD WE CHOOSE ?
+--------------------------------------
+
+Is question ka koi universal answer nahi hai.
+
+Ye mainly following factors par depend karta hai:
+
+1. CURRENT TRAFFIC
+-------------------
+Agar traffic abhi kam hai, to Vertical Scaling sufficient ho sakti hai.
+Agar traffic bahut zyada hai, to Horizontal Scaling ki zarurat pad sakti hai.
+
+
+2. FUTURE TRAFFIC GROWTH
+--------------------------
+Agar expected hai ki users continuously increase honge,
+to Horizontal Scaling generally better option hoti hai.
+
+
+3. DOWNTIME TOLERANCE
+-----------------------
+Agar application ko server upgrade ke time kuch downtime allow hai,
+to Vertical Scaling consider ki ja sakti hai.
+
+Agar application ko continuously available rakhna hai,
+to Horizontal Scaling generally preferred hoti hai.
+
+
+4. BUDGET
+-----------
+Kabhi-kabhi ek powerful server lena sasta pad sakta hai.
+
+Kabhi multiple normal servers use karna better option hota hai.
+
+Ye infrastructure cost par depend karta hai.
+
+
+5. APPLICATION ARCHITECTURE
+-----------------------------
+Kuch applications ko horizontally scale karna relatively easy hota hai.
+
+Kuch applications ko horizontally scale karne ke liye additional changes karne padte hain.
+
+## IMPORTANT OBSERVATION
+--------------------------
+
+Horizontal Scaling sirf multiple application instances
+deploy kar dene se complete nahi ho jaati.
+
+Application ko bhi horizontally scalable hona chahiye.
+
+Example:
+
+Agar application user session local server memory me
+store karti hai, to Load Balancer next request kisi doosre server par
+bhej sakta hai.
+
+Us server ke paas previous session available nahi hoga.
+
+Isliye Horizontal Scaling ke liye kabhi-kabhi
+application architecture me bhi changes karne padte hain.
+
+Examples:
+
+    - External Session Store (Redis)
+    - Stateless Design
+
+
+6. HIGH AVAILABILITY REQUIREMENT
+---------------------------------
+Agar ek server fail hone ke baad bhi application continuously
+chalti rehni chahiye, to Horizontal Scaling generally better choice hoti hai.
+
+
+
+## CAN BOTH APPROACHES BE USED TOGETHER ?
+-------------------------------------------
+
+Yes.
+
+Production systems me sirf Vertical ya sirf Horizontal
+Scaling use karna mandatory nahi hai.
+
+Bahut saari companies dono approaches ka combination
+use karti hain.
+
+Example:
+
+Pehle server ko reasonably powerful banaya jaata hai
+(Vertical Scaling).
+
+Uske baad traffic aur increase hone par multiple
+application instances deploy karke Horizontal Scaling
+ki jaati hai.
+
+Yaani,
+
+        Vertical Scaling
+
+                +
+
+        Horizontal Scaling
+
+ka combination bhi production environments me
+kaafi common hai.
