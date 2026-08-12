@@ -1,0 +1,41 @@
+========================
+## DNS BAHAVIOUR
+========================
+
+DNS ka main kaam hota hai:
+
+    Domain Name  ->  IP Address
+
+Example:
+
+    api.example.com  ->  34.120.10.5
+
+DNS bas configured records ke basis par response deta hai.
+
+Common DNS records:
+
+    A Record:
+        Domain ko IPv4 address se map karta hai.
+
+        Example:
+            api.example.com -> 34.120.10.5
+
+    AAAA Record:
+        Domain ko IPv6 address se map karta hai.
+
+        Example:
+            api.example.com -> 2400:cb00:2048:1::c629:d7a2
+
+    CNAME Record:
+        Ek domain ko doosre domain name se map karta hai.
+
+        Example:
+            api.example.com -> my-load-balancer.aws.com
+
+        Is case me DNS resolver recursively ya internally CNAME ko resolve karke
+        final IP address nikalta hai.
+
+        Final result eventually IP address hi hota hai.
+
+Usually modern cloud infrastructure me CNAME/Alias records zyada use hote hain,
+because cloud resources ke actual IP addresses change ho sakte hain.
