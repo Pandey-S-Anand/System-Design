@@ -1,0 +1,398 @@
+===========================================
+## STATEFUL vs STATELESS ARCHITECTURE ?
+===========================================
+
+Pichle chapter (Scaling) me humne dekha ki Horizontal Scaling ke baad
+application ke multiple instances run karte hain.
+
+Agar user ki session information kisi ek server ki local memory (RAM)
+me store ho, to Load Balancer user ki next request kisi doosre server
+par bhej sakta hai.
+
+Us server ke paas previous session information available nahi hogi,
+jisse session-related problems create ho sakti hain.
+
+Is problem ko properly samajhne ke liye pehle hume
+Stateful aur Stateless Architecture samajhna hoga.
+
+-------------------
+## WHAT IS STATE ?
+-------------------
+State simply means information that a system remembers and uses while processing future requests.
+
+
+-----------------------
+## WHAT IS STATELESS ?
+-----------------------
+
+Stateless application previous requests ki information remember nahi karti.
+
+Har request independently process hoti hai, aur us request ko process karne ke liye required saari information usi request ke saath aati hai.
+
+HTTP / HTTPS protocol bhi by default Stateless hota hai.
+
+Matlab server ko by default previous requests yaad nahi rehti.
+
+Phir question aata hai:
+
+Agar HTTP / HTTPS Stateless hai, to user ko har request par dobara login kyun nahi karna padta?
+
+Agar server har request ko completely independent process kare,
+
+to user ko har request ke saath apne credentials dobara bhejne padenge.
+
+Real-world applications aisa nahi karti.
+
+User ki temporary information multiple requests ke beech maintain karne ke liye traditional Java web applications HttpSession ka use karti hain.
+
+
+## WHAT IS HTTP SESSION ?
+---------------------------
+
+HTTP / HTTPS (HTTP + TLS/SSL) protocol by default stateless hota hai.
+
+Matlab server ko by default ye yaad nahi rehta ki
+current request kis user ne bheji hai aur kya us user ne
+isse pehle koi request bheji thi.
+
+Lekin real-world applications me hume user ki kuch information
+multiple requests ke beech maintain karni padti hai.
+
+HttpSession ek server-side object hai jo Servlet Container (e.g. Tomcat) provide karta hai, 
+taaki user ki temporary session-related information ko multiple HTTP requests ke beech maintain kiya ja sake.
+ya simple language me ek "container" hai jisme application user ke login ke
+baad uski session-related information ko multiple HTTP
+requests ke beech temporarily store karti hai.
+
+
+User Login
+    ↓
+Tomcat creates HttpSession
+    ↓
+Application stores data inside HttpSession
+
+
+Application pehle user ko authenticate karti hai
+(i.e. verify karti hai ki username/password ya credentials
+valid hain ya nahi).
+
+
+Authentication successful hone ke baad application requests the
+Servlet Container (e.g. Tomcat) to create an HttpSession.
+The Servlet Container creates the HttpSession object and the
+application stores the required user-related information inside it.
+
+Authentication typically involves verifying the user's credentials
+against a Database, LDAP server, OAuth Provider, or another
+Identity Provider, depending on the application's authentication mechanism.
+
+Baad me aane wali requests (API requests) me isi session ki help se
+user ko identify (Authentication Context) kiya jata hai,
+aur uske Roles / Permissions ke basis par Authorization
+perform ki ja sakti hai. 
+
+
+HttpSession user-related temporary information
+store kar sakta hai, jaise:
+
+├── Logged-in User ID
+├── Username
+├── User Roles (ADMIN / USER)
+├── Authentication Status
+├── CSRF Token
+├── Temporary OTP Verification State
+├── Multi-step Form Data
+├── User Preferences (Language, Theme)
+└── Other temporary user-specific information
+
+
+Isi purpose ke liye HttpSession use kiya jata hai.
+
+
+## NOTE:
+----------
+
+Technically Shopping Cart jaise business data ko HttpSession
+me store kiya ja sakta hai, lekin modern distributed applications
+generally aisa avoid karti hain.
+
+Business data (Cart, Wishlist, Orders, etc.) usually Database
+me store hota hai, jabki HttpSession sirf temporary user context
+(e.g. Logged-in User, Roles, Authentication Status) maintain
+karne ke liye use hota hai.
+
+Isliye HttpSession expire hone, server restart/crash hone ke baad bhi important business data available rehta hai.
+
+
+## IMPORTANT:
+---------------
+
+HttpSession khud koi storage technology (jaise Redis,
+Database, ya File System) nahi hai.
+
+Ye sirf ek Session Object hai.
+
+By default, Tomcat jaise Servlet Containers is Session Object
+ko server ki local memory (RAM) me store karte hain.
+
+Is approach ki kuch limitations hain:
+
+1. Agar application multiple servers par deploy ho ?(i.e horizontally scalerd ho ),
+   to default in-memory HttpSession Horizontal Scaling
+   ke saath problems create kar sakta hai.
+
+   Kyunki har server ki apni separate local memory hoti hai,
+   isliye ek server par create hua HttpSession automatically
+   doosre server ko available nahi hota.
+
+2. Agar server restart ya crash ho jaye,
+   to us server ki local memory clear ho jaati hai.
+
+   Is wajah se saare in-memory HttpSessions destroy ho jaate hain,
+   aur users ko dobara login karna pad sakta hai.
+
+Isi wajah se modern distributed applications
+generally Stateless Authentication (JWT) ya
+External Session Store (e.g. Redis) prefer karti hain.
+
+
+## HOW DOES HTTP SESSION WORK ?
+--------------------------------
+
+Suppose user login karta hai.
+
+Flow:
+
+        User
+          |
+          | Login Request
+          v
+Spring Boot + Tomcat
+
+
+Application (i.e Authentication framework like Spring Security) pehle user ko authenticate karti hai
+(i.e. verify karti hai ki username/password ya credentials
+valid hain ya nahi).This can involve DB to verify the creds.
+
+Authentication successful hone ke baad application
+generally HttpSession create karti hai
+(through the Servlet Container such as Tomcat).
+
+Tomcat us session ko ek unique Session ID assign karta hai.
+
+Ye mapping internally maintain ki jaati hai:
+
+        Session ID
+             ↓
+     HttpSession Object
+
+
+Tomcat internally ek Session Manager maintain karta hai,
+jisme Session ID aur uske corresponding HttpSession Object
+ki mapping stored hoti hai.
+
+
+## EXAMPLE :
+-------------
+
+Session Store
+
+|--------------------------------------------
+|                                            |
+| Session ID : ABC123XYZ                     |
+|                                            |
+|        |                                   |
+|        v                                   |
+|                                            |
+|  HttpSession Object                        |
+|                                            |
+|    User = Anurag                           |
+|    Role = USER                             |           
+|    Last Access Time                        |
+|    Creation Time                           |
+|                                            |
+ --------------------------------------------
+
+Application HttpSession create karne ke liye
+Servlet Container (e.g. Tomcat) ka use karti hai.
+
+Servlet Container (Tomcat) actual HttpSession object
+create karta hai and user ki session-related
+information store karta hai.
+
+By default, ye HttpSession server ki local
+memory (RAM) me store hota hai.
+
+Uske baad Tomcat browser ko response ke saath
+ek cookie bhejta hai.
+
+Cookie me poora session data nahi bheja jata. 
+Sirf Session ID bheji jaati hai.
+
+Example:
+
+    JSESSIONID = ABC123XYZ
+
+Browser is cookie ko store kar leta hai.
+
+Subsequent requests me browser automatically check karta hai ki
+stored cookie current request ke liye applicable hai ya nahi
+(Domain, Path, Expiry, Secure, SameSite etc.).
+
+Agar applicable ho, to browser automatically JSESSIONID cookie
+request ke saath bhej deta hai.
+
+Jab browser next request bhejta hai,
+
+to browser automatically
+
+    JSESSIONID = ABC123
+
+Server ko bhej deta hai.
+
+Tomcat apne Session Store me Session ID ko lookup
+karta hai aur corresponding HttpSession Object
+retrieve karta hai.
+
+Uske baad application user ke Roles / Permissions
+ke basis par Authorization perform kar sakti hai.
+
+Isi wajah se user ko har request par dobara
+login karne ki zarurat nahi padti.
+
+
+## NOTE :
+----------
+Browser ke paas actual session data nahi hota.
+Browser ke paas sirf Session ID hoti hai.
+
+
+## EXAMPLE 1: REGULAR CART:
+----------------------------
+
+Suppose tumne kisi E-commerce application me login kiya,
+jo HttpSession use karti hai.
+
+Application pehle user ko authenticate karti hai
+(i.e. username/password ya other credentials verify karti hai).
+Authentication ke liye required user information (e.g. User ID, Roles, Permissions)
+generally Database ya kisi Identity Provider se retrieve ki jaati hai.
+
+Authentication successful hone ke baad application,
+Servlet Container (e.g. Tomcat) se HttpSession create karwati hai.
+
+Tomcat HttpSession create karta hai, usse server ki local memory (RAM) me store karta hai aur us HttpSession ko ek unique Session ID assign karta hai.
+Uske baad application user ki required session-related information (e.g. User ID, Roles, Permissions) HttpSession me store kar deti hai.
+
+Uske baad Tomcat response ke saath browser ko ek cookie bhejta hai jisme Session ID (e.g. JSESSIONID=ABC123XYZ) hoti hai.
+
+Browser is cookie ko store kar leta hai.
+
+Subsequent requests me agar cookie current request ke liye applicable ho,
+to browser automatically JSESSIONID request ke saath bhej deta hai.
+
+Ab jab user Orders, Profile ya Account page open karta hai,
+to browser backend ko multiple API requests bhejta hai.
+
+Application har request par user ke credentials ko dobara
+Database ya kisi Identity Provider ke against verify nahi karti.
+
+Iske bajay Tomcat Session ID ki help se corresponding
+HttpSession retrieve karta hai.
+
+Application us HttpSession se user ki information aur Roles
+obtain karti hai aur unke basis par Authorization perform karti hai.
+
+Agar user ke paas required permission hoti hai,
+to request successfully process kar di jaati hai.
+
+
+## EXAMPLE 2: ANONYMOUS CART
+-----------------------------
+
+Suppose tum Flipkart par bina login kiye products
+cart me add karte ho.
+
+Is time application ko user ki identity pata nahi hoti,
+kyunki user abhi authenticate nahi hua hai.
+
+Isliye application temporary shopping cart ko
+HttpSession me store kar sakti hai.
+
+Baad me jab user login karta hai,
+to application us temporary cart ko user ke account se
+associate karke Database me persist (store) kar deti hai.
+
+Iske baad future requests me user apna cart
+alag-alag devices ya browser sessions se bhi access
+kar sakta hai.
+
+Ye anonymous shopping cart implement karne ka
+ek common approach hai.
+
+
+
+## DOES HTTP SESSION EXPIRE? YA USER LIFETIME LOGIN REHTA HAI?
+----------------------------------------------------------------
+
+Haan.
+
+HttpSession ka expiry time hota hai.
+
+Generally session following situations me end ho sakti hai:
+
+1. SESSION TIMEOUT (MOST COMMON)
+---------------------------------
+
+Agar user configured timeout period (e.g. 30 minutes) tak koi request nahi bhejta,
+
+to Tomcat automatically HttpSession destroy kar deta hai.
+
+Spring Boot Configuration:
+
+    server.servlet.session.timeout=30m
+
+
+2. USER LOGOUT
+---------------
+
+Jab user logout karta hai,
+
+application
+
+    session.invalidate();
+
+call karke current HttpSession ko immediately
+destroy kar deti hai.
+
+
+3. SERVER RESTART
+------------------
+
+By default HttpSession ,server ki local memory (RAM)
+me store hota hai.
+
+Agar server restart ho jaye,
+
+to RAM clear ho jaati hai,
+
+aur saari HttpSessions bhi destroy ho jaata hain.
+
+
+4. SERVER CRASH
+----------------
+
+Agar server crash ho jaye,
+
+to RAM me stored saari HttpSessions
+lost ho jaati hain.
+
+Result:
+
+User ko dobara login karna padta hai.
+
+
+
+-----------------------
+## WHAT IS STATEFUL ?
+-----------------------
