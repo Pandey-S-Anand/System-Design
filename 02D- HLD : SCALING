@@ -1643,3 +1643,11 @@ Yaani,
 
 ka combination bhi production environments me
 kaafi common hai.
+
+
+## NOTE:
+---------
+
+Horizontal Scaling primarily increases the capacity of the application tier.
+As traffic grows further, the database can also become a bottleneck and may need to be scaled.
+Database Scaling is a separate topic and will be discussed later.
