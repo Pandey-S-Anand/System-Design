@@ -3092,13 +3092,25 @@ Ye sirf ek Session Object hai.
 By default, Tomcat jaise Servlet Containers is Session Object
 ko server ki local memory (RAM) me store karte hain.
 
-Isliye agar server restart ho jaye,
-to saare in-memory sessions destroy ho jaate hain,
-aur users ko dobara login karna pad sakta hai.
+Is approach ki kuch limitations hain:
 
-Production environments me is problem ko avoid
-karne ke liye commonly Stateless Authentication (JWT)
-ya External Session Store (e.g. Redis) use kiya jata hai.
+1. Agar application multiple servers par deploy ho,
+   to default in-memory HttpSession Horizontal Scaling
+   ke saath problems create kar sakta hai.
+
+   Kyunki har server ki apni separate local memory hoti hai,
+   isliye ek server par create hua HttpSession automatically
+   doosre server ko available nahi hota.
+
+2. Agar server restart ya crash ho jaye,
+   to us server ki local memory clear ho jaati hai.
+
+   Is wajah se saare in-memory HttpSessions destroy ho jaate hain,
+   aur users ko dobara login karna pad sakta hai.
+
+Isi wajah se modern distributed applications
+generally Stateless Authentication (JWT) ya
+External Session Store (e.g. Redis) prefer karti hain.
 
 
 ## HOW DOES HTTP SESSION WORK ?
@@ -3155,14 +3167,19 @@ HttpSession Object
 
 --------------------------------------------
 
-Application us HttpSession me user ki session-related
-information store kar deti hai.
+Application HttpSession create karne ke liye
+Servlet Container (e.g. Tomcat) ka use karti hai.
+
+Servlet Container (Tomcat) actual HttpSession object
+create karta hai and user ki session-related
+information store karta hai.
 
 By default, ye HttpSession server ki local
 memory (RAM) me store hota hai.
 
 Uske baad Tomcat browser ko response ke saath
 ek cookie bhejta hai.
+
 Cookie me poora session data nahi bheja jata. 
 Sirf Session ID bheji jaati hai.
 
