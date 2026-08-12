@@ -2984,10 +2984,6 @@ par bhej di.
 Server-1 ne HttpSession create ki aur
 user ka login session apni local memory (RAM)
 me store kar diya.
-Server-2 ke paas Server-1 wali HttpSession
-available hi nahi hai
-Kyuki har server ki apni separate local memory (RAM)
-hoti hai.
 
 Ab user ki next request aayi.
 
