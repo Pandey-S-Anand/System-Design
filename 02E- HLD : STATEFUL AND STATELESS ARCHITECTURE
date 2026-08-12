@@ -137,9 +137,9 @@ ko server ki local memory (RAM) me store karte hain.
 
 Is approach ki kuch limitations hain:
 
-1. Agar application multiple servers par deploy ho ?(i.e horizontally scalerd ho ),
+1. Agar application multiple servers par deploy ho ?(i.e horizontally scaled ho),
    to default in-memory HttpSession Horizontal Scaling
-   ke saath problems create kar sakta hai.
+   ke saath problems create karta hai.
 
    Kyunki har server ki apni separate local memory hoti hai,
    isliye ek server par create hua HttpSession automatically
