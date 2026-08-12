@@ -3146,26 +3146,28 @@ Ye mapping internally maintain ki jaati hai:
 
 Tomcat ke paas internally ek Session Store hota hai.
 
-Example:
+
+## EXAMPLE:
+-------------
 
 Session Store
 
---------------------------------------------
-
-Session ID : ABC123XYZ
-
-        |
-        v
-
-HttpSession Object
-
-    User = Anurag
-    Role = USER
-    Cart = [Laptop, Mouse]
-    Last Access Time
-    Creation Time
-
---------------------------------------------
+|--------------------------------------------
+|                                            |
+| Session ID : ABC123XYZ                     |
+|                                            |
+|        |                                   |
+|        v                                   |
+|                                            |
+|  HttpSession Object                        |
+|                                            |
+|    User = Anurag                           |
+|    Role = USER                             |
+|    Cart = [Laptop, Mouse]                  |
+|    Last Access Time                        |
+|    Creation Time                           |
+|                                            |
+ --------------------------------------------
 
 Application HttpSession create karne ke liye
 Servlet Container (e.g. Tomcat) ka use karti hai.
@@ -3212,7 +3214,6 @@ login karne ki zarurat nahi padti.
 ----------
 Browser ke paas actual session data nahi hota.
 Browser ke paas sirf Session ID hoti hai.
-
 
 
 6. HIGH AVAILABILITY REQUIREMENT
