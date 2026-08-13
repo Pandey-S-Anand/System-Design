@@ -62,43 +62,42 @@ isse pehle koi request bheji thi.
 Lekin real-world applications me hume user ki kuch information
 multiple requests ke beech maintain karni padti hai.
 
-HttpSession ek server-side object hai (Simple language me, ek server-side container hai) jo Servlet Container
-(e.g. Tomcat) provide karta hai, taaki user/client se related temporary
-information ko multiple HTTP requests ke beech maintain kiya ja sake.
-
-Login-based applications me authentication successful hone ke baad
-application generally HttpSession ka use karke user-related
-session information maintain karti hai.
+HttpSession ek server-side object (simple language me, ek server-side container) hai
+jo Servlet Container (e.g., Tomcat) provide karta hai.
+Ye user/client se related temporary information ko
+multiple HTTP requests ke beech maintain karta hai.
 
 
-User Login
-    ↓
-Tomcat creates HttpSession
-    ↓
-Application stores data inside HttpSession
+## LOGIN-BASED APPLICATIONS ME :
+----------------------------------
 
+Application (e.g. Spring Security) pehle user ko authenticate karti hai
+(i.e. verify karti hai ki username/password ya other credentials valid hain).
 
-Application pehle user ko authenticate karti hai
-(i.e. verify karti hai ki username/password ya credentials
-valid hain ya nahi).
+Authentication successful hone ke baad application
+Servlet Container (e.g., Tomcat) se HttpSession create karne ke liye request karti hai.
 
-Authentication successful hone ke baad application requests the
-Servlet Container (e.g. Tomcat) to create an HttpSession.
-The Servlet Container creates the HttpSession object and the
-application stores the required user-related information inside it.
+Servlet Container HttpSession create karta hai,
+jisme application required user-related temporary information
+store karti hai.
+
+Ye information subsequent HTTP/HTTPS requests ko
+process karte waqt use ki ja sakti hai.
+
 
 Authentication typically involves verifying the user's credentials
 against a Database, LDAP server, OAuth Provider, or another
 Identity Provider, depending on the application's authentication mechanism.
 
-Baad me aane wali requests (API requests) me isi session ki help se
-user ko identify (Authentication Context) kiya jata hai,
+
+Baad me aane wali HTTP/HTTPS requests me isi HttpSession ki help se
+user ko identify kiya ja sakta hai (Authentication Context),
 aur uske Roles / Permissions ke basis par Authorization
-perform ki ja sakti hai. 
+perform ki ja sakti hai.
 
 
-HttpSession user-related temporary information
-store kar sakta hai, jaise:
+## EXAMPLES OF INFORMATION STORED IN HTTP SESSION :
+-----------------------------------------------------
 
 ├── Logged-in User ID
 ├── Username
@@ -163,12 +162,9 @@ Spring Boot + Tomcat
 
 
 Application (i.e Authentication framework like Spring Security) pehle user ko authenticate karti hai
-(i.e. verify karti hai ki username/password ya credentials
-valid hain ya nahi).This can involve DB to verify the creds.
+(i.e. verify karti hai ki username/password ya credentials valid hain ya nahi).
 
-Authentication successful hone ke baad application
-generally HttpSession create karti hai
-(through the Servlet Container such as Tomcat).
+Authentication successful hone ke baad application generally HttpSession create karti hai (through the Servlet Container such as Tomcat).
 
 Tomcat us session ko ek unique Session ID assign karta hai.
 
@@ -1126,10 +1122,7 @@ distributed environment me manage karne ki problem solve karta hai.
 ## QUESTION:
 ------------
 
-Agar application ko user ki authentication state aur
-other temporary session state ko server-side HttpSession
-ke through maintain karne ki zarurat hi na ho,
-to kya hum HttpSession ko completely avoid kar sakte hain?
+Kya hum server-side session state maintain kiye bina authentication aur authorization kar sakte hain?
 
 Answer:
 
