@@ -62,11 +62,13 @@ isse pehle koi request bheji thi.
 Lekin real-world applications me hume user ki kuch information
 multiple requests ke beech maintain karni padti hai.
 
-HttpSession ek server-side object hai jo Servlet Container (e.g. Tomcat) provide karta hai, 
-taaki user ki temporary session-related information ko multiple HTTP requests ke beech maintain kiya ja sake.
-ya simple language me ek "container" hai jisme application user ke login ke
-baad uski session-related information ko multiple HTTP
-requests ke beech temporarily store karti hai.
+HttpSession ek server-side object hai (Simple language me, ek server-side container hai) jo Servlet Container
+(e.g. Tomcat) provide karta hai, taaki user/client se related temporary
+information ko multiple HTTP requests ke beech maintain kiya ja sake.
+
+Login-based applications me authentication successful hone ke baad
+application generally HttpSession ka use karke user-related
+session information maintain karti hai.
 
 
 User Login
@@ -79,7 +81,6 @@ Application stores data inside HttpSession
 Application pehle user ko authenticate karti hai
 (i.e. verify karti hai ki username/password ya credentials
 valid hain ya nahi).
-
 
 Authentication successful hone ke baad application requests the
 Servlet Container (e.g. Tomcat) to create an HttpSession.
@@ -129,6 +130,21 @@ store kar sakta hai, jaise:
 2: HttpSession khud koi storage technology (jaise Redis, Database, ya File System) nahi hai.
    Ye sirf ek server side Session Object hai.
    By default, Tomcat jaise Servlet Containers is Session Object ko server ki local memory (RAM) me store karte hain.
+
+
+3. HttpSession sirf authenticated users ke liye limited nahi hai.
+   Anonymous (non-logged-in) users ke liye bhi HttpSession
+   use kiya ja sakta hai.
+
+   Example:
+
+    Anonymous User
+          ↓
+    Add Product to Cart
+          ↓
+    HttpSession
+          ↓
+    Temporary Cart
 
 
 
@@ -246,8 +262,7 @@ Browser ke paas sirf Session ID hoti hai.
 ## EXAMPLE 1: REGULAR CART:
 ----------------------------
 
-Suppose tumne kisi E-commerce application me login kiya,
-jo HttpSession use karti hai.
+Suppose tumne kisi E-commerce application me login kiya, jo HttpSession use karti hai.
 
 Application pehle user ko authenticate karti hai
 (i.e. username/password ya other credentials verify karti hai).
@@ -1101,7 +1116,29 @@ Simple language me:
     (Session Data Store)
 
 
-=================================================
-## APPROACH 4 : JWT / STATELESS AUTHENTICATION
-=================================================
+-------------------------------------------------------
+## APPROACH 4 : STATELESS AUTHENTICATION (JWT)
+-------------------------------------------------------
 
+External Session Store (Redis) HttpSession ko
+distributed environment me manage karne ki problem solve karta hai.
+
+## QUESTION:
+------------
+
+Agar application ko user ki authentication state aur
+other temporary session state ko server-side HttpSession
+ke through maintain karne ki zarurat hi na ho,
+to kya hum HttpSession ko completely avoid kar sakte hain?
+
+Answer:
+
+Yes.
+
+Is approach ko
+
+        Stateless Authentication
+
+kehte hain.
+
+Stateless approach me server-side session maintain nahi ki jaati; har request ke saath authentication information / token available hota hai.
