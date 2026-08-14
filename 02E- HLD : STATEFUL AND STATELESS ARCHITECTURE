@@ -99,16 +99,31 @@ perform ki ja sakti hai.
 ## EXAMPLES OF INFORMATION STORED IN HTTP SESSION :
 -----------------------------------------------------
 
-├── Logged-in User ID
-├── Username
-├── User Roles (ADMIN / USER)
-├── Authentication Status
-├── CSRF Token
-├── Temporary OTP Verification State
-├── Multi-step Form Data
-├── User Preferences (Language, Theme)
-└── Other temporary user-specific information
 
+HttpSession
+    |
+    ├── userId = 101
+    ├── username = Anurag
+    │
+    │       → Identity
+    │
+    ├── authenticated = true
+    │
+    │       → Authentication Context
+    │
+    ├── roles = [USER]
+    ├── permissions = [READ_ORDER, VIEW_PROFILE]
+    │
+    │       → Authorization Context
+    │
+    ├── language = "en"
+    ├── theme = "dark"
+    │
+    │       → Other Temporary User/Session State
+    │
+    └── lastAccessTime = 10:30 AM
+            │
+            └── Session Metadata
 
 
 ## NOTE:
@@ -1119,12 +1134,25 @@ Simple language me:
 External Session Store (Redis) HttpSession ko
 distributed environment me manage karne ki problem solve karta hai.
 
+Ab application horizontally scale ki ja sakti hai aur
+multiple application servers ek shared Redis Session Store
+se same HttpSession access kar sakte hain.
+
+Lekin ek important observation hai:
+
+Redis use karne ke baad bhi application ko
+user ki session state maintain karni pad rahi hai.
+
+
 ## QUESTION:
 ------------
 
-Kya hum server-side session state maintain kiye bina authentication aur authorization kar sakte hain?
+Kya hum is server-side session state ko completely eliminate
+kar sakte hain?
 
-Answer:
+
+## ANSWER:
+------------
 
 Yes.
 
@@ -1134,4 +1162,572 @@ Is approach ko
 
 kehte hain.
 
-Stateless approach me server-side session maintain nahi ki jaati; har request ke saath authentication information / token available hota hai.
+
+Stateless Authentication me server ko user ki authentication
+aur authorization context ko HttpSession jaise server-side
+session me maintain karna mandatory nahi hota.
+
+Is purpose ke liye commonly
+
+        JWT (JSON Web Token)
+
+use kiya jata hai.
+
+
+## IMPORTANT DISTINCTION: HTTP SESSION vs JWT
+------------------------------------------------
+
+## HTTP SESSION :
+------------------
+
+HttpSession server-side state maintain kar sakta hai, including:
+
+    - Authentication Context
+    - Authorization Context
+    - Other Temporary User State
+
+Yaani HttpSession me user ki identity, authentication status,
+roles, permissions aur other temporary session-related
+information maintain ki ja sakti hai.
+
+
+HttpSession
+    |
+    ├── userId = 101
+    ├── username = Anurag
+    │
+    │       → Identity
+    │
+    ├── authenticated = true
+    │
+    │       → Authentication Context
+    │
+    ├── roles = [USER]
+    ├── permissions = [READ_ORDER, VIEW_PROFILE]
+    │
+    │       → Authorization Context
+    │
+    ├── language = "en"
+    ├── theme = "dark"
+    │
+    │       → Other Temporary User/Session State
+    │
+    └── lastAccessTime = 10:30 AM
+            │
+            └── Session Metadata
+
+
+## JWT:
+---------
+
+JWT HttpSession ka exact replacement nahi hai.
+
+JWT khud Authentication ya Authorization mechanism nahi hai.
+
+JWT ek token format hai jo Authentication aur
+Authorization-related claims ko transmit karne ke
+liye commonly use kiya jata hai.
+
+Successful login ke baad server user ko ek JWT issue karta hai.
+
+Har subsequent request ke saath client JWT bhejta hai,
+aur application JWT ko verify karke usme available claims
+ka use karke Authentication / Authorization perform kar sakti hai
+before allowing access to the requested resource / API.
+
+In Java/Spring Boot applications, frameworks such as
+Spring Security JWT-based Authentication / Authorization
+implement karne me help kar sakte hain.
+
+
+## CAN JWT STORE ARBITRARY INFORMATION?
+----------------------------------------
+
+Technically JWT claims me arbitrary information rakhi ja sakti hai,
+lekin generally unnecessary ya sensitive information JWT me
+store nahi karni chahiye, kyunki JWT payload encrypted nahi hota
+by default.
+
+JWT ka payload Base64URL encoded hota hai, encrypted nahi.
+
+Isliye payload ko decode karke uske contents easily read
+kiye ja sakte hain.
+
+Therefore:
+
+        JWT ≠ Encrypted Data
+
+
+Examples of information that should generally NOT be stored:
+
+    - Passwords
+    - Credit Card Numbers
+    - OTPs
+    - Highly Sensitive Personal Data
+    - Secrets
+
+
+## WHAT DOES A JWT ACTUALLY LOOK LIKE?
+----------------------------------------
+
+JWT generally ek long string hota hai:
+
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+.
+eyJzdWIiOiIxMDEiLCJyb2xlIjoiVVNFUiIsImlhdCI6MTcyMDAwMDAwMCwiZXhwIjoxNzIwMDAzNjAwfQ
+.
+SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+
+Dhyan do:
+
+JWT ke exactly 3 parts hote hain:
+
+Header.Payload.Signature
+
+Ye teen parts . character se separated hote hain.
+
+## 1. HEADER
+-------------
+
+Header JWT ke baare me metadata contain karta hai.
+Header generally batata hai ki token ko verify karne ke
+liye kaunsa signing algorithm use kiya gaya hai.
+
+Example:
+
+{
+  "alg": "HS256", // HS256 = HMAC + SHA-256
+  "typ": "JWT"
+}
+
+Yahan:
+
+alg → Algorithm used for signing
+typ → Token type
+
+
+# 2. PAYLOAD
+----------------
+
+Payload JWT ke andar actual information contain karta hai. Is information ko JWT claims kaha jata hai.
+
+Example:
+
+{
+  "sub": "101",
+  "name": "Anurag",
+  "role": "USER",
+  "iat": 1720000000,
+  "exp": 1720003600
+}
+
+
+## REGISTERED CLAIMS vs CUSTOM CLAIMS
+--------------------------------------
+
+JWT claims broadly do categories me samjhe ja sakte hain:
+
+    Registered Claims
+            +
+    Custom Claims
+
+
+Registered Claims standardized claim names hain,
+jaise:
+
+    iss
+    sub
+    aud
+    exp
+    iat
+    nbf
+    jti
+
+
+Custom Claims application ki requirement ke according
+define kiye ja sakte hain.
+
+Example:
+
+{
+    "sub": "101",
+    "role": "USER",
+    "department": "PAYMENTS"
+    "permissions": [
+        "READ_ORDER",
+        "VIEW_PROFILE"
+    ]
+}
+
+
+Yahan:
+
+    sub
+    → Registered Claim
+
+    role
+    → Custom Claim
+
+    department
+    → Custom Claim
+
+    permissions
+    → Custom Claim
+
+
+1: AUTHENTICATION / IDENTITY RELATED CLAIMS
+--------------------------------------------
+
+`sub` ka matlab hai:
+
+    Subject
+
+JWT me 'sub' us entity ko identify karta hai jiske context me token issue kiya gaya hai.
+
+Authentication ke context me, sub commonly user ke unique identifier ko represent karta hai.
+
+Basically iska matlaba hai ye token kisko issue kiya gaya hai
+
+Example:
+
+    sub = "101"
+
+ka matlab ho sakta hai:
+
+    "Ye JWT User ID 101 ko represent karta hai."
+
+
+Suppose jis user ko username aur password ke through authenticate kiya gaya hai, uski application Database me:
+
+    User ID = 101
+
+hai.
+
+To server JWT issue karte waqt:
+
+    sub = "101"
+
+set kar sakta hai.
+
+Iska matlab ho sakta hai:
+
+    "Ye JWT User ID 101 ko represent karta hai."
+
+Ab subsequent request me user/client jab ye JWT server ko bhejega, to server JWT ko verify karne ke baad identify kar sakta hai ki:
+
+    "Request User 101 ke context me hai."
+
+
+
+## IMPORTANT:
+---------------
+
+sub ka value necessarily Database ka numeric user_id hona mandatory nahi hai.
+
+Application kisi bhi stable aur unique subject identifier ko use kar sakti hai.
+
+Other identity-related claims application-specific ho sakte hain, for example:
+
+    name
+    userId
+    username
+
+
+2: AUTHORIZATION RELATED CLAIMS
+--------------------------------
+
+Authorization ka question hota hai:
+
+    "Authenticated user kya kar sakta hai?"
+
+## EXAMPLE:
+------------
+
+{
+    "roles": ["USER"],
+    "permissions": [
+        "READ_ORDER",
+        "VIEW_PROFILE"
+    ]
+}
+
+
+Server JWT verify karne ke baad in claims ka use karke
+decide kar sakta hai ki authenticated user ko
+requested resource access karne ki permission hai ya nahi.
+
+Example:
+
+    role = USER
+        ↓
+    GET / order
+        ↓
+    Allowed
+
+
+    role = USER
+        ↓
+    DELETE /admin/user/101
+        ↓
+    Not Allowed
+
+
+
+## 3. TOKEN METADATA / VALIDITY CLAIMS
+---------------------------------------
+
+Ye claims primarily token ke metadata ko denote karte hai.
+
+
+1. iss → Issuer
+----------------
+
+Token kis entity / service ne issue kiya hai.
+
+Example:
+
+    iss = "auth-service"
+
+Meaning:
+
+    → Ye token Auth Service ne issue kiya hai.
+
+Server token receive karne ke baad verify kar sakta hai
+ki token expected issuer ne hi issue kiya hai.
+
+Spring Boot applications me Spring Security jaise frameworks
+JWT validation ka kaam karte hai.
+
+
+2. aud → Audience
+------------------
+
+Token kis intended service ke liye issue kiya gaya hai.
+
+Example:
+
+    aud = "order-service"
+
+Meaning:
+
+    → Ye token Order Service ke liye intended hai.
+
+Agar same token ko Payment Service ko bheja jaye,
+to Payment Service check kar sakti hai:
+
+    aud == "payment-service" ?
+
+Lekin token me:
+
+    aud = "order-service"
+
+hai.
+
+To Payment Service token ko reject kar sakti hai,
+kyunki token uske liye intended nahi hai.
+
+
+3. exp → Expiration Time
+-------------------------
+
+Token kis time par expire hoga.
+
+Example:
+
+    "exp": 1720003600
+
+1720003600 directly readable date/time nahi hai.
+Ye ek Unix timestamp hai.
+
+Maan lo iska meaning hai:
+
+    Token expires at 10:00 AM
+
+    10:00 AM
+        ↓
+    Token Expired
+        ↓
+    Server JWT ko reject karega
+
+
+Iske baad client ko generally ek naya valid token
+obtain karna padega.
+
+Ye naya token:
+
+    - Refresh Token mechanism ke through
+      obtain kiya ja sakta hai.
+
+    OR
+
+    - Application ke authentication flow ke according
+      user ko dobara login karna pad sakta hai.
+
+
+4. iat → Issued At
+-------------------
+
+Ye batata hai ki JWT token kab issue / generate hua tha.
+
+Example:
+
+    "iat": 1719990000
+
+1719990000 bhi ek Unix timestamp hai.
+
+Maan lo:
+
+    iat = 9:00 AM
+    exp = 10:00 AM
+
+To token:
+
+    9:00 AM
+       ↓
+    Issued
+       ↓
+    10:00 AM
+       ↓
+    Expired
+
+Yaani token ka validity period approximately
+9:00 AM se 10:00 AM tak hai.
+
+
+5. nbf → Not Before
+--------------------
+
+Ye specify karta hai ki token kis time se valid hona
+start hoga.
+
+Example:
+
+    "nbf": 1719993600
+
+1719993600 ek Unix timestamp hai.
+
+Maan lo:
+
+    Token generated → 9:00 AM
+    nbf            → 9:05 AM
+    exp            → 10:00 AM
+
+
+    9:00 AM ─────── 9:05 AM ───────── 10:00 AM
+       ❌                ✅                  ❌
+    Not Valid          Valid             Expired
+
+
+Yaani token 9:00 AM par generate ho gaya,
+lekin 9:05 AM se pehle use nahi kiya ja sakta.
+
+
+6. jti → JWT ID
+----------------
+
+JWT ka unique identifier.
+
+Example:
+
+    jti = "ABC123"
+
+
+Suppose user login karta hai aur usse ek JWT issue hota hai:
+
+    JWT-1
+    jti = ABC123
+
+
+Ab token expire hone se pehle user dobara login karta hai
+aur server ek naya JWT issue karta hai:
+
+    JWT-2
+    jti = XYZ789
+
+
+Dono tokens:
+
+    JWT-1 → jti = ABC123
+    JWT-2 → jti = XYZ789
+
+same user ko represent kar sakte hain,
+lekin dono JWTs ki unique identity alag hai.
+
+Agar dono tokens ki validity abhi khatam nahi hui hai,
+to dono tokens simultaneously valid ho sakte hain.
+
+
+## IMPORTANT:
+-------------
+
+JWT stateless hone ki wajah se server automatically
+purane JWT ko sirf isliye invalidate nahi karta
+kyunki user ne login karke ek naya JWT obtain kar liya hai.
+
+Example:
+
+    Old Token
+    jti = ABC123
+    exp = 10:00 AM
+
+User logs in again:
+
+    New Token
+    jti = XYZ789
+    exp = 11:00 AM
+
+
+Agar Old Token abhi bhi expire nahi hua hai,
+to wo normally valid reh sakta hai.
+
+Agar requirement ho:
+
+    "User ke naye login ke baad
+     purana token immediately invalid ho jana chahiye."
+
+to pure stateless JWT approach se ye automatically
+achieve nahi hota.
+
+Server ko additional state maintain karni padegi,
+for example:
+
+    - Revoked JWT IDs (JTI blacklist)
+    - Token Version
+    - Session / Token Version Number
+
+Is additional state ko use karke server old tokens ko
+explicitly reject kar sakta hai.
+       
+
+
+## IMPORTANT: JWT PAYLOAD IS NOT ENCRYPTED BY DEFAULT
+------------------------------------------------------
+
+JWT ka payload normally Base64URL encoded hota hai,
+encrypted nahi.
+
+Isliye JWT payload ko decode karke koi bhi uske contents
+read kar sakta hai.
+
+Therefore:
+
+        JWT ≠ Encrypted Data
+
+
+JWT payload me generally sensitive information
+store nahi karni chahiye.
+
+Examples:
+
+    ❌ Passwords
+    ❌ Credit Card Numbers
+    ❌ OTPs
+    ❌ Secret Keys
+    ❌ Highly Sensitive Personal Data
+
+
+Signature ka purpose payload ko hide karna nahi hai.
+
+Signature ka purpose primarily token ki
+integrity aur authenticity verify karna hai.
