@@ -2042,12 +2042,6 @@ JWT ke 3 parts hote hain:
 }
 
 
-`alg` batata hai ki JWT ko sign karne ke liye
-kaunsa algorithm use hua hai.
-
-`typ` token type indicate karta hai.
-
-
 ### PAYLOAD
 ------------
 
