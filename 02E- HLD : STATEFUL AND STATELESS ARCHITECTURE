@@ -1773,7 +1773,7 @@ Ab request LoginController ke `/login` method tak pahunchti hai.
 Controller Authentication nahi karta. Authentication Spring Security ke components ke through perform hoti hai.
 
 
-## 3. AUTHENTICATIONMANAGER
+## 2.1. AUTHENTICATIONMANAGER
 ----------------------------
 
 Controller credentials ko `AuthenticationManager` ko deta hai:
@@ -1807,7 +1807,7 @@ For example:
 
 
 
-## 3.1 USERDETAILSSERVICE AND UserDetails
+## 2.2 USERDETAILSSERVICE AND UserDetails
 ------------------------------------------
 
 `AuthenticationProvider` ko user ki details chahiye hoti hain.
@@ -1848,7 +1848,7 @@ Conceptually:
 
 
 
-## 3.2 PASSWORDENCODER
+## 2.3 PASSWORDENCODER
 -----------------------
 
 Ab Spring Security ke paas:
@@ -1870,28 +1870,18 @@ Example:
         $2a$10$....hashed-password
 
 
-NOTE:
------
+## NOTE:
+--------
 
 User ka password Database me directly plain-text form me store nahi kiya jata.
 
-Password ko Database me store karne se pehle, PasswordEncoder.encode() ke through BCrypt se hash karke generated hash ko Database me store kiya jata hai.
-
-    password123
-          ↓
-    PasswordEncoder
-          ↓
-        BCrypt  (BCrypt ek password hashing algorithm hai)
-          ↓
-    Database
-
+Plain text password ko database me store karne se pehle, PasswordEncoder.encode() ke through BCrypt se hash karke generated hash ko Database me store kiya jata hai.
 
 
 ## PasswordEncoder EXACTLY KYA KARTA HAI?
 -------------------------------------------
 
-`PasswordEncoder` provided password ko stored hash kE against verify karta hai.
-
+`PasswordEncoder` provided plain text password ko stored hash ke against verify karta hai.
 
 User enters:
 "password123"
@@ -1949,7 +1939,7 @@ Because password hash generally one-way hota hai.
 
 
 
-## 3.3 WHAT IS THE AUTHENTICATION OBJECT?
+## WHAT IS THE AUTHENTICATION OBJECT?
 ------------------------------------------
 
 Authentication object Spring Security me
@@ -1976,7 +1966,7 @@ Yahi authenticated `Authentication` object
 Controller ko return hota hai.
 
 
-## 4. JWT GENERATION
+## 2.4. JWT GENERATION
 ---------------------
 
 Authentication successful hone ke baad
