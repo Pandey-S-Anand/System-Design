@@ -1287,6 +1287,7 @@ Header.Payload.Signature
 
 Ye teen parts . character se separated hote hain.
 
+
 ## 1. HEADER
 -------------
 
@@ -1698,6 +1699,155 @@ for example:
 
 Is additional state ko use karke server old tokens ko
 explicitly reject kar sakta hai.
+
+
+## 3. SIGNATURE
+-----------------
+
+JWT ka Payload Base64URL encoded hota hai, encrypted nahi.
+
+Isliye Payload ko decode karke uske contents
+easily read kiye ja sakte hain aur modify bhi kiye ja sakte hain.
+
+
+Agar JWT me Signature nahi hoti,
+to Application ke paas ye reliably verify karne ka
+mechanism nahi hota ki:
+
+    "Kya ye Header/Payload trusted / intended issuer
+     ne actually generate kiya tha?"
+
+
+Isi problem ko solve karne ke liye JWT me
+Signature use ki jaati hai.
+
+
+Signature Application ko ye verify karne me help karti hai ki
+JWT issue hone ke baad uske Header ya Payload ko
+tamper / modify nahi kiya gaya hai.
+
+Application generally Security Framework
+(e.g. Spring Security) ki help se JWT ki Signature verify karti hai.
+
+
+
+### HOW IS THE SIGNATURE GENERATED?
+------------------------------------
+
+JWT issue karte waqt trusted Application / Service
+Header + Payload ko Signing Key ke saath
+sign karti hai aur ek Signature generate karti hai.
+
+
+HS256 ke case me Signature conceptually:
+
+    HMAC-SHA256(
+        Base64URL(Header)
+        + "."
+        + Base64URL(Payload),
+        Secret Key
+    )
+
+Yahan:
+
+    Signing Input =
+        Base64URL(Header)
+        + "."
+        + Base64URL(Payload)
+
+
+### SYMMETRIC SIGNING — HS256
+------------------------------
+
+Symmetric algorithm (e.g. HS256) ke case me:
+
+    Signing Key = Verification Key
+
+Yaani:
+
+    Issuer and Target Application / Service dono ke paas same Secret Key hoti hai.
+
+Issuer Service
+      |
+      | Same Secret Key
+      ↓
+    SIGN JWT
+
+
+Target Service
+      |
+      | Same Secret Key
+      ↓
+   VERIFY JWT
+
+
+
+### ASYMMETRIC SIGNING — RS256
+-------------------------------
+
+Asymmetric algorithm (e.g. RS256) ke case me:
+
+    Signing Key      → Private Key
+    Verification Key → Public Key
+
+
+Issuer Application / Service
+        |
+        | Private Key
+        ↓
+      SIGN JWT
+
+
+Target Application / Service
+        |
+        | Public Key
+        ↓
+     VERIFY JWT
+
+
+Yaani Issuer Private Key se JWT sign karta hai,
+aur Target Application / Service corresponding
+Public Key se Signature verify karti hai.
+
+
+### HOW DOES SIGNATURE VERIFICATION WORK?
+------------------------------------------
+
+Baad me jab Target Application / Service JWT receive karti hai,
+to generally Security Framework (e.g. Spring Security)
+ki help se JWT ki Signature verify ki jaati hai.
+
+Verification ke liye Target Application / Service
+JWT ke Header + Payload se expected Signature
+calculate karti hai using the appropriate verification key.
+
+Phir:
+
+    Expected Signature
+            vs
+    Received Signature
+            ↓
+        Compare
+
+
+Agar dono Signatures match karti hain:
+
+    Signature Valid
+          ↓
+    Header + Payload
+    were not modified
+          ↓
+    JWT passes Signature Verification
+
+
+Agar Signatures match nahi karti:
+
+    Signature Invalid
+          ↓
+    JWT may have been modified
+    or Signature is otherwise invalid
+          ↓
+    Request Rejected
        
 
 ## COMPLETE JWT AUTHENTICATION FLOW — SPRING BOOT
@@ -1730,6 +1880,7 @@ Endpoint:
     POST /api/auth/login
 
 
+
 ## 2. LOGIN REQUEST SPRING BOOT APPLICATION TAK PAHUNCHTI HAI
 ---------------------------------------------------------------
 
@@ -1756,6 +1907,7 @@ Login endpoint ko normally `permitAll()` kiya jata hai,
 taaki user ko login karne ke liye pehle se authenticated
 hona na pade.
 
+
 Example:
 
 @Bean
@@ -1778,7 +1930,8 @@ Authentication Spring Security ke authentication components
 ke through perform hoti hai.
 
 
-## 2.1 AUTHENTICATIONMANAGER
+
+## 3. AUTHENTICATION PROCESS
 ----------------------------
 
 Controller credentials ko `AuthenticationManager` ko deta hai:
@@ -1791,6 +1944,9 @@ Authentication authentication =
         )
     );
 
+
+### 3.1 AUTHENTICATIONMANAGER
+----------------------------
 
 `AuthenticationManager` generally authentication khud perform nahi karta.
 
@@ -1822,7 +1978,8 @@ Flow:
     AuthenticationProvider
 
 
-## 2.2 USERDETAILSSERVICE AND UserDetails
+
+### 3.2 USERDETAILSSERVICE AND UserDetails
 ------------------------------------------
 
 `AuthenticationProvider` ko user ki details chahiye hoti hain.
@@ -1865,7 +2022,7 @@ Conceptually:
        └── authorities / roles
 
 
-Flow ab:
+Flow:
 
     LoginController
           ↓
@@ -1880,7 +2037,8 @@ Flow ab:
     UserDetails
 
 
-## 2.3 PASSWORDENCODER
+
+### 3.3 PASSWORDENCODER
 -----------------------
 
 Ab Spring Security ke paas:
@@ -1892,18 +2050,7 @@ Ab Spring Security ke paas:
 available hain.
 
 
-Example:
-
-    Provided Password:
-
-        password123
-
-    Database:
-
-        $2a$10$....hashed-password
-
-
-### PASSWORD STORAGE
+#### PASSWORD STORAGE
 ---------------------
 
 User ka password Database me plain-text form me
@@ -1924,7 +2071,7 @@ Example:
     Database
 
 
-### PASSWORD VERIFICATION
+#### PASSWORD VERIFICATION
 --------------------------
 
 Login ke time:
@@ -1985,10 +2132,11 @@ does NOT decrypt the database hash
 Because password hash generally one-way hota hai.
 
 
-## WHAT IS THE AUTHENTICATION OBJECT?
---------------------------------------
 
-Authentication object Spring Security me
+### 3.4 AUTHENTICATION OBJECT
+----------------------------
+
+`Authentication` object Spring Security me
 authenticated user ko represent karta hai.
 
 Authentication successful hone ke baad conceptually
@@ -2013,121 +2161,21 @@ Yahi authenticated `Authentication` object
 Controller ko return hota hai.
 
 
-## 2.4 JWT GENERATION
----------------------
+
+## 4. JWT GENERATION
+--------------------
 
 Authentication successful hone ke baad
 Controller ke paas authenticated user ki information
 `Authentication` object ke through available hoti hai.
 
-Application is authenticated user ki information ke basis par
-JWT claims prepare karti hai.
+Application isi information ke basis par
+JWT claims aur token prepare karti hai.
 
 
-JWT ke 3 parts hote hain:
 
-    Header
-        .
-    Payload
-        .
-    Signature
-
-
-### HEADER
-------------
-
-{
-    "alg": "HS256",
-    "typ": "JWT"
-}
-
-
-### PAYLOAD
-------------
-
-{
-    "sub": "101",
-    "name": "Anurag",
-    "roles": ["USER"],
-    "iat": 1720000000,
-    "exp": 1720003600
-}
-
-
-Payload me JWT claims hote hain.
-
-
-### SIGNATURE
--------------
-
-HS256 ke case me Signature conceptually:
-
-    HMAC-SHA256(
-        Base64URL(Header)
-        + "."
-        + Base64URL(Payload),
-        Secret Key
-    )
-
-
-Signature JWT ke Header aur Payload ki
-integrity verify karne ke liye use hoti hai.
-
-
-## COMPLETE JWT
-----------------
-
-Finally JWT kuch is tarah dikhega:
-
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
-.
-eyJzdWIiOiIxMDEiLCJuYW1lIjoiQW51cmFnIiwicm9sZXMiOlsiVVNFUiJdLCJpYXQiOjE3MjAwMDAwMDAsImV4cCI6MTcyMDAwMzYwMH0
-.
-<generated-signature>
-
-
-Yaani:
-
-    HEADER
-       .
-    PAYLOAD
-       .
-    SIGNATURE
-
-
-## NOTE:
----------
-
-1. Header aur Payload Base64URL encoded hote hain.
-
-2. JWT ka Payload encrypted nahi hota.
-
-   Isliye koi bhi Header aur Payload ko decode karke
-   unke contents read / modify kar sakta hai.
-
-3. Header/Payload ko modify karna possible hai,
-   lekin modified Header/Payload ke liye valid Signature
-   generate karne ke liye appropriate signing key chahiye.
-
-4. Symmetric algorithm (e.g. HS256) ke case me:
-
-       Signing Key = Verification Key
-
-   Yaani token issuer aur target service/application
-   dono ke paas same secret key honi chahiye.
-
-5. Asymmetric algorithm (e.g. RS256) ke case me:
-
-       Signing Key      → Private Key
-       Verification Key → Public Key
-
-   Issuer Private Key se JWT sign karta hai aur
-   target application corresponding Public Key se
-   Signature verify karti hai.
-
-
-## STEP 3: JWT RETURNED TO CLIENT
-----------------------------------
+## 5. JWT RETURNED TO CLIENT
+-----------------------------
 
 JWT generate aur sign hone ke baad
 Login Controller JWT ko response me client ko return karta hai.
