@@ -1748,7 +1748,9 @@ Client request bhejta hai:
     "password": "password123"
 }
 
-Request Controller tak pahunchne se pehle Spring Security Filter Chain se pass hoti hai.
+
+Request Controller tak pahunchne se pehle
+Spring Security Filter Chain se pass hoti hai.
 
 Login endpoint ko normally `permitAll()` kiya jata hai,
 taaki user ko login karne ke liye pehle se authenticated
@@ -1770,10 +1772,13 @@ SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
 Ab request LoginController ke `/login` method tak pahunchti hai.
 
-Controller Authentication nahi karta. Authentication Spring Security ke components ke through perform hoti hai.
+Controller khud username/password ko Database se compare nahi karta.
+
+Authentication Spring Security ke authentication components
+ke through perform hoti hai.
 
 
-## 2.1. AUTHENTICATIONMANAGER
+## 2.1 AUTHENTICATIONMANAGER
 ----------------------------
 
 Controller credentials ko `AuthenticationManager` ko deta hai:
@@ -1786,9 +1791,11 @@ Authentication authentication =
         )
     );
 
-'AuthenticationManager' authentication generally khud nahi karta.
 
-'AuthenticationManager' authentication process ko appropriate `AuthenticationProvider` ko delegate karta hai.
+`AuthenticationManager` generally authentication khud perform nahi karta.
+
+Ye authentication process ko appropriate
+`AuthenticationProvider` ko delegate karta hai.
 
 Username/password based authentication ke liye commonly:
 
@@ -1796,8 +1803,8 @@ Username/password based authentication ke liye commonly:
 
 use kiya jata hai.
 
-Different authentication mechanisms ke liye different
-AuthenticationProviders ho sakte hain.
+Different authentication mechanisms ke liye
+different AuthenticationProviders ho sakte hain.
 
 For example:
 
@@ -1806,15 +1813,25 @@ For example:
     OAuth2/OIDC       → OAuth2/OIDC-specific providers
 
 
+Flow:
+
+    LoginController
+          ↓
+    AuthenticationManager
+          ↓
+    AuthenticationProvider
+
 
 ## 2.2 USERDETAILSSERVICE AND UserDetails
 ------------------------------------------
 
 `AuthenticationProvider` ko user ki details chahiye hoti hain.
 
-Iske liye `UserDetailsService` commonly use hoti hai.
+Username/password based authentication me
+`DaoAuthenticationProvider` commonly `UserDetailsService`
+ka use karta hai.
 
-'UserDetailsService' ka kaam hai:
+`UserDetailsService` ka kaam hai:
 
     Username
        ↓
@@ -1823,9 +1840,10 @@ Iske liye `UserDetailsService` commonly use hoti hai.
 
 Example:
 
-    username = "anurag" 
+    username = "anurag"
 
-UserDetailsService Database se user ko find karta hai
+
+UserDetailsService Database se user ko find karta hai:
 
     Database
        ↓
@@ -1847,6 +1865,20 @@ Conceptually:
        └── authorities / roles
 
 
+Flow ab:
+
+    LoginController
+          ↓
+    AuthenticationManager
+          ↓
+    AuthenticationProvider
+          ↓
+    UserDetailsService
+          ↓
+    Database
+          ↓
+    UserDetails
+
 
 ## 2.3 PASSWORDENCODER
 -----------------------
@@ -1859,6 +1891,7 @@ Ab Spring Security ke paas:
 
 available hain.
 
+
 Example:
 
     Provided Password:
@@ -1870,38 +1903,52 @@ Example:
         $2a$10$....hashed-password
 
 
-## NOTE:
---------
+### PASSWORD STORAGE
+---------------------
 
-User ka password Database me directly plain-text form me store nahi kiya jata.
+User ka password Database me plain-text form me
+store nahi kiya jata.
 
-Plain text password ko database me store karne se pehle, PasswordEncoder.encode() ke through BCrypt se hash karke generated hash ko Database me store kiya jata hai.
+Password ko store karne se pehle application
+`PasswordEncoder.encode()` ka use karke
+password ka hash generate karti hai.
+
+Example:
+
+    "password123"
+          ↓
+    PasswordEncoder.encode()
+          ↓
+    BCrypt Hash
+          ↓
+    Database
 
 
-## PasswordEncoder EXACTLY KYA KARTA HAI?
--------------------------------------------
+### PASSWORD VERIFICATION
+--------------------------
 
-`PasswordEncoder` provided plain text password ko stored hash ke against verify karta hai.
+Login ke time:
 
-User enters:
-"password123"
+    User enters:
+        "password123"
 
-        ↓
+             ↓
 
-PasswordEncoder.matches(
-    "password123",
-     $2a$10$....hashed-password
-)
+    PasswordEncoder.matches(
+        "password123",
+        $2a$10$....hashed-password
+    )
 
-        ↓
+             ↓
 
-Stored hash ko inspect karta hai
-        ↓
-Usme se hashing algorithm + parameters + salt extract karta hai
-        ↓
-Provided password ko SAME algorithm, SAME parameters aur SAME salt ke saath process karta hai
-        ↓
-Result ko DB stored password hash se compare karta hai
+    Stored hash ko inspect karta hai
+             ↓
+    Usme se hashing algorithm + parameters + salt extract karta hai
+             ↓
+    Provided password ko SAME algorithm, SAME parameters aur SAME salt
+    ke saath process karta hai
+             ↓
+    Result ko DB stored password hash se compare karta hai
 
 
 If the password is valid:
@@ -1938,9 +1985,8 @@ does NOT decrypt the database hash
 Because password hash generally one-way hota hai.
 
 
-
 ## WHAT IS THE AUTHENTICATION OBJECT?
-------------------------------------------
+--------------------------------------
 
 Authentication object Spring Security me
 authenticated user ko represent karta hai.
@@ -1962,18 +2008,21 @@ isme information ho sakti hai:
        └── Authenticated
               └── true
 
+
 Yahi authenticated `Authentication` object
 Controller ko return hota hai.
 
 
-## 2.4. JWT GENERATION
+## 2.4 JWT GENERATION
 ---------------------
 
 Authentication successful hone ke baad
 Controller ke paas authenticated user ki information
 `Authentication` object ke through available hoti hai.
 
-Authentication successful hone ke baad Application JWT claims prepare karti hai.
+Application is authenticated user ki information ke basis par
+JWT claims prepare karti hai.
+
 
 JWT ke 3 parts hote hain:
 
@@ -1993,6 +2042,12 @@ JWT ke 3 parts hote hain:
 }
 
 
+`alg` batata hai ki JWT ko sign karne ke liye
+kaunsa algorithm use hua hai.
+
+`typ` token type indicate karta hai.
+
+
 ### PAYLOAD
 ------------
 
@@ -2003,6 +2058,9 @@ JWT ke 3 parts hote hain:
     "iat": 1720000000,
     "exp": 1720003600
 }
+
+
+Payload me JWT claims hote hain.
 
 
 ### SIGNATURE
@@ -2018,18 +2076,8 @@ HS256 ke case me Signature conceptually:
     )
 
 
-Example:
-
-    Header
-       +
-    Payload
-       +
-    Secret Key
-       ↓
-    HMAC-SHA256
-       ↓
-    Signature
-
+Signature JWT ke Header aur Payload ki
+integrity verify karne ke liye use hoti hai.
 
 
 ## COMPLETE JWT
@@ -2056,34 +2104,48 @@ Yaani:
 ## NOTE:
 ---------
 
-1: Header aur Payload Base64URL encoded hote hain
+1. Header aur Payload Base64URL encoded hote hain.
 
-2: JWT ka payload encrypted nahi hota. 
-   Isliye koi bhi Header aur Payload ko decode karke read / modify kar sakta hai.
-   Lekin bina appropriate signing key (can be private key (asymetric algo.) or secret key (symetric algo)) ke
-   valid Signature generate karna possible nahi hona chahiye.
-   Syemtric algo ke case mai target applocation/. servcei ke paas bhi same secet key hoti hai to validate the sigantuire receved 
+2. JWT ka Payload encrypted nahi hota.
+
+   Isliye koi bhi Header aur Payload ko decode karke
+   unke contents read / modify kar sakta hai.
+
+3. Header/Payload ko modify karna possible hai,
+   lekin modified Header/Payload ke liye valid Signature
+   generate karne ke liye appropriate signing key chahiye.
+
+4. Symmetric algorithm (e.g. HS256) ke case me:
+
+       Signing Key = Verification Key
+
+   Yaani token issuer aur target service/application
+   dono ke paas same secret key honi chahiye.
+
+5. Asymmetric algorithm (e.g. RS256) ke case me:
+
+       Signing Key      → Private Key
+       Verification Key → Public Key
+
+   Issuer Private Key se JWT sign karta hai aur
+   target application corresponding Public Key se
+   Signature verify karti hai.
 
 
-## COMPLETE FLOW
------------------
+## STEP 3: JWT RETURNED TO CLIENT
+----------------------------------
 
-Authentication successful hone ke baad:
+JWT generate aur sign hone ke baad
+Login Controller JWT ko response me client ko return karta hai.
 
-    Authentication Object
-            ↓
-    Extract User ID / Roles
-            ↓
-    Create JWT Claims
-            ↓
-    Header + Payload
-            ↓
-    Sign using Secret Key / Private Key
-            ↓
-    Signature
-            ↓
-    Header.Payload.Signature
-            ↓
-    JWT
-            ↓
-    Return JWT to Client
+Example:
+
+{
+    "accessToken": "<JWT>"
+}
+
+
+Ab client ke paas valid JWT hai.
+
+Client subsequent authenticated requests me
+isi JWT ko send karega.
