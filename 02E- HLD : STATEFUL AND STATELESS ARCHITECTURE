@@ -2871,8 +2871,8 @@ authenticated requests me client JWT ko server ko bhej sake.
 Do common approaches hain:
 
 
-1. localStorage
-----------------
+## 1. localStorage
+------------------
 
 Browser JWT ko localStorage me store kar sakta hai.
 
@@ -2888,39 +2888,50 @@ aa gayi aur attacker JavaScript execute karwa paya, to malicious
 JavaScript localStorage se JWT read kar sakti hai.
 
 
+## WHAT IS XSS (CROSS-SITE SCRIPTING)?
+---------------------------------------
+
+XSS me attacker application ke page ke andar malicious JavaScript
+inject/execute karwane me successful ho jata hai.
+
+Ye malicious JavaScript victim ke browser me run hoti hai aur
+browser me accessible data, jaise localStorage me stored JWT,
+read karke attacker ko bhej sakti hai.
+
 Isliye sensitive authentication tokens ko localStorage me
 store karne se XSS ke case me token theft ka risk ho sakta hai.
 
 
-2. HttpOnly Cookie
--------------------
+## 2. HttpOnly Cookie
+---------------------
 
 JWT ko browser ke HttpOnly Cookie me store kiya ja sakta hai.
 
 
-## WHAT IS COOKIE ?
+### WHAT IS COOKIE?
 -------------------
 
 Cookie browser me stored chhota sa data hota hai jo browser
 matching HTTP requests ke saath automatically Backend ko bhej
 sakta hai.
 
-## WHAT IS HttpOnly COOKIE?
+
+### WHAT IS HttpOnly COOKIE?
 ----------------------------
 
 HttpOnly Cookie = Cookie + HttpOnly attribute.
 
-##  EXAMPLE
---------------------
+Example:
 
-Set-Cookie:
-    accessToken=<JWT>;
-    HttpOnly;
-    Secure;
-    SameSite=Lax;
+    Set-Cookie:
+        accessToken=<JWT>;
+        HttpOnly;
+        Secure;
+        SameSite=Lax;
 
-##1: HttpOnly :
---------------
+
+### 2.1 HttpOnly
+----------------
 
 Ye attribute browser ko instruct karta hai ki
 JavaScript is cookie ko directly read nahi kar sakti.
@@ -2929,10 +2940,13 @@ Isliye agar application me XSS vulnerability aa bhi jaye,
 to malicious JavaScript HttpOnly cookie ko directly
 read karke JWT steal nahi kar sakti.
 
-HttpOnly Cookie → JavaScript cannot directly read the cookie
+    HttpOnly Cookie
+          ↓
+    JavaScript cannot directly read the cookie
 
-##2: Secure :
-------------
+
+### 2.2 Secure
+--------------
 
 Ye attribute browser ko instruct karta hai ki
 cookie ko sirf HTTPS requests ke saath send kiya jaye.
@@ -2940,39 +2954,42 @@ cookie ko sirf HTTPS requests ke saath send kiya jaye.
 Isse JWT ko insecure HTTP connection par transmit hone
 se protect karne me help milti hai.
 
-##3: SameSite 
--------------
+
+### 2.3 SameSite
+---------------
+
 Ye attribute control karta hai ki browser
 cross-site requests ke saath cookie bhej sakta hai
 ya nahi.
 
 
 ### WHAT IS A "SITE"?
----------------------
+--------------------
+
 Browser ke perspective se site mainly domain context ko refer karti hai.
 
-Simple terms me browser ke perspective se:
+Simple terms me:
 
-https://example.com
-https://example.com/orders
-https://example.com/profile
+    https://example.com
+    https://example.com/orders
+    https://example.com/profile
 
 Ye same site hain.
 
 Jabki:
 
-https://example.com
-https://google.com
+    https://example.com
+    https://google.com
 
 Ye different sites hain.
 
 
-## WHAT IS A CROSS-SITE REQUEST?
+### WHAT IS A CROSS-SITE REQUEST?
 ---------------------------------
 
 Suppose user logged in hai:
 
-https://mybank.com
+    https://mybank.com
 
 Browser ke paas mybank.com ki ek cookie stored hai,
 jisme access token (JWT) hai:
@@ -2982,11 +2999,11 @@ jisme access token (JWT) hai:
 
 Ab user another website open karta hai:
 
-https://evil.com
+    https://evil.com
 
 
-Malicious website ke andar attacker
-malicious HTML / JavaScript code rakh sakta hai.
+Malicious website ke andar attacker malicious HTML /
+JavaScript code rakh sakta hai.
 
 User jaise hi evil.com open karta hai,
 malicious website ka code user ke browser se
@@ -2998,6 +3015,7 @@ trigger karne ki koshish kar sakta hai:
         | POST https://mybank.com/api/transfer
         ↓
     mybank.com
+
 
 Ye cross-site request hai.
 
@@ -3011,7 +3029,7 @@ Aur:
     evil.com ≠ mybank.com
 
 
-## IMPORTANT:
+### IMPORTANT:
 --------------
 
 Bank API ka koi visible link user ko dikhna
@@ -3022,13 +3040,22 @@ jo page load hote hi victim ke browser se
 target bank endpoint par request trigger karne
 ki koshish kare.
 
+CSRF (Cross-Site Request Forgery) me attacker victim ke
+browser se target application, for example bank.com, par
+unwanted request bhejwane ki koshish karta hai.
 
-## AB IMPORTANT QUESTION :
----------------------------
+SameSite cross-site requests ke saath cookies bhejne ko
+restrict karke CSRF risk ko reduce karta hai.
 
-Kya browser is cross-site request ke saath mybank.com ki cookie automatically bheje?
+
+### HOW DOES SameSite CONTROL THIS?
+------------------------------------
+
+Kya browser is cross-site request ke saath
+mybank.com ki cookie automatically bheje?
 
 SameSite attribute isi behaviour ko control karta hai.
+
 
 ### SameSite=Strict
 -------------------
@@ -3077,17 +3104,19 @@ bheji ja rahi ho:
         ↓
     mybank.com
 
-to SameSite=Lax generally cookie cross-site API request ke saath nahi bhejta.
+to SameSite=Lax generally cookie cross-site API request
+ke saath nahi bhejta.
 
 Lax ko commonly balanced option maana jata hai.
 
 
 ### SameSite=None
-------------------
+-----------------
 
-Ye attribute browser ko cross-site requests ke saath bhi cookie send karne ki permission deta hai.
+Ye attribute browser ko cross-site requests ke saath
+bhi cookie send karne ki permission deta hai.
 
-SameSite = None use karne par Secure attribute bhi required hota hai.
+SameSite=None use karne par Secure attribute bhi required hota hai.
 
     SameSite=None
           +
