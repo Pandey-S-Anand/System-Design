@@ -2523,3 +2523,336 @@ client/user ko return kar deta hai.
 ## 7. ACCESS TOKEN vs REFRESH TOKEN ?
 ---------------------------------------
 
+Ab ek practical problem aati hai:
+
+JWT ki expiry kitni rakhein?
+
+Maan lo humne JWT ko:
+
+    Expiration = 30 Days
+
+rakh diya.
+
+To user ko 30 din tak baar-baar login nahi karna padega.
+
+Convenient hai.
+
+Lekin isme ek security concern hai.
+
+Suppose JWT leak / stolen ho gaya aur kisi attacker ke
+haath lag gaya.
+
+Attacker potentially us token ka 30 days tak misuse kar sakta hai,
+jab tak token expire ya otherwise invalidate na ho.
+
+
+Ab hum soch sakte hain:
+
+"Theek hai, JWT ko 30 days ka mat rakho.
+Sirf 15 minutes ka rakho."
+
+    JWT Expiration = 15 minutes
+
+Security better ho gayi.
+
+Agar token leak bhi ho gaya, to theoretically attacker ke paas
+limited validity window hogi.
+
+Lekin ab ek nayi problem aati hai.
+
+Agar JWT ko bahut short-lived bana diya:
+
+    JWT Expiration = 5 minutes
+
+to user ko har 5 minutes ke baad dobara
+username + password se login karna padega.
+
+Ye poor user experience hoga.
+
+
+## TOH HUME ACTUALLY KYA CHAHIYE?
+---------------------------------
+
+Hume aisa mechanism chahiye jisme:
+
+    - Security better rahe.
+    - User experience bhi achha ho. i.e. User ko baar-baar Username + Password se login na karna pade.
+
+Isi problem ko solve karne ke liye commonly:
+
+    Access Token
+          +
+    Refresh Token
+
+use kiye jaate hain.
+
+
+Login ke time authentication successful hone ke baad,
+application generally do tokens issue kar sakti hai:
+
+    Username + Password
+            ↓
+      Authentication
+            ↓
+          SUCCESS
+            ↓
+      ┌─────┴─────┐
+      ↓           ↓
+Access Token   Refresh Token
+
+Dono tokens ka purpose different hota hai.
+
+
+## 1. ACCESS TOKEN
+------------------
+
+Access Token ka primary purpose hai:
+
+    Protected APIs / Resources ko access karna.
+
+Client API request ke saath Access Token bhejta hai:
+
+    GET /api/orders
+
+    Authorization: Bearer <ACCESS_TOKEN>
+
+
+Application:
+
+    Access Token
+         ↓
+       Verify
+         ↓
+    Authentication
+         ↓
+    Authorization
+         ↓
+    Allow / Reject
+
+
+## IMPORTANT:
+
+Access Token generally short-lived rakha jata hai.
+
+Example:
+
+    5 minutes
+    15 minutes
+    30 minutes
+
+Exact duration application ki security requirements
+par depend karti hai.
+
+
+## 2. REFRESH TOKEN
+-------------------
+
+Refresh Token ka use normal business APIs
+access karne ke liye nahi hota.
+
+Iska primary purpose hai:
+
+    Current Access Token expire hone ke baad
+    ek naya Access Token obtain karna.
+
+Example:
+
+    Access Token
+         ↓
+    Expires after 15 minutes
+
+Client ke paas ab bhi:
+
+    Refresh Token
+
+available hai.
+
+Client Refresh Token ko application/service ke designated token endpoint par bhejta hai.
+
+Application:
+
+    Refresh Token
+         ↓
+       Validate
+         ↓
+    Validation Successful
+         ↓
+    Issue New Access Token
+
+
+Is process me user ko dobara:
+
+    Username + Password
+
+provide karke login nahi karna padta.
+
+
+## IMPORTANT:
+-------------
+
+Refresh Token generally Access Token se
+longer-lived hota hai.
+
+Example:
+
+    Access Token   → 15 minutes
+    Refresh Token  → 30 days
+
+
+Agar Refresh Token bhi expire ho gaya, to uske basis par naya Access Token obtain nahi kiya ja sakta.
+
+Is case me user ko dobara login karke authenticate karna pad sakta hai, jiske baad application new Access Token aur Refresh Token issue karegi.
+
+Yaani Refresh Token user ko longer-lived login experience provide karta hai, lekin ye indefinitely valid nahi hota.
+
+
+## NOTE:
+----------
+
+Access Token aur Refresh Token dono ka
+JWT hona mandatory nahi hai.
+
+For example:
+
+    Access Token  → JWT
+    Refresh Token → Opaque Random Token
+
+Ye ek perfectly valid architecture hai.
+
+
+## REFRESH TOKEN SE NEW ACCESS TOKEN KAISE MILTA HAI ?
+-------------------------------------------------------
+
+Suppose:
+
+    Access Token Expiry    = 1 hour
+    Refresh Token Expiry   = 30 days
+
+User login karta hai aur successful authentication ke baad
+client ko backend application se:
+
+    Access Token
+    +
+    Refresh Token
+
+milta hai.
+
+Client in dono tokens ko securely store karta hai aur
+Access Token ko subsequent API requests me use karta hai.
+
+
+## NOTE:
+--------
+
+Client = woh application/software jo User ki taraf se backend ko HTTP requests bhejta hai.
+
+      User
+        ↓
+Frontend / Browser / Mobile App / Postman / Another Backend Service
+        ↓
+     HTTP Request
+        ↓
+Backend Application
+
+
+Refresh Token khud automatically new Access Token generate nahi karta. 
+Client me logic implement kiya ja sakta hai jo Access Token ki expiry ko track kare aur expiry hone wali ho to 
+Refresh Token ka use karke Backend ke designated token endpoint se new Access Token obtain kare.
+
+Example:
+
+    Refresh Token
+          ↓
+    Backend Token Endpoint
+          ↓
+    Backend validates Refresh Token
+          ↓
+    Backend issues New Access Token
+          ↓
+    Backend returns New Access Token
+          ↓
+    Client receives New Access Token
+          ↓
+    Client stores/uses New Access Token
+
+
+## WHEN IS THE NEW ACCESS TOKEN OBTAINED?
+------------------------------------------
+
+Ye Client ke implementation par depend karta hai.
+
+
+### APPROACH 1: BEFORE ACCESS TOKEN EXPIRY
+------------------------------------------
+
+Client Access Token ki expiry ko track kar sakta hai.
+
+For example:
+
+    Access Token Expiry = 1 hour
+
+Client Access Token ki expiry se kuch time pehle Refresh Token ka use karke new Access Token obtain kar sakta hai, 
+taaki Access Token expire hone se pehle hi new token available ho.
+
+
+Example:
+
+    10:00 AM → Access Token issued
+    11:00 AM → Access Token expires
+
+    10:55 AM → Client Refresh Token ke through
+               Backend ke designated token endpoint
+               ko request bhejta hai.
+
+    Backend → New Access Token issue karta hai.
+
+Is approach me Access Token expire hone se pehle hi new Access Token client ko available ho jata hai, isliye API requests me interruption nahi hota.
+
+
+## NOTE:
+----------
+
+Refresh Token se new Access Token issue hone par
+purana Access Token automatically invalidate hona mandatory nahi hai.
+
+Agar purane Access Token ki expiry abhi baaki hai aur
+application ke paas token revocation mechanism nahi hai,
+to old aur new Access Token kuch time ke liye simultaneously valid
+ho sakte hain.
+
+Old Access Token normally apni expiry tak valid reh sakta hai.
+
+Agar application token revocation / rotation mechanism use karti hai,
+to old token ko explicitly invalidate kiya ja sakta hai.
+
+
+### APPROACH 2: AFTER ACCESS TOKEN EXPIRY
+----------------------------------------
+
+Another common approach me Client pehle Access Token ke
+saath API request bhejta hai.
+
+Agar Access Token expire ho chuka hai:
+
+    API Request
+         ↓
+    Access Token Expired
+         ↓
+    401 Unauthorized
+         ↓
+    Client Refresh Token use karta hai
+         ↓
+    Client Backend ke designated token endpoint par
+    refresh request bhejta hai
+         ↓
+    Backend Refresh Token ko validate karta hai
+         ↓
+    Refresh Token valid hai
+         ↓
+    Backend new Access Token issue karta hai
+         ↓
+    Backend new Access Token Client ko return karta hai
+         ↓
+    Client new Access Token receive karta hai
+         ↓
+    Original API request retry ki ja sakti hai
