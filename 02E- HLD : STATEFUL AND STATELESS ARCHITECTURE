@@ -2517,3 +2517,9 @@ required result Controller ko return karta hai.
 
 Controller us result ko HTTP Response ke form me
 client/user ko return kar deta hai.
+
+
+
+## 7. ACCESS TOKEN vs REFRESH TOKEN ?
+---------------------------------------
+
