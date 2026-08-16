@@ -2189,5 +2189,331 @@ Example:
 
 Ab client ke paas valid JWT hai.
 
+Client JWT ko securely store karta hai, commonly an HttpOnly + Secure cookie ke andar (web applications me).
+
 Client subsequent authenticated requests me
 isi JWT ko send karega.
+
+
+## 6. WHAT HAPPENS DURING SUBSEQUENT REQUESTS?
+-------------------------------------------------
+
+Ab user ke paas valid JWT hai.
+
+Suppose user orders dekhna chahta hai:
+
+    GET /api/orders
+
+User ka client JWT ke saath request bhejta hai.
+
+Common HTTP format:
+
+    Authorization: Bearer <JWT>
+
+
+Example:
+
+    GET /api/orders
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+
+
+Ab request Spring Boot application tak pahunchti hai.
+
+
+## 6.1 REQUEST ENTERS SPRING SECURITY FILTER CHAIN
+----------------------------------------------------
+
+Request directly Controller tak nahi jaati.
+
+Sabse pehle request Spring Security Filter Chain
+ke `BearerTokenAuthenticationFilter` se pass hoti hai.
+
+`BearerTokenAuthenticationFilter` HTTP/HTTPS request ke
+`Authorization` header ko check karta hai.
+
+Expected format:
+
+    Authorization: Bearer <JWT>
+
+
+`BearerTokenAuthenticationFilter` `Authorization` header
+read karta hai aur `Bearer ` prefix remove karta hai.
+
+Uske baad Spring Security internally
+`BearerTokenAuthenticationToken` create karta hai,
+jisme extracted Bearer Token, i.e. actual JWT, hota hai.
+
+
+Agar `Authorization` header hi missing hai,
+to protected endpoint ke liye authentication establish
+nahi ho payegi.
+
+Result generally:
+
+    401 Unauthorized
+
+
+## NOTE:
+---------
+
+`BearerTokenAuthenticationFilter` Spring Security ka
+built-in filter hai.
+
+`JwtAuthenticationFilter` ek custom filter ka naam hai
+jo developers khud create kar sakte hain.
+
+Example:
+
+    public class JwtAuthenticationFilter
+            extends OncePerRequestFilter {
+        ...
+    }
+
+
+Modern Spring Security Resource Server setup me
+hume necessarily apna custom `JwtAuthenticationFilter`
+banane ki zarurat nahi hoti.
+
+Built-in `BearerTokenAuthenticationFilter`
+JWT authentication flow initiate karta hai.
+
+
+## 6.2 AUTHENTICATIONMANAGER
+------------------------------
+
+Ab `BearerTokenAuthenticationToken`
+`AuthenticationManager` ko pass hota hai.
+
+`AuthenticationManager` authentication ko
+appropriate `AuthenticationProvider` ko delegate karta hai.
+
+JWT Resource Server configuration me commonly:
+
+    JwtAuthenticationProvider
+
+use hota hai.
+
+
+## 6.3 JWT AUTHENTICATION PROVIDER
+-----------------------------------
+
+`JwtAuthenticationProvider` ka kaam JWT ko authenticate karna hai.
+
+Ye `JwtDecoder` ka use karta hai.
+
+
+## 6.4 JWT DECODER
+------------------
+
+`JwtDecoder` JWT ko decode karta hai aur
+JWT ki cryptographic verification/validation
+perform karta hai.
+
+
+Conceptually:
+
+
+1. SIGNATURE VALIDATION
+------------------------
+
+For HS256:
+
+    Secret Key
+        ↓
+    Signature Verification
+
+
+For RS256:
+
+    Public Key
+        ↓
+    Signature Verification
+
+
+2. CLAIMS VALIDATION
+---------------------
+
+Configured validation rules ke according
+JWT ke claims validate kiye ja sakte hain:
+
+    exp
+    iss
+    aud
+    nbf
+    ...
+
+
+## 6.5 JWT → JwtAuthenticationConverter → Authentication
+----------------------------------------------------------
+
+JWT successfully validate hone ke baad
+Spring Security ko JWT ke andar available
+user identity aur authorities ko
+Authentication representation me convert karna hota hai.
+
+
+Example JWT:
+
+{
+    "sub": "101",
+    "roles": ["USER"]
+}
+
+
+`JwtAuthenticationConverter` JWT ke claims ko
+Spring Security ke Authentication representation
+me convert karne me help karta hai.
+
+
+Conceptually:
+
+    JWT
+     |
+     ├── sub = 101
+     └── roles = USER
+             |
+             ↓
+    JwtAuthenticationConverter
+             |
+             ↓
+    JwtAuthenticationToken
+             |
+             ├── Principal = User 101
+             └── Authorities = USER
+
+## NOTE:
+---------
+JwtAuthenticationToken Spring Security ka Authentication implementation hai.
+Authentication ek interface hai jo authenticated user's information ko represent karne ka contract provide karta hai.
+JwtAuthenticationToken us interface ki concrete implementation hai.
+
+
+## 6.6 AUTHENTICATION SECURITY CONTEXT ME SET HOTA HAI
+-------------------------------------------------------
+
+Successful authentication ke baad `Authentication` object ko current request ke  `SecurityContext` me set kiya jata hai.
+JwtAuthenticationToken ko Authentication ke roop me SecurityContext me set kiya jata hai.
+
+Ab current request ke processing ke dauran
+Spring Security ke paas authenticated user ko
+represent karne ke liye `Authentication` object available hai.
+
+
+Conceptually:
+
+    SecurityContext
+         |
+         └── JwtAuthenticationToken
+                 |
+                 ├── User = 101
+                 └── Authorities = USER
+
+
+## 6.7 AUTHORIZATION
+--------------------
+
+JWT validate hone ke baad authenticated
+`Authentication` object `SecurityContext` me
+available hota hai.
+
+Ab Spring Security check karti hai:
+
+    "Kya is user ko requested resource
+     access karne ki permission hai?"
+
+
+Authorization ke liye `Authentication` object me
+available Authorities / Roles use kiye jaate hain.
+
+
+Example:
+
+    Authentication
+        |
+        ├── User = 101
+        └── Authority = ROLE_USER
+
+
+Request:
+
+    GET /api/orders
+
+
+Required Authority:
+
+    ROLE_USER
+
+
+Available Authority in Authentication object:
+
+    ROLE_USER
+
+
+        ↓
+
+    Authorization PASS
+        ↓
+    Request Continue
+
+
+Agar API ko access karne ke liye required Authority
+user ke paas available nahi hai:
+
+    Authorization FAIL
+        ↓
+    403 Forbidden
+
+
+Authentication:
+
+    "Who are you?"
+
+
+Authorization:
+
+    "What are you allowed to do?"
+
+
+## 6.8 REQUEST CONTROLLER / ENDPOINT TAK PAHUNCHTI HAI
+------------------------------------------------------
+
+After successful Authentication and Authorization,
+Spring Security Filter Chain request ko continue karti hai
+aur request application ke relevant Controller endpoint
+tak pahunchti hai.
+
+
+Example:
+
+    @GetMapping("/api/orders")
+    public List<Order> getOrders(Authentication authentication) {
+
+        return orderService.getOrders();
+
+    }
+
+
+Ab Controller ko current authenticated user ki
+information Spring Security ke `SecurityContext`
+ke through available ho sakti hai.
+
+
+Controller request ko business processing ke liye
+relevant Service layer ko delegate karta hai.
+
+Example:
+
+    Controller
+        ↓
+    Service
+        ↓
+    Repository
+        ↓
+    Database
+
+
+Service business logic process karta hai aur
+required result Controller ko return karta hai.
+
+Controller us result ko HTTP Response ke form me
+client/user ko return kar deta hai.
