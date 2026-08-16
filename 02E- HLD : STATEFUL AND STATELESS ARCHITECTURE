@@ -2858,5 +2858,237 @@ Agar Access Token expire ho chuka hai:
     Original API request retry ki ja sakti hai
 
 
+
 ## 8. JWT STORAGE & SECURITY
 ------------------------------
+
+## QUESTION: JWT KO CLIENT SIDE PAR KAHAN STORE KAREIN?
+---------------------------------------------------------
+
+JWT client side par maintain kiya jata hai, taaki subsequent
+authenticated requests me client JWT ko server ko bhej sake.
+
+Do common approaches hain:
+
+
+1. localStorage
+----------------
+
+Browser JWT ko localStorage me store kar sakta hai.
+
+JavaScript is token ko read kar sakti hai.
+
+Example:
+
+    localStorage.getItem("accessToken")
+
+
+Agar application me Cross-Site Scripting (XSS) vulnerability
+aa gayi aur attacker JavaScript execute karwa paya, to malicious
+JavaScript localStorage se JWT read kar sakti hai.
+
+
+Isliye sensitive authentication tokens ko localStorage me
+store karne se XSS ke case me token theft ka risk ho sakta hai.
+
+
+2. HttpOnly Cookie
+-------------------
+
+JWT ko browser ke HttpOnly Cookie me store kiya ja sakta hai.
+
+
+## WHAT IS COOKIE ?
+-------------------
+
+Cookie browser me stored chhota sa data hota hai jo browser
+matching HTTP requests ke saath automatically Backend ko bhej
+sakta hai.
+
+## WHAT IS HttpOnly COOKIE?
+----------------------------
+
+HttpOnly Cookie = Cookie + HttpOnly attribute.
+
+##  EXAMPLE
+--------------------
+
+Set-Cookie:
+    accessToken=<JWT>;
+    HttpOnly;
+    Secure;
+    SameSite=Lax;
+
+##1: HttpOnly :
+--------------
+
+Ye attribute browser ko instruct karta hai ki
+JavaScript is cookie ko directly read nahi kar sakti.
+
+Isliye agar application me XSS vulnerability aa bhi jaye,
+to malicious JavaScript HttpOnly cookie ko directly
+read karke JWT steal nahi kar sakti.
+
+HttpOnly Cookie → JavaScript cannot directly read the cookie
+
+##2: Secure :
+------------
+
+Ye attribute browser ko instruct karta hai ki
+cookie ko sirf HTTPS requests ke saath send kiya jaye.
+
+Isse JWT ko insecure HTTP connection par transmit hone
+se protect karne me help milti hai.
+
+##3: SameSite 
+-------------
+Ye attribute control karta hai ki browser
+cross-site requests ke saath cookie bhej sakta hai
+ya nahi.
+
+
+### WHAT IS A "SITE"?
+---------------------
+Browser ke perspective se site mainly domain context ko refer karti hai.
+
+Simple terms me browser ke perspective se:
+
+https://example.com
+https://example.com/orders
+https://example.com/profile
+
+Ye same site hain.
+
+Jabki:
+
+https://example.com
+https://google.com
+
+Ye different sites hain.
+
+
+## WHAT IS A CROSS-SITE REQUEST?
+---------------------------------
+
+Suppose user logged in hai:
+
+https://mybank.com
+
+Browser ke paas mybank.com ki ek cookie stored hai,
+jisme access token (JWT) hai:
+
+    accessToken=ABC123
+
+
+Ab user another website open karta hai:
+
+https://evil.com
+
+
+Malicious website ke andar attacker
+malicious HTML / JavaScript code rakh sakta hai.
+
+User jaise hi evil.com open karta hai,
+malicious website ka code user ke browser se
+mybank.com ke kisi endpoint par request
+trigger karne ki koshish kar sakta hai:
+
+    evil.com
+        |
+        | POST https://mybank.com/api/transfer
+        ↓
+    mybank.com
+
+Ye cross-site request hai.
+
+Kyunki request:
+
+    FROM → evil.com
+    TO   → mybank.com
+
+Aur:
+
+    evil.com ≠ mybank.com
+
+
+## IMPORTANT:
+--------------
+
+Bank API ka koi visible link user ko dikhna
+zaroori nahi hai.
+
+Attacker evil.com ke page ke andar code likh sakta hai
+jo page load hote hi victim ke browser se
+target bank endpoint par request trigger karne
+ki koshish kare.
+
+
+## AB IMPORTANT QUESTION :
+---------------------------
+
+Kya browser is cross-site request ke saath mybank.com ki cookie automatically bheje?
+
+SameSite attribute isi behaviour ko control karta hai.
+
+### SameSite=Strict
+-------------------
+
+Sabse restrictive option.
+
+Browser cross-site context me cookie send nahi karta.
+
+    Same-site request  → Cookie ✅
+    Cross-site request → Cookie ❌
+
+
+### SameSite=Lax
+----------------
+
+Ye Strict se thoda relaxed option hai.
+
+Cross-site requests me cookie generally restricted hoti hai.
+
+Lekin kuch safe / top-level navigation scenarios me
+cookie send ki ja sakti hai.
+
+Top-level navigation ka simple meaning:
+
+    User kisi website par hai
+            ↓
+    User ek normal link par click karta hai
+            ↓
+    Browser ka main page doosri website par open hota hai
+
+Example:
+
+    evil.com
+        |
+        | User clicks "Go to mybank.com"
+        ↓
+    mybank.com
+
+
+Lekin agar evil.com se directly background/API request
+bheji ja rahi ho:
+
+    evil.com
+        |
+        | POST mybank.com/api/transfer
+        ↓
+    mybank.com
+
+to SameSite=Lax generally cookie cross-site API request ke saath nahi bhejta.
+
+Lax ko commonly balanced option maana jata hai.
+
+
+### SameSite=None
+------------------
+
+Ye attribute browser ko cross-site requests ke saath bhi cookie send karne ki permission deta hai.
+
+SameSite = None use karne par Secure attribute bhi required hota hai.
+
+    SameSite=None
+          +
+       Secure
