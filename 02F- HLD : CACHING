@@ -1,1 +1,401 @@
+==============================
+## WHY DO WE NEED CACHING ?
+==============================
 
+Suppose humare paas ek e-commerce application hai.
+
+                              User
+                                |
+                                | HTTP Request
+                                ↓
+                         ┌───────────────┐
+                         │  API Gateway  │
+                         └───────┬───────┘
+                                 |
+                ┌────────────────┴────────────────┐
+                ↓                                 ↓
+        ┌─────────────────┐               ┌─────────────────┐
+        │ Product Service │               │  Order Service  │
+        │ Load Balancer   │               │ Load Balancer   │
+        └────────┬────────┘               └────────┬────────┘
+                 |                                 |
+          ┌──────┼──────┐                   ┌──────┼──────┐
+          ↓      ↓      ↓                   ↓      ↓      ↓
+       ┌────┐ ┌────┐ ┌────┐              ┌────┐ ┌────┐ ┌────┐
+       │ P1 │ │ P2 │ │ P3 │              │ O1 │ │ O2 │ │ O3 │
+       └─┬──┘ └─┬──┘ └─┬──┘              └─┬──┘ └─┬──┘ └─┬──┘
+         |      |      |                    |      |      |
+         └──────┼──────┘                    └──────┼──────┘
+                ↓                                  ↓
+        ┌────────────────┐                 ┌────────────────┐
+        │  Product DB    │                 │    Order DB    │
+        └────────────────┘                 └────────────────┘
+
+
+Yahan:
+
+API Gateway
+→ Request ko appropriate service ke Load Balancer tak route karta hai.
+
+Service-specific Load Balancer
+→ Us service ke multiple instances ke beech request distribute karta hai.
+
+Service Instances
+→ Actual business logic execute karte hain.
+
+Database
+→ Persistent data store karta hai.
+
+
+## PROBLEM: REPEATED DATABASE READS
+-------------------------------------
+
+Suppose Product Service ke paas API hai:
+
+    GET /products/101
+
+User product 101 request karta hai.
+
+Flow:
+
+    User
+      ↓
+    API Gateway
+      ↓
+    Product Load Balancer
+      ↓
+    Product Service Instance
+      ↓
+    Product DB
+      ↓
+    Product Data
+      ↓
+    User
+
+
+Ab maan lo Product 101 bahut popular hai.
+
+1000 users same product request karte hain:
+
+    GET /products/101
+    GET /products/101
+    GET /products/101
+    ...
+
+To theoretically:
+
+    1000 Requests
+          ↓
+    1000 Database Reads
+
+
+Problem:
+
+Same data baar-baar Database se read kiya ja raha hai,
+even though Product 101 ki information frequently change nahi ho rahi.
+
+
+## IMPORTANT:
+-------------------------------
+
+Caching ka primary benefit read-heavy workloads me hota hai,
+especially jab same data frequently read kiya ja raha ho.
+
+Example:
+
+    GET /products/101
+          ↓
+    Repeated Reads
+          ↓
+       Cache
+          ↓
+    Database Reads Reduce
+
+
+Lekin write operations ke case me:
+
+    POST /orders
+    PUT /products/101
+    DELETE /products/101
+
+Business data ko ultimately Database me update karna hi padega.
+
+    Write Request
+         ↓
+      Application
+         ↓
+      Database
+
+
+Caching generally Database writes ko eliminate nahi karti.
+
+
+## WHY IS THIS A PROBLEM ?
+---------------------------
+
+Frequently accessed data ke liye har baar Database ko hit karna unnecessarily expensive ho sakta hai.
+
+Har Database request ko process karne ke dauraan Database ke various resources consume hote hain.
+
+Database operation me mainly following costs involved ho sakti hain:
+
+
+1. NETWORK COMMUNICATION
+-------------------------
+
+Agar Application aur Database different servers par deployed hain:
+
+    Application Server
+            ↓
+       Network / TCP
+            ↓
+      Database Server
+
+Query Database Server tak network ke through jaati hai.
+
+Database query process karke required result
+network ke through wapas Application ko bhejta hai.
+
+Isliye Application aur Database ke beech
+network latency ka overhead hota hai.
+
+Agar Application aur Database same server par deployed hain,
+to communication machine ke andar hi hota hai across different
+ports of the server.Physical network par data bahar nahi jaata,
+lekin communication cost completely zero nahi hoti.
+
+
+2. CPU USAGE
+------------
+
+Database query process karne ke liye CPU computation karta hai.
+
+Query ke according database ko:
+
+- Data locate karna
+  → Database determine karta hai ki required row kis page me stored hai
+
+- Filter karna
+  → Example: WHERE price > 1000
+    Sirf matching products select karna.
+
+- Index lookup karna
+  → Database check karta hai ki suitable index available hai ya nahi.
+    Agar index available ho, to Query Optimizer decide karta hai
+    ki index use karna beneficial hai ya nahi.
+    Agar index use hota hai, to index ke through required row(s)
+    ki location (relevant data page/block) efficiently locate ki ja sakti hai.
+
+- Joins perform karna
+  → Example: users JOIN orders
+
+- Sorting karna
+  → Example: ORDER BY price DESC
+
+- Aggregation karna
+  → Example: SUM(amount), COUNT(*), AVG(price)
+    Multiple rows par calculation perform karna.
+
+- Other required processing
+  → Query ke according additional operations perform karna.
+
+karni pad sakti hai.
+
+Yaani same frequently requested data ke liye query baar-baar execute hone par database CPU resources repeatedly consume hote hain.
+
+
+3. DATA ACCESS: DISK + RAM
+----------------------------
+
+Database ka persistent data disk (SSD / HDD) par stored hota hai.
+
+Lekin Database directly har query ke liye disk se data read nahi karna chahta,
+kyunki disk access RAM ke comparison me significantly slower hota hai.
+
+Database frequently accessed data ko RAM ke
+Buffer Pool me store kar sakta hai, taaki har baar
+disk se data read na karna pade.
+
+Database Buffer Pool = RAM ka woh area jahan Database
+data/index pages ko temporarily store karta hai.
+
+Database RAM ko fast working memory ke roop me use karta hai.
+
+RAM me commonly:
+
+    - Frequently accessed data pages
+    - Required index pages
+    - Query ke intermediate results
+    - Modified (dirty) pages
+
+store ho sakte hain.
+
+
+## WHAT ARE PAGES / BLOCKS ?
+-----------------------------
+
+Database data ko generally fixed-size units,
+called pages / blocks, me manage karta hai.
+
+Data pages me actual table data stored hota hai.
+
+Index pages me database indexes ka data stored hota hai,
+jiska use Database required rows ko efficiently locate
+karne ke liye karta hai.
+
+Database query process karte waqt required
+data pages aur index pages ko disk se RAM (Buffer Pool)
+me load karta hai.
+
+
+### HOW DOES DATA ACCESS WORK?
+-------------------------------
+
+Suppose query ko kisi particular data ki zarurat hai.
+
+Database pehle check karta hai ki query ke liye required data aur, if applicable, index pages Buffer Pool (RAM) me already loaded hain ya nahi.
+
+Agar required page already RAM me available hai:
+
+    Query
+      ↓
+    Buffer Pool 
+      ↓
+    CPU Processing
+      ↓
+    Result
+
+Database ko disk se dobara read karne ki
+zarurat nahi padti.
+
+Agar required page RAM me available nhi hai:
+
+    Query
+      ↓
+    Required Page Buffer Pool  me nahi hai
+      ↓
+    DISK se Read
+      ↓
+    RAM / Buffer Pool me Load
+      ↓
+    CPU Processing
+      ↓
+    Result
+
+Yahan Database ko pehle  disk se
+required page RAM me load karna padta hai.
+
+
+## WHY IS THIS A COST?
+----------------------
+
+1: RAM:
+---------
+
+Agar simultaneously bahut saari READ queries execute ho rahi hain,
+to database ki available RAM par memory pressure increase ho sakta hai.
+High memory pressure me database ko kuch data pages evict karke
+RAM free karni pad sakti hai.
+Agar baad me evicted page ki zarurat padti hai,
+to database ko us page ko dobara storage se RAM me load karna pad sakta hai,
+jisse additional I/O latency aur processing overhead hota hai.
+
+2: DISK (SSD / HDD)
+---------------------
+
+Agar required data / index page RAM ke Buffer Pool me available nahi hai,
+to Database ko disk se page read karna padta hai.
+Disk I/O RAM access ke comparison me significantly slower hota hai,
+isliye ye additional I/O latency aur processing overhead create karta hai.
+
+
+
+=======================
+## WHAT IS CACHING ?
+=======================
+
+Caching ek technique hai jisme frequently accessed data ki temporary copy ko faster storage layer me store kiya jata hai, 
+taaki future read requests ke liye same data ko slower underlying system, jaise Database, se baar-baar retrieve na karna pade.
+Cache khud koi specific technology nahi, balki ek concept/technique hai. 
+
+Isko implement karne ke liye different technologies use ki ja sakti hain:
+
+Redis → Distributed Cache
+Caffeine → Local In-Memory Cache
+Memcached → Distributed In-Memory Cache
+
+## WITHOUT CACHE:
+-------------------
+
+Request
+   ↓
+Application
+   ↓
+Database
+   ↓
+Data
+
+
+## WITH CACHE:
+---------------
+
+ Request
+   ↓
+Application
+   ↓
+ Cache
+   ↓
+Data Found?
+   │
+   ├── YES → Return Data
+   │
+   └── NO
+        ↓
+      Database
+        ↓
+      Data
+        ↓
+    Store in Cache
+        ↓
+    Return Data
+
+
+Cache ka main purpose frequently accessed data ko cache se serve karke Database Load reduce karna hai.
+Database Load kam hone se Database Response Time reduce ho sakta hai, jisse overall Application Performance improve hoti hai.
+
+
+## WHY IS CACHE FASTER THAN DATABASE ?
+---------------------------------------
+
+Caching ke commonly used implementations
+frequently accessed data ko fast-access memory (RAM)
+me store karte hain.
+
+Cache se data retrieve karna generally fast hota hai,
+kyunki commonly used caching implementations jaise Redis
+data ko primarily RAM (memory) me store karti hain.
+
+Iske comparison me Database ka primary persistent storage
+generally SSD/HDD jaise disk storage par hota hai.
+
+Database apni performance improve karne ke liye internally
+frequently accessed data aur index pages ko apne Buffer Pool
+(RAM) me cache karta hai.
+
+Lekin Database query ko process karne me additional
+overhead ho sakta hai, jaise:
+
+    - Query processing
+    - Index / data lookup
+    - CPU computation
+    - Possible disk I/O
+
+Yaani:
+
+    Database:
+        Primary Persistent Storage → SSD / HDD
+        Internal Cache / Buffer Pool → RAM
+
+    Redis:
+        Primary Working Data Store → RAM
+        Optional Persistence       → Disk
