@@ -4,47 +4,86 @@
 
 Suppose humare paas ek e-commerce application hai.
 
-                              User
-                                |
-                                | HTTP Request
-                                ↓
-                         ┌───────────────┐
-                         │  API Gateway  │
-                         └───────┬───────┘
-                                 |
-                ┌────────────────┴────────────────┐
-                ↓                                 ↓
-        ┌─────────────────┐               ┌─────────────────┐
-        │ Product Service │               │  Order Service  │
-        │ Load Balancer   │               │ Load Balancer   │
-        └────────┬────────┘               └────────┬────────┘
-                 |                                 |
-          ┌──────┼──────┐                   ┌──────┼──────┐
-          ↓      ↓      ↓                   ↓      ↓      ↓
-       ┌────┐ ┌────┐ ┌────┐              ┌────┐ ┌────┐ ┌────┐
-       │ P1 │ │ P2 │ │ P3 │              │ O1 │ │ O2 │ │ O3 │
-       └─┬──┘ └─┬──┘ └─┬──┘              └─┬──┘ └─┬──┘ └─┬──┘
-         |      |      |                    |      |      |
-         └──────┼──────┘                    └──────┼──────┘
-                ↓                                  ↓
-        ┌────────────────┐                 ┌────────────────┐
-        │  Product DB    │                 │    Order DB    │
-        └────────────────┘                 └────────────────┘
+                                   User
+                                     |
+                                     | HTTP Request
+                                     v
+                                    DNS
+                                     |
+                                     v
+                           +-------------------+
+                           | Is Content Static?|
+                           +---------+---------+
+                                     |
+                          +----------+----------+
+                          |                     |
+                         YES                    NO
+                          |                     |
+                          v                     |
+                +------------------------+      |
+                | Is Content Available   |      |
+                |       in CDN?          |      |
+                +----------+-------------+      |
+                           |                    |
+                    +------+-------+            |
+                    |              |            |
+                   YES            NO            |
+                    |              |            |
+                    v              +------------+        
+             Return from CDN   Origin/API       |
+                                                |
+                                                +
+                                            +----
+                                            |
+                                            v
+                                   ┌───────────────┐
+                                   │  API Gateway  │
+                                   └───────┬───────┘
+                                           |
+                          ┌────────────────┴────────────────┐
+                          ↓                                 ↓
+                  ┌─────────────────┐               ┌─────────────────┐
+                  │ Product Service │               │  Order Service  │
+                  │  Load Balancer  │               │  Load Balancer  │
+                  └────────┬────────┘               └────────┬────────┘
+                           |                                 |
+                    ┌──────┼──────┐                   ┌──────┼──────┐
+                    ↓      ↓      ↓                   ↓      ↓      ↓
+                  ┌────┐ ┌────┐ ┌────┐              ┌────┐ ┌────┐ ┌────┐
+                  │ P1 │ │ P2 │ │ P3 │              │ O1 │ │ O2 │ │ O3 │
+                  └─┬──┘ └─┬──┘ └─┬──┘              └─┬──┘ └─┬──┘ └─┬──┘
+                    |      |      |                    |      |      |
+                    └──────┼──────┘                    └──────┼──────┘
+                           |                                 |
+                           v                                 v
+                  ┌────────────────┐                 ┌────────────────┐
+                  │  Product DB    │                 │    Order DB    │
+                  └────────────────┘                 └────────────────┘
 
 
 Yahan:
 
+CDN
+→ Static content, jaise images, CSS, JavaScript files, etc.
+   ko user ke nearby location se serve karne ki koshish karta hai.
+
+→ Agar requested content CDN me available nahi hai,
+   to request origin infrastructure ki taraf ja sakti hai.
+
 API Gateway
-→ Request ko appropriate service ke Load Balancer tak route karta hai.
+→ Dynamic/API request ko appropriate service ke
+   Load Balancer tak route karta hai.
 
 Service-specific Load Balancer
-→ Us service ke multiple instances ke beech request distribute karta hai.
+→ Us service ke multiple instances ke beech request
+   distribute karta hai.
 
 Service Instances
 → Actual business logic execute karte hain.
 
 Database
 → Persistent data store karta hai.
+
 
 
 ## PROBLEM: REPEATED DATABASE READS
@@ -639,6 +678,7 @@ tak route karta hai.
 Agar `product:101` pehli baar request hua hai aur data Product Redis Cache 
 me available nahi hoga, to `P1` Product Database se product data retrieve karti hai.
 
+
 ## FLOW :
 ----------
 
@@ -723,3 +763,34 @@ Isliye Redis jaise external cache ko multiple service
 instances ke beech shared fast-access data layer ke roop
 me use kiya ja sakta hai, jisse ek instance dwara cached
 data ko doosri instances bhi access kar sakti hain.
+
+
+==========================
+## CACHE-ASIDE PATTERN
+==========================
+
+Cache use karne ke different patterns hote hain.
+
+Sabse commonly used pattern hai: Cache-Aside
+
+Isko Lazy Loading bhi kaha jata hai.
+
+Is pattern me:
+
+Application pehle Cache check karti hai.
+Agar data mil gaya → directly return.
+Agar data nahi mila → Database se fetch.
+Database se mila hua data Cache me store.
+Phir response return.
+
+## IMPORTANT :
+----------------
+
+Cache-Aside me Cache implementation khud Database se data fetch nahi karta.
+Cache Miss hone par Application Database se data fetch karti hai
+aur retrieved data ko Cache me store karti hai before returning
+the response.
+
+Lekin kuch caching patterns / architectures me Cache implementation Cache Miss hone par Database se data fetch kar sakti hai. Is concept ko broadly Read-Through Cache kehte hain.
+
+
