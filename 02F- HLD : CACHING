@@ -96,7 +96,7 @@ even though Product 101 ki information frequently change nahi ho rahi.
 
 
 ## IMPORTANT:
--------------------------------
+--------------
 
 Caching ka primary benefit read-heavy workloads me hota hai,
 especially jab same data frequently read kiya ja raha ho.
@@ -363,9 +363,9 @@ Data Found?
 Cache ka main purpose frequently accessed data ko cache se serve karke Database Load reduce karna hai.
 Database Load kam hone se Database Response Time reduce ho sakta hai, jisse overall Application Performance improve hoti hai.
 
-
+==========================================
 ## WHY IS CACHE FASTER THAN DATABASE ?
----------------------------------------
+==========================================
 
 Caching ke commonly used implementations
 frequently accessed data ko fast-access memory (RAM)
@@ -393,9 +393,333 @@ overhead ho sakta hai, jaise:
 Yaani:
 
     Database:
-        Primary Persistent Storage → SSD / HDD
-        Internal Cache / Buffer Pool → RAM
+        Persistent Data → Disk (SSD / HDD)
+        Internal Cache  → RAM (Buffer Pool)
 
-    Redis:
-        Primary Working Data Store → RAM
-        Optional Persistence       → Disk
+    Cache:
+        Primary Working Storage → RAM
+
+        Normal cache reads/writes ke liye
+        primarily RAM use hoti hai.
+
+        Some cache implementations disk persistence
+        support kar sakti hain, mainly data recovery /
+        durability ke purpose se.
+
+
+=====================
+## REDIS OVERVIEW
+=====================
+
+Redis ek fast, in-memory data store hai jo
+primarily data ko RAM (memory) me store karta hai.
+
+Redis ka primary working data RAM me hota hai,
+lekin Redis durability / recovery ke liye
+data ko disk par persist bhi kar sakta hai.
+
+
+## REDIS AS A CACHE
+-------------------
+
+Caching ke context me Redis ko ek dedicated
+external cache ke roop me use kiya ja sakta hai.
+
+Ye Application aur Database ke beech
+ek fast-access data layer provide karta hai.
+
+
+Application
+     |
+     ↓
+   Redis
+  (Cache)
+     |
+     ↓
+ Database
+
+
+## KEY-VALUE MODEL
+-------------------
+
+Redis fundamentally key-value data model provide karta hai.
+
+Example:
+
+    Key:
+        product:101
+
+    Value:
+        {
+            "id": 101,
+            "name": "iPhone",
+            "price": 79999
+        }
+
+
+Application:
+
+    GET product:101
+            ↓
+          Redis
+            ↓
+    Corresponding Value
+
+
+## TTL (TIME TO LIVE)
+---------------------
+
+Redis keys ke saath TTL (Time To Live) set kiya ja sakta hai.
+
+Example:
+
+    product:101
+        ↓
+    TTL = 10 minutes
+
+
+TTL expire hone ke baad key available nahi rahegi.
+
+Agar usi key ke liye next request aaye,
+to data cache me available nahi hoga.
+
+Application Database se fresh data retrieve karegi,
+usse Redis me dobara cache karegi,
+aur client ko response return karegi.
+
+Example:
+
+    Request
+       ↓
+    Redis
+       ↓
+    Key Not Found
+       ↓
+    Database
+       ↓
+    Fresh Data
+
+
+===============================
+## CACHE HIT vs CACHE MISS
+===============================
+
+## CACHE HIT
+-------------
+
+Jab application requested data ko Cache me
+successfully find kar leti hai, to ise Cache Hit kehte hain.
+
+Is case me application directly Cache se data retrieve
+karke response return kar deti hai, aur Database ko
+hit karne ki zarurat nahi padti.
+
+
+## CACHE MISS
+--------------
+
+Jab requested data Cache me available nahi hota,
+to ise Cache Miss kehte hain.
+
+Is case me application Database se data retrieve karti hai,
+use future requests ke liye Cache me store karti hai,
+aur phir response return karti hai.
+
+
+=========================================
+## CACHE IN MICROSERVICES ARCHITECTURE
+=========================================
+
+Suppose humare paas 3 microservices hain:
+
+    - Product Service
+    - Order Service
+    - User Service
+
+
+Har microservice ki multiple instances hain, aur
+har service ke liye dedicated Load Balancer configured hai.
+
+User ki request pehle API Gateway tak aati hai.
+
+API Gateway request ko appropriate service ke Load Balancer
+tak route karta hai, aur Load Balancer request ko us service
+ki available instances ke beech distribute karta hai.
+
+And static content ke liye CDN bhi configured hai.
+
+Architecture conceptually kuch aisa dikh sakta hai:
+
+
+                                  User
+                                    |
+                                    v
+                                   DNS
+                                    |
+                                    v
+                           +-------------------+
+                           | Is Content Static?|
+                           +---------+---------+
+                                     |
+                          +----------+----------+
+                          |                     |
+                         YES                    NO
+                          |                     |
+                          v                     |
+                +------------------------+     |
+                | Is Content Available   |     |
+                |       in CDN?          |     |
+                +----------+-------------+     |
+                           |                   |
+                    +------+-------+           |
+                    |              |           |
+                   YES            NO           |
+                    |              |           |
+                    v              |           |
+             Return from CDN       |           |
+                                   |           |
+                                   +-----------+
+                                               |
+                                               |
+                                               v
+                                        +---------------+
+                                        |   API Gateway |
+                                        +-------+-------+
+                                                |
+                 +------------------------------+------------------------------+
+                 |                              |                              |
+                 v                              v                              v
+          +-------------+                +-------------+               +-------------+
+          | Product LB  |                |  Order LB   |               |   User LB   |
+          +------+------+                +------+------+               +------+------+
+                 |                              |                              |
+           +-----+-----+                  +-----+-----+                  +-----+-----+
+           |     |     |                  |     |     |                  |     |     |
+           v     v     v                  v     v     v                  v     v     v
+          P1    P2    P3                 O1    O2    O3                 U1    U2    U3
+           |     |     |                  |     |     |                  |     |     |
+           +-----+-----+                  +-----+-----+                  +-----+-----+
+                 |                              |                              |
+                 v                              v                              v
+          +-------------+                +-------------+               +-------------+
+          |Product Redis|                | Order Redis |               | User Redis  |
+          |    Cache    |                |    Cache    |               |    Cache    |
+          +------+------+                +------+------+               +------+------+
+                 |                              |                              |
+                 v                              v                              v
+          +-------------+                +-------------+               +-------------+
+          | Product DB  |                |  Order DB   |               |   User DB   |
+          +-------------+                +-------------+               +-------------+
+
+
+
+## REDIS AS A SHARED DISTRIBUTED CACHE
+--------------------------------------
+
+Ek microservice ki multiple instances same external
+Redis Cache ko access kar sakti hain.
+
+For example, Product Service ki 3 instances hain:
+
+        P1
+        P2
+        P3
+
+In teeno instances ke liye ek shared Product Redis Cache
+configured ho sakta hai
+
+Suppose client request bhejta hai:
+
+    GET /products/101
+
+
+Load Balancer request ko Product Service ki instance `P1`
+tak route karta hai.
+
+Agar `product:101` pehli baar request hua hai aur data Product Redis Cache 
+me available nahi hoga, to `P1` Product Database se product data retrieve karti hai.
+
+## FLOW :
+----------
+
+  Client / User
+     | 
+     v
+ API Gateway
+     | 
+     v
+Product Load Balancer  
+     | 
+     v
+Product Service Instance (P1)
+     | 
+     v
+Product Redis → Cache Miss
+     |
+     v
+Product Database
+     |
+     v
+Fetch Product Data
+     |
+     v
+Product Service Instance (P1)
+     |
+     |
+     v
+Store in Product Redis
+     |
+     |
+     v
+Return Response
+     |
+     v
+Product Load Balancer
+     |
+     v
+API Gateway
+     |
+     v
+Client / User  
+
+
+
+Ab `product:101` Redis Cache me available hai.
+
+Suppose next request:
+
+    GET /products/101
+
+Load Balancer kisi doosri instance, for example `P3`,
+ko bhej deta hai.
+
+
+    Client
+       |
+       v
+   Product LB
+       |
+       v
+  Product Service Instance (P1)
+       |
+       v
+  Product Redis
+       |
+       | Data Found
+       v
+  Return Response
+       |
+       v
+  Product Load Balancer
+      |
+      v
+  API Gateway
+      |
+      v
+  Client / User
+
+
+Isliye Redis jaise external cache ko multiple service
+instances ke beech shared fast-access data layer ke roop
+me use kiya ja sakta hai, jisse ek instance dwara cached
+data ko doosri instances bhi access kar sakti hain.
