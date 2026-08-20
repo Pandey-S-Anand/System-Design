@@ -794,3 +794,310 @@ the response.
 Lekin kuch caching patterns / architectures me Cache implementation Cache Miss hone par Database se data fetch kar sakti hai. Is concept ko broadly Read-Through Cache kehte hain.
 
 
+
+===============
+## STALE DATA
+===============
+
+Cache use karne ka ek important problem hai:
+
+Database aur Cache ke beech data inconsistent ho sakta hai.
+
+
+Suppose pehli baar request aati hai:
+
+    GET /products/101
+
+Cache me data available nahi hai → Cache Miss.
+
+Application Database se data fetch karti hai aur Cache me
+store kar deti hai:
+
+    Database / Cache:
+
+    product:101
+    price = ₹79,999
+
+
+Ab product ka price update hota hai:
+
+    PUT /products/101
+
+Database update ho jata hai:
+
+    Database:
+
+    product:101
+    price = ₹69,999
+
+
+Lekin Cache me purana data abhi bhi stored hai:
+
+    Cache:
+
+    product:101
+    price = ₹79,999
+
+
+Ab next request:
+
+    GET /products/101
+
+Cache Hit hone par user ko purana price ₹79,999 mil sakta hai.
+
+Is purane / outdated cached data ko **Stale Data** kehte hain.
+
+
+=========================
+## CACHE INVALIDATION
+=========================
+
+Cache Invalidation ka simple meaning hai:
+
+Jab Database me data change hota hai, to Cache me stored
+corresponding outdated data ko remove ya update karna,
+taaki application stale data serve na kare.
+
+Database me data successfully update hone ke baad,
+Application generally corresponding cache key ke saath
+do approaches use kar sakti hai:
+
+
+### 1. DELETE / INVALIDATE CACHE
+-----------------------------------
+
+Update Request
+       |
+       v
+Update Data in Database
+       |
+       v
+DEL product:101
+
+
+Yaani corresponding cache entry ko delete kar diya jata hai.
+
+Next read par:
+
+Cache Miss
+    ↓
+Database se latest data fetch
+    ↓
+Cache me store
+    ↓
+Return Response
+
+
+### 2. UPDATE CACHE
+---------------------
+
+Update Request
+       |
+       v
+Update the cached data
+corresponding to key `product:101`
+
+
+Yaani existing cache key ke corresponding outdated data ko
+latest data se replace kar diya jata hai.
+
+
+## IMPORTANT
+-------------
+
+Cache-Aside pattern me commonly Database update ke baad
+corresponding cache entry ko delete/invalidate kiya jata hai.
+
+Next read par Application Database se latest data fetch
+karti hai aur Cache ko dobara populate kar deti hai.
+
+===============================
+## TTL AND CACHE EXPIRATION
+===============================
+
+TTL define karta hai ki:
+
+Ek cache entry maximum kitne time tak available rahegi.
+
+Maan lo hum Redis ko cache ke roop me use kar rahe hain.
+
+Suppose humne `product:101` ko cache me store kiya.
+
+Matlab Redis me conceptually:
+
+Key        → product:101
+
+
+Value      → {
+                "id": 101,
+                "name": "iPhone",
+                "price": 79999
+             }
+
+
+TTL        → 10 minutes
+
+
+Yahan TTL = 10 minutes ka matlab hai ki `product:101`
+aur uski corresponding value cache me store hone ke baad
+maximum 10 minutes tak available rahegi.
+
+
+TTL expire hone ke baad:
+
+    product:101
+        +
+    uski corresponding value
+
+Cache me available nahi rahegi.
+
+
+Agar uske baad same data ke liye request aati hai:
+
+    GET /products/101
+            ↓
+       Cache Miss
+            ↓
+       Database
+            ↓
+      Latest Data
+            ↓
+    Store Again in Cache
+            ↓
+      New TTL Starts
+
+
+Agar Database update ke har case me Cache successfully
+invalidate ho raha hai, to theoretically stale data serve
+nahi hona chahiye.
+
+
+QUESTION: TO PHIR TTL KI ZARURAT KYUN HAI ?
+---------------------------------------------
+
+TTL ek automatic expiration mechanism hai.
+
+Ye ensure karta hai ki Cache entry indefinitely Cache me
+na rahe.
+
+
+## 1. CACHE INVALIDATION CAN FAIL
+---------------------------------
+
+Suppose Product data update hua:
+
+    Update Request
+          ↓
+    Update Data in Database
+          ↓
+Application executes Cache
+Invalidation Logic
+          ↓
+    DEL product:101
+
+
+Cache invalidation execute karte time:
+
+    - Redis unavailable ho sakta hai
+    - Network failure ho sakta hai
+    - Request timeout ho sakti hai
+    - Application crash ho sakta hai
+
+
+## RESULT:
+-----------
+
+Database successfully update ho gaya,
+lekin Cache invalidation successfully nahi hui.
+
+
+    Database:
+
+    product:101
+    price = ₹69,999
+
+
+Lekin Cache me abhi bhi:
+
+    product:101
+    price = ₹79,999
+
+
+Next request:
+
+    GET /products/101
+            ↓
+        Cache Hit
+            ↓
+    Stale / Old Data
+
+
+Agar Cache entry par TTL configured nahi hai, to user ko stale / outdated data milta rahega, 
+aur ye stale cache entry potentially indefinitely Cache me stored reh sakti hai.
+
+
+Lekin agar:
+
+    TTL = 10 minutes
+
+
+to even agar Cache invalidation fail ho jaye:
+
+    Database Updated
+          ↓
+    Cache Invalidation Failed
+          ↓
+    Stale Data remains in Cache
+          ↓
+    TTL Eventually Expires
+          ↓
+    Cache Entry Unavailable
+          ↓
+    Next Request → Cache Miss
+          ↓
+    Fetch Latest Data from Database
+          ↓
+    Store Again in Cache
+
+
+So:
+
+TTL Cache Invalidation ka replacement nahi hai.
+
+Cache Invalidation ka purpose data change hone par
+corresponding stale cache entry ko immediately remove
+karna hai.
+
+TTL ek safety mechanism provide karta hai, taaki agar
+Cache invalidation kisi reason se fail ho jaye, to stale
+data indefinitely Cache me na rahe.
+
+
+
+## 2. MEMORY MANAGEMENT
+-------------------------
+
+Cache RAM use karta hai, aur RAM unlimited nahi hoti.
+
+Suppose application continuously different products cache kar rahi hai:
+
+product:1
+product:2
+product:3
+...
+product:10,000,000
+
+## Without TTL:
+
+Ab maan lo inme se kai products ke liye future me kabhi koi request nahi aati, aur unka data bhi kabhi update nahi hota.
+
+Is case me unki corresponding cache entries ko explicitly invalidate karne ka koi trigger nahi hoga, aur ye entries cache ki RAM unnecessarily occupy karti rahengi.
+
+## TTL ke saath:
+
+TTL expire hone ke baad cache entry automatically remove ho jaati hai, jisse woh unnecessarily RAM occupy nahi karti.
+
+
+So, TTL helps ensure ki cache entries,
+especially old / unused entries,
+indefinitely cache ki RAM occupy na karein.
