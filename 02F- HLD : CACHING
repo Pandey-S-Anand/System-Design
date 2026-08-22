@@ -971,9 +971,9 @@ Agar Database update ke har case me Cache successfully
 invalidate ho raha hai, to theoretically stale data serve
 nahi hona chahiye.
 
-
-QUESTION: TO PHIR TTL KI ZARURAT KYUN HAI ?
----------------------------------------------
+------------------------------------------------
+## QUESTION: TO PHIR TTL KI ZARURAT KYUN HAI ?
+------------------------------------------------
 
 TTL ek automatic expiration mechanism hai.
 
@@ -1087,13 +1087,17 @@ product:3
 ...
 product:10,000,000
 
+
 ## Without TTL:
+----------------
 
-Ab maan lo inme se kai products ke liye future me kabhi koi request nahi aati, aur unka data bhi kabhi update nahi hota.
+Ab maan lo inme se kai products ke liye future me kabhi koi read / GET request nahi aati, aur unka data bhi kabhi update nahi hota.
 
-Is case me unki corresponding cache entries ko explicitly invalidate karne ka koi trigger nahi hoga, aur ye entries cache ki RAM unnecessarily occupy karti rahengi.
+Is case me unki corresponding cache entries ko explicitly invalidate karne ka koi trigger nahi hoga, aur ye entries unnecessarily cache ki RAM occupy karti rahengi.
+
 
 ## TTL ke saath:
+----------------
 
 TTL expire hone ke baad cache entry automatically remove ho jaati hai, jisse woh unnecessarily RAM occupy nahi karti.
 
@@ -1101,3 +1105,467 @@ TTL expire hone ke baad cache entry automatically remove ho jaati hai, jisse woh
 So, TTL helps ensure ki cache entries,
 especially old / unused entries,
 indefinitely cache ki RAM occupy na karein.
+
+
+## 3. DATA MAY CHANGE WITHOUT THIS APPLICATION KNOWING
+------------------------------------------------------
+
+Suppose normally Product Service product data update karti hai product database mai:
+
+Client
+   ↓
+Product Service
+   ↓
+Update Product Database
+   ↓
+Invalidate Product Cache
+   ↓
+DEL product:101
+
+
+Lekin kisi business requirement ki wajah se koi doosri service
+directly Product Database update kar sakti hai.
+
+Example:
+
+Order Service
+      ↓
+Product Database
+      ↓
+Update product:101
+
+
+Agar Order Service Product Redis Cache invalidate nahi karti,
+to situation ho sakti hai:
+
+Product Database:
+
+product:101
+price = ₹69,999
+
+
+Product Redis:
+
+product:101
+price = ₹79,999
+
+
+Yaani:
+
+Database → Latest Data
+
+Cache → Old / Stale Data
+
+
+Ab next request:
+
+GET /products/101
+       ↓
+Product Service
+       ↓
+Product Redis
+       ↓
+Cache Hit
+       ↓
+Return Old / Stale Data
+
+
+## HOW TTL HELPS
+----------------
+
+Suppose:
+
+product:101
+
+TTL = 10 minutes
+
+
+Agar Database update ke baad cache invalidation miss ho jaye,
+to stale data TTL expire hone tak Cache me available reh sakta hai.
+
+Lekin:
+
+TTL Expires
+      ↓
+Cache Entry Expires
+      ↓
+Next Request
+      ↓
+Cache Miss
+      ↓
+Fetch Latest Data from Database
+      ↓
+Store in Cache
+      ↓
+Return Fresh Data
+
+
+## IMPORTANT
+------------
+
+TTL stale data ko immediately correct nahi karta.
+
+Lekin agar kisi reason se cache invalidation miss ho jaye,
+to TTL ensure karta hai ki stale cache entry indefinitely
+Cache me na bani rahe.
+
+TTL expire hone ke baad next request Database se latest data
+fetch karke Cache ko update kar deti hai.
+
+
+=========================================
+## REDIS RAM LIMIT vs TOTAL SERVER RAM
+=========================================
+
+Server ki Total RAM aur Redis / Cache ke liye available
+memory same cheez nahi hoti.
+
+Suppose ek server ke paas:
+
+    Total Server RAM = 32 GB
+
+
+Us server par multiple processes run kar rahe hain:
+
++----------------------------------+
+|            SERVER RAM            |
+|                                  |
+|  OS                  →  4 GB     |
+|  Application         →  6 GB     |
+|  Database            → 10 GB     |
+|  Redis / Cache       →  8 GB     |
+|  Other Processes     →  4 GB     |
+|                                  |
++----------------------------------+
+
+              Total = 32 GB
+
+
+Yahan:
+
+    Total Server RAM = 32 GB
+
+Lekin Redis ke paas poori 32 GB RAM available nahi hai.
+
+Redis ke liye configuration ke through ek maximum memory
+limit set ki ja sakti hai.
+
+For example:
+
+    Redis Max Memory = 8 GB
+
+
+To jab hum bolte hain:
+
+    Cache Memory Full
+
+iska matlab zaruri nahi hai ki:
+
+    Entire Server RAM Full
+
+
+Iska matlab ye ho sakta hai ki Redis apni configured
+maximum memory limit tak pahunch gaya hai.
+
+Once Redis reaches its configured maximum memory limit,
+new data store karne ke liye configured eviction policy
+apply ho sakti hai.
+
+Conceptually:
+
+    Redis Memory Usage
+           ↓
+    Reaches Max Memory Limit
+           ↓
+    New Data Needs to Be Stored
+           ↓
+    Eviction Policy Decides
+    Which Existing Entry to Remove
+           ↓
+    Memory Freed
+           ↓
+    New Data Stored
+
+
+====================
+## CACHE EVICTION
+====================
+
+Cache Eviction ka meaning hai:
+
+Redis/Cache ki configured RAM limit reach hone par existing cache
+entries ko configured eviction policy ke according remove karna,
+taaki new data store karne ke liye space available ho sake.
+
+
+## WHY IS CACHE EVICTION NEEDED?
+---------------------------------
+
+TTL expire hone par cache entries automatically remove ho sakti hain.
+
+Lekin ek situation aur ho sakti hai:
+
+TTL expire hone se pehle hi Redis ki configured RAM limit
+reach ho jaye.
+
+
+## Example:
+
+Redis Max Memory = 8 GB
+
+Current Usage = 8 GB
+
+
+Ab Application ek new entry store karna chahti hai:
+
+SET product:9999 {...}
+
+
+Lekin Redis ke paas new data store karne ke liye
+configured RAM limit ke andar sufficient space available nahi hai.
+
+Is situation me Redis ki configured Eviction Policy decide karti hai
+ki existing cache entries me se kaunsi entry remove ki jaye,
+taaki new data store karne ke liye space available ho sake.
+
+
+## GENERIC CACHE EVICTION STRATEGIES
+---------------------------------------
+
+### 1. LRU — Least Recently Used
+--------------------------------
+
+LRU me woh cache entry remove ki jaati hai
+jo sabse zyada time se access nahi hui hai.
+
+Example:
+
+product:101 → Last Accessed: 1 minute ago
+product:102 → Last Accessed: 5 minutes ago
+product:103 → Last Accessed: 30 minutes ago
+
+Memory full hone par agar `product:104` store karna ho,
+to LRU policy `product:103` ko evict kar sakti hai.
+
+
+### 2. LFU — Least Frequently Used
+----------------------------------
+
+LFU me woh cache entry remove ki jaati hai
+jise sabse kam number of times access kiya gaya hai.
+
+Example:
+
+product:101 → Access Count = 1000
+product:102 → Access Count = 500
+product:103 → Access Count = 2
+
+Memory full hone par agar `product:104` store karna ho,
+to LFU policy `product:103` ko evict kar sakti hai.
+
+
+### 3. FIFO — First In First Out
+--------------------------------
+
+FIFO me jo cache entry sabse pehle Cache me insert hui thi,
+use sabse pehle remove kiya jata hai.
+
+Example:
+
+Insertion Order:
+
+A → B → C
+
+Memory full hone par `D` insert karne ke liye:
+
+A → Evicted
+
+Result:
+
+B → C → D
+
+
+### 4. RANDOM EVICTION
+---------------------
+
+Is approach me Cache randomly kisi existing
+cache entry ko remove kar sakta hai.
+
+
+
+## REDIS CACHE EVICTION STRATEGIES
+---------------------------------------
+
+Ab Redis isi generic cache eviction policies ko apne specific eviction policies ke through implement karta hai. 
+
+Jab Redis configured maxmemory limit reach karta hai, to selected eviction policy ke according keys evict ki ja sakti hain.
+
+
+                    REDIS EVICTION POLICIES
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+         LRU                 LFU                RANDOM
+          │                   │                   │
+     ┌────┴────┐         ┌────┴────┐         ┌────┴────┐
+     │         │         │         │         │         │
+  allkeys   volatile  allkeys   volatile  allkeys   volatile
+
+
+          ┌──────────────────────────────────┐
+          │    ADDITIONAL REDIS POLICIES     │
+          └────────────────┬─────────────────┘
+                           │
+                 ┌─────────┴─────────┐
+                 │                   │
+            volatile-ttl         noeviction
+
+
+                         FIFO
+                          │
+                          ▼
+          Not directly supported by Redis
+
+
+## EXAMPLE:
+-------------
+
+Suppose Redis me ye 4 cache entries hain:
+
+product:101 → TTL = 10 min
+product:102 → TTL = 20 min
+product:103 → No TTL
+product:104 → No TTL
+
+
+Redis ki configured `maxmemory` limit reach ho gayi hai.
+
+Ab ek nayi entry store karni hai:
+
+product:105
+
+Memory free karne ke liye Redis ko existing cache entries me se kisi entry ko evict karna hoga.
+
+Lekin yahan ek important question hai:
+
+Eviction policy kin keys par apply hogi?
+
+Redis keys ko broadly do groups me consider karta hai:
+
+
+### 1. ALLKEYS
+---------------
+
+`allkeys` ka matlab:
+
+Redis ki **saari keys** eviction ke liye eligible hain,
+chahe unke saath TTL configured ho ya nahi.
+
+Hamare example me:
+
+Eligible Keys:
+
+product:101
+product:102
+product:103
+product:104
+
+
+Ab configured eviction algorithm decide karega
+ki in eligible keys me se kaunsi key remove karni hai.
+
+Examples:
+
+allkeys-lru
+→ All keys me se Least Recently Used key remove karo.
+
+allkeys-lfu
+→ All keys me se Least Frequently Used key remove karo.
+
+allkeys-random
+→ All keys me se randomly kisi ek key ko remove karo.
+
+
+
+### 2. VOLATILE
+----------------
+
+`volatile` ka matlab:
+
+Sirf woh keys eviction ke liye eligible hain
+jin par TTL configured hai.
+
+Hamare example me:
+
+Eligible Keys:
+
+product:101
+product:102
+
+
+`product:103` aur `product:104` eviction candidates nahi hain,
+kyunki inke paas TTL nahi hai.
+
+Ab configured eviction algorithm eligible keys me se
+kaunsi key remove hogi, ye decide karega.
+
+Examples:
+
+volatile-lru
+→ TTL wali keys me se Least Recently Used key remove karo.
+
+volatile-lfu
+→ TTL wali keys me se Least Frequently Used key remove karo.
+
+volatile-random
+→ TTL wali keys me se randomly kisi ek key ko remove karo.
+
+
+### 3. ADDITIONAL REDIS EVICTION POLICIES
+------------------------------------------
+
+## 3.1 VOLATILE-TTL
+--------------------
+
+`volatile-ttl` policy me sirf TTL configured keys
+eviction ke liye eligible hoti hain.
+
+No-TTL keys eviction candidates nahi hoti.
+
+Eligible keys me se Redis generally us key ko evict karne
+ki preference deta hai jiski remaining TTL sabse kam hai,
+yaani jo sabse jaldi expire hone wali hai.
+
+Example:
+
+product:101 → TTL = 10 min
+product:102 → TTL = 20 min
+
+volatile-ttl ke case me remaining TTL matter karegi, original TTL nahi.
+
+Redis `product:101` ko eviction ke liye select kar sakta hai,
+kyunki uski remaining TTL comparatively kam hai.
+
+
+## 3.2 NO EVICTION
+--------------------
+
+noeviction policy me Redis, configured maxmemory limit reach hone ke baad existing keys ko automatically evict nahi karta.
+
+Agar new data store karne ke liye additional memory required ho, to Redis write operation ko reject kar deta hai aur error return karta hai.
+
+
+## IMPORTANT :
+---------------
+
+volatile policies me sirf TTL wali keys eviction candidates hoti hain.
+
+Agar Redis memory full hone par sufficient eligible TTL keys
+available nahi hain, to Redis required memory free nahi kar
+paayega aur write operation fail ho sakta hai.
+
+
+
+============================
+## CACHE WRITE PATTERNS
+============================
