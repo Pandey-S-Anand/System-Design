@@ -845,7 +845,7 @@ Ab next request:
 
 Cache Hit hone par user ko purana price ₹79,999 mil sakta hai.
 
-Is purane / outdated cached data ko **Stale Data** kehte hain.
+Is purane / outdated cached data ko Stale Data kehte hain.
 
 
 =========================
@@ -906,10 +906,11 @@ latest data se replace kar diya jata hai.
 -------------
 
 Cache-Aside pattern me commonly Database update ke baad
-corresponding cache entry ko delete/invalidate kiya jata hai.
+corresponding cache entry ko delete kiya jata hai.
 
 Next read par Application Database se latest data fetch
 karti hai aur Cache ko dobara populate kar deti hai.
+
 
 ===============================
 ## TTL AND CACHE EXPIRATION
@@ -967,13 +968,9 @@ Agar uske baad same data ke liye request aati hai:
       New TTL Starts
 
 
-Agar Database update ke har case me Cache successfully
-invalidate ho raha hai, to theoretically stale data serve
-nahi hona chahiye.
-
-------------------------------------------------
-## QUESTION: TO PHIR TTL KI ZARURAT KYUN HAI ?
-------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## QUESTION: AGAR DATABASE ME DATA UPDATE KARNE KE BAAD HUM CACHE KO INVALIDATE KAR RAHE HAIN, TO THEORETICALLY STALE DATA SERVE NAHI HONA CHAHIYE. PHIR TTL KI ZARURAT KYUN HAI?
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 TTL ek automatic expiration mechanism hai.
 
@@ -1569,3 +1566,62 @@ paayega aur write operation fail ho sakta hai.
 ============================
 ## CACHE WRITE PATTERNS
 ============================
+
+Abhi tak humne mainly read path dekha.
+
+## EXAMPLE:
+-------------
+
+GET /products/101
+     ↓
+ Controller 
+     ↓
+  Service
+     ↓
+   Cache
+     ↓
+Cache Hit?
+ ├── YES → Return Data
+ │
+ └── NO
+      ↓
+    Database
+      ↓
+ Store in Cache
+      ↓
+ Return Data
+
+
+Lekin real problem write ke time aati hai.
+
+Suppose currently:
+
+Database:
+
+productId:101
+price = ₹79,999
+
+Aur Cache me bhi:
+
+productId:101
+price = ₹79,999
+
+Ab product ka price update hota hai:
+
+PUT /products/101
+
+New Price = ₹69,999
+
+Ab question:
+
+Database aur Cache ko kis order me update karein?
+
+Isi problem ko handle karne ke liye different Cache Write Patterns use kiye jaate hain.
+
+----------------------------------
+1. CACHE-ASIDE WITH INVALIDATION
+----------------------------------
+
+
+------------------
+
