@@ -912,9 +912,9 @@ Next read par Application Database se latest data fetch
 karti hai aur Cache ko dobara populate kar deti hai.
 
 
-===============================
-## TTL AND CACHE EXPIRATION
-===============================
+=======
+## TTL 
+=======
 
 TTL define karta hai ki:
 
@@ -1622,6 +1622,25 @@ Isi problem ko handle karne ke liye different Cache Write Patterns use kiye jaat
 1. CACHE-ASIDE WITH INVALIDATION
 ----------------------------------
 
+Cache-Aside pattern me application pehle Cache check karti hai.
 
-------------------
+Cache Hit  → Data directly Cache se return.
+Cache Miss → Data Database se fetch karke Cache me store
+             kiya jata hai, phir response return hota hai.
+
+Jab data update hota hai, application pehle Database me data update karti hai.
+
+Important point ye hai ki Database update ke baad Cache me
+stored data ko directly latest value se update karne ke bajay,
+commonly corresponding Cache entry ko delete / invalidate
+kar diya jata hai.
+
+Iske baad same data ke liye next request par Cache Miss hota hai.
+Application Database se latest data fetch karke Cache ko dobara
+populate kar deti hai.
+
+
+-------------------------
+2. WRITE-THROUGH CACHE
+-------------------------
 
