@@ -1644,134 +1644,82 @@ populate kar deti hai.
 2. WRITE-THROUGH CACHE
 -------------------------
 
-Cache-Aside with Invalidation me write ke time
-application Database ko pehle update karti hai aur
-uske Cache ki old entry delete kar deti hai.
-Next read request par cache emiss hota hai and data directly 
-database se fetch hota hai and cache mai populate hota hai.
+Cache-Aside with Invalidation me Database update hone ke baad
+corresponding Cache entry delete / invalidate kar di jaati hai.
+
+Isliye next read request par:
+
+Cache Miss
+    ↓
+Database se latest data fetch
+    ↓
+Cache me store
+    ↓
+Return Response
 
 
-WRITE-THROUGH CACHE me approach different hoti hai.
-
-Yahan write operation ke time Cache aur Database dono
-ko eksath hi update kiya jata hai.
-
-Example:
-
-Current State:
-
-    Database:
-
-    product:101
-    price = ₹79,999
-
-
-    Cache:
-
-    product:101
-    price = ₹79,999
-
-
-Ab request aati hai:
-
-    PUT /products/101
-
-    New Price = ₹69,999
-
-
-Write-Through approach me conceptually:
-
-    Update Request
-          ↓
-       Controller
-          ↓
-       Service
-          ↓
-      Update Cache
-          +
-      Update Database
-          ↓
-    Write Successful
-
-
-Final state:
-
-    Database:
-
-    product:101
-    price = ₹69,999
-
-    Cache:
-
-    product:101
-    price = ₹69,999
-
-
-Yaani Cache entry ko delete karke next read ka wait
-nahi kiya jata.
-
-Write ke time hi latest data Cache me bhi available
+Write-Through Cache me Database update ke saath
+corresponding Cache entry ko bhi latest data se update
 kar diya jata hai.
 
+Isliye next read request par:
 
-So simple difference:
-
-    Cache-Aside + Invalidation
-    → Write ke baad Cache delete hota hai.
-
-    Write-Through
-    → Write ke time Cache ko latest data se update
-      kiya jata hai.
+Cache Hit
+    ↓
+Latest Data directly Cache se return
 
 
-## WHY USE WRITE-THROUGH?
--------------------------
-
-Agar updated data ke immediately baad us data ko
-frequently read kiya jana expected hai, to Write-Through
-useful ho sakta hai.
-
-Kyunki updated data already Cache me available hota hai.
-
-Next request:
-
-    GET /products/101
-           ↓
-       Cache Hit
-           ↓
-    Latest Data Returned
+Write-Through useful ho sakta hai jab updated data ko
+immediately aur frequently read kiya jana expected ho,
+kyunki updated data pehle se Cache me available hota hai.
 
 
-Cache-Aside with Invalidation me next request ko
-Database tak jana pad sakta hai because Cache entry
-delete ho chuki hoti hai.
+## LIMITATIONS OF WRITE-THROUGH
+-------------------------------
+
+Write-Through me Database aur Cache dono ko update karna hota hai,
+isliye failure scenarios handle karne padte hain.
+
+### CASE 1: DATABASE UPDATE SUCCESS, CACHE UPDATE FAILS
+--------------------------------------------------------
+
+Database successfully update ho gaya, lekin Cache update fail ho gaya.
+
+Is case me Cache purana data return kar sakta hai,
+yaani stale data temporarily serve ho sakta hai.
+
+Agar Cache entry ke saath TTL configured hai, to TTL expire hone ke
+baad next request Database se latest data fetch karke Cache ko
+update kar deti hai.
+
+
+### CASE 2: CACHE UPDATE SUCCESS, DATABASE UPDATE FAILS
+--------------------------------------------------------
+
+Ye comparatively more problematic scenario hai.
+
+Cache me new data store ho gaya, lekin Database update fail ho gaya.
+
+Isliye temporarily users ko Cache se updated data mil sakta hai.
+
+Lekin TTL expire hone ke baad Cache Miss hoga aur Database se
+purana data dobara fetch hoke Cache me store ho jayega.
+
+Iske baad subsequent requests me users ko old data milna
+shuru ho jayega.
+
+Yaani jo updated data temporarily Cache me available tha,
+woh Database me successfully persist nahi hua aur eventually
+lost ho gaya.
 
 
 ## IMPORTANT
--------------
+------------
 
-Write-Through ka main idea hai:
+Isliye practical systems me Database aur Cache ke update order,
+failure handling, retry mechanisms, etc. carefully design karne padte hain.
 
-    "Jab data write/update ho,
-     Cache ko bhi latest data ke saath update rakho."
-
-Lekin is approach me bhi ek challenge hai:
-
-    Cache update successful
-           +
-    Database update failed
-
-ya:
-
-    Database update successful
-           +
-    Cache update failed
-
-To Cache aur Database inconsistent ho sakte hain.
-
-Distributed Cache aur Database ko perfectly synchronize
-karna generally straightforward nahi hota.
-
-Isliye practical systems me **Cache-Aside + Invalidation**
-bahut commonly used approach hai, especially normal
-application caching use cases ke liye.
+Normal application caching use cases me Cache-Aside + Invalidation
+aksar simpler aur commonly preferred approach hoti hai, kyunki
+Database source of truth rehta hai aur Cache ko temporary
+data ke roop me treat kiya jata hai.
