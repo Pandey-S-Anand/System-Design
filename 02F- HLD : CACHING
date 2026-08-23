@@ -1618,45 +1618,9 @@ Database aur Cache ko kis order me update karein?
 
 Isi problem ko handle karne ke liye different Cache Write Patterns use kiye jaate hain.
 
-----------------------------------
-1. CACHE-ASIDE WITH INVALIDATION
-----------------------------------
-
-Cache-Aside pattern me application pehle Cache check karti hai.
-
-Cache Hit  → Data directly Cache se return.
-Cache Miss → Data Database se fetch karke Cache me store
-             kiya jata hai, phir response return hota hai.
-
-Jab data update hota hai, application pehle Database me data update karti hai.
-
-Important point ye hai ki Database update ke baad Cache me
-stored data ko directly latest value se update karne ke bajay,
-commonly corresponding Cache entry ko delete / invalidate
-kar diya jata hai.
-
-Iske baad same data ke liye next request par Cache Miss hota hai.
-Application Database se latest data fetch karke Cache ko dobara
-populate kar deti hai.
-
-
 -------------------------
-2. WRITE-THROUGH CACHE
+1. WRITE-THROUGH CACHE
 -------------------------
-
-Cache-Aside with Invalidation me Database update hone ke baad
-corresponding Cache entry delete / invalidate kar di jaati hai.
-
-Isliye next read request par:
-
-Cache Miss
-    ↓
-Database se latest data fetch
-    ↓
-Cache me store
-    ↓
-Return Response
-
 
 Write-Through Cache me Database update ke saath
 corresponding Cache entry ko bhi latest data se update
@@ -1723,3 +1687,117 @@ Normal application caching use cases me Cache-Aside + Invalidation
 aksar simpler aur commonly preferred approach hoti hai, kyunki
 Database source of truth rehta hai aur Cache ko temporary
 data ke roop me treat kiya jata hai.
+
+
+-------------------------------------
+2. WRITE-BEHIND / WRITE-BACK CACHE
+-------------------------------------
+
+Ab tak humne dekha:
+
+Write-Through
+→ Database me data update karne ke saath-saath
+  Cache me bhi latest data update kiya jata hai.
+
+
+Lekin Write-Behind me approach different hoti hai.
+
+Jab data update karne ki request aati hai, to Application
+pehle updated data ko Cache me store karti hai aur client ko
+success response return kar deti hai.Uske baad Database me data 
+ko asynchronously update kiya jata hai.
+
+## NOTE:
+---------
+Database ko immediately update nahi kiya jata.
+
+
+## WHY USE WRITE-BEHIND?
+-------------------------
+
+Write-Behind ka main benefit ye hai ki client ko Database
+update complete hone ka wait nahi karna padta.
+
+Isliye client ko jaldi response mil sakta hai, jisse
+response time aur user experience better ho sakta hai.
+
+Ye high write workloads me useful ho sakta hai, kyunki
+Database update asynchronously baad me perform kiya ja sakta hai.
+
+
+## LIMITATIONS OF WRITE-BEHIND
+--------------------------------
+
+Write-Behind me Cache update hone ke baad client ko
+immediately success response mil sakta hai, jabki Database
+update asynchronously later hota hai.
+
+Agar Database update hone se pehle Cache fail ho jaye,
+to updated data Database me persist nahi ho payega.
+
+Isliye Write-Behind me data loss ka risk ho sakta hai.
+
+
+-------------------------
+3. WRITE-AROUND CACHE
+-------------------------
+
+Ab tak humne dekha:
+
+Write-Through
+→ Database update ke saath-saath
+  Cache me bhi latest data update kiya jata hai.
+
+
+Write-Behind / Write-Back
+→ Updated data pehle Cache me store kiya jata hai.
+→ Database update baad me asynchronously hota hai.
+
+
+
+Write-Around ka main idea ye hai ki write request ke case me
+new data directly Database me write / update kiya jata hai.
+
+Agar corresponding data pehle se Cache me present hai,
+to stale data avoid karne ke liye us Cache entry ko
+invalidate / delete kiya jata hai.
+
+Is approach me mainly write path me Cache ko bypass kiya jata hai.
+Yaani updated data ko directly Cache me populate nahi kiya jata.
+
+Ab same data ke liye next read request par Cache Miss hoga.
+
+Is case me latest data Database se fetch karke Cache me
+store kiya ja sakta hai aur response return kiya jata hai.
+
+
+## WHY USE WRITE-AROUND CACHE ?
+--------------------------------
+
+Write-Around Cache useful ho sakta hai jab data frequently
+update hota ho, lekin frequently read nahi hota.
+
+Aise case me har write ke baad Cache ko update karna
+unnecessary ho sakta hai.
+
+
+## LIMITATIONS OF WRITE-AROUND
+--------------------------------
+
+Write operation ke baad updated data Cache me available nahi hota,
+kyunki write ke time corresponding Cache entry invalidate/delete
+kar di gayi thi.
+
+Isliye subsequent read request par Cache Miss hota hai.
+
+Application ko latest data Database se fetch karna padta hai,
+jo Cache se data retrieve karne ke comparison me relatively
+slower ho sakta hai.
+
+Isliye write ke baad first read comparatively slower ho sakti hai.
+
+
+======================================
+## CACHE STAMPEDE / THUNDERING HERD
+======================================
+
