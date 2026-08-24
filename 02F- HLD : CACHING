@@ -2209,13 +2209,164 @@ Redis already sabhi Product Service instances ke liye shared hai.
 Isliye Redis me ek shared lock maintain karke multiple service instances ke beech coordination kiya ja sakta hai.
 
 
-## REDIS ME LOCK KAISE CREATE HOTA HAI?
----------------------------------------
+## QUESTION : REDIS ME LOCK KAISE CREATE HOTA AND ACQUIRE KIYA JATA HAI ?
+-------------------------------------------------------------------------
 
 Redis lock basically ek normal Redis key hoti hai.
 
-Suppose GET /products/101 ki request aayi ab manlo ki cache miss hota hai 
-to request ko cater aknr en ke liye aplciation DB se data ko fetch karegi 
-and then ek cache key banegi and key ke correpsonding data cache mai store kar degi
+Suppose `GET /products/101` ke liye application ki cache key hai:
+
+    product:101
+
+Agar isi data ke liye lock chahiye, to application
+ek naming convention ke according corresponding lock key
+bana sakti hai:
+
+    Cache Key → product:101
+    Lock Key  → lock:product:101
+
+Yahan `lock:` koi Redis ka special keyword nahi hai.
+
+Ye sirf ek naming convention hai, jisse clearly identify
+kiya ja sake ki key cached data nahi, balki lock represent
+kar rahi hai.
 
 
+Redis ke liye dono normal keys hain:
+
+    product:101       → Cached Data
+    lock:product:101  → Lock
+
+
+Ab suppose:
+
+    GET /products/101
+
+request aati hai.
+
+Application requested product ke liye application me defined naming convention ke according cache key construct karti hai.
+
+    product:101
+
+Application pehle Redis Cache me is key ko check karti hai.
+
+Suppose data Cache me available nahi hai, yani Cache Miss hota hai.
+
+Ab isi cache entry ke corresponding lock acquire karne ke liye
+application naming convention ke according lock key derive karti hai:
+
+    Cache Key → product:101
+            |
+            V
+    Lock Key  → lock:product:101
+
+Huamre exmaple mai all 3 intances P1, P2 and P3 redis lock acquire karne ki kosish karengi ek saath
+
+SET lock:product:101 <owner-id> NX EX 10
+
+
+## QUESTION: IS COMMAND KA MATLAB KYA HAI?
+---------------------------------------------
+
+    SET lock:product:101 <unique-owner-id> NX EX 10
+
+
+### lock:product:101
+
+Ye Redis key hai jo lock represent karti hai.
+
+
+### <unique-owner-id>
+
+Ye identify karta hai ki lock kis instance / request ne
+successfully acquire kiya hai.
+
+
+### NX
+
+`NX` ka matlab:
+
+    Only create the key if it does NOT already exist.
+
+
+### EX 10
+
+Lock ke saath:
+
+    TTL = 10 seconds
+
+Agar lock manually release na bhi ho, to Redis
+10 seconds baad ise automatically remove kar dega.
+
+
+----------------------------------
+## P1 LOCK ACQUIRE KARTI HAI
+----------------------------------
+
+Suppose P1 ki request Redis tak pehle pahunchti hai:
+
+    P1
+     │
+     ▼
+
+    SET lock:product:101 P1-abc NX EX 10
+
+
+Kyuki `lock:product:101` abhi Redis me exist nahi karti,
+Redis successfully ye key create kar deta hai:
+
+    lock:product:101 → P1-abc
+
+    TTL = 10 seconds
+
+
+P1 ko successful response milta hai.
+
+Matlab:
+
+    P1 → Lock Acquired ✅
+
+
+--------------------------
+## AB P2 AND P3 AATI HAI
+--------------------------
+
+P2 bhi same lock acquire karne ki koshish karti hai:
+
+    SET lock:product:101 P2-xyz NX EX 10
+
+
+Lekin ab:
+
+    lock:product:101
+
+already Redis me exist karti hai.
+
+Aur `NX` ka rule hai:
+
+    Key sirf tab create karo
+    jab wo already exist na karti ho.
+
+
+Isliye Redis P2 ka command successful nahi karega.
+
+    P2 → Lock Not Acquired ❌
+
+Same:
+
+    P3 → Lock Not Acquired ❌
+
+
+## CONCEPTUALLY
+----------------
+
+                 ┌── P1 → Lock Acquired ✅
+                 │
+    Cache Miss ───┤
+                 │
+                 ├── P2 → Lock Failed ❌
+                 │
+                 └── P3 → Lock Failed ❌
+
+
+Yahan Redis ka atomic operation ensure karta hai ki same cache key ke liye multiple concurrent requests me se sirf ek instance lock acquire kar sake.
