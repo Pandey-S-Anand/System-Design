@@ -349,9 +349,9 @@ isliye ye additional I/O latency aur processing overhead create karta hai.
 
 
 
-=======================
+=========================
 ## 2 : WHAT IS CACHING ?
-=======================
+=========================
 
 Caching ek technique hai jisme frequently accessed data ki temporary copy ko faster storage layer me store kiya jata hai, 
 taaki future read requests ke liye same data ko slower underlying system, jaise Database, se baar-baar retrieve na karna pade.
@@ -394,17 +394,44 @@ Data Found?
         ↓
       Data
         ↓
-    Store in Cache
+      Store in Cache
         ↓
-    Return Data
+      Return Data
 
 
 Cache ka main purpose frequently accessed data ko cache se serve karke Database Load reduce karna hai.
 Database Load kam hone se Database Response Time reduce ho sakta hai, jisse overall Application Performance improve hoti hai.
 
 
+===============================
+## 3 : CACHE HIT vs CACHE MISS
+===============================
+
+-------------
+## CACHE HIT
+-------------
+
+Jab application requested data ko Cache me
+successfully find kar leti hai, to ise Cache Hit kehte hain.
+
+Is case me application directly Cache se data retrieve
+karke response return kar deti hai, aur Database ko
+hit karne ki zarurat nahi padti.
+
+--------------
+## CACHE MISS
+--------------
+
+Jab requested data Cache me available nahi hota,
+to ise Cache Miss kehte hain.
+
+Is case me application Database se data retrieve karti hai,
+use future requests ke liye Cache me store karti hai,
+aur phir response return karti hai.
+
+
 ==========================================
-## 3 : WHY IS CACHE FASTER THAN DATABASE ?
+## 4 : WHY IS CACHE FASTER THAN DATABASE ?
 ==========================================
 
 Caching ke commonly used implementations
@@ -447,40 +474,27 @@ Yaani:
         durability ke purpose se.
 
 
-=====================
-## 4 : REDIS OVERVIEW
-=====================
+=======================
+## 5 : REDIS OVERVIEW
+=======================
 
 Redis ek fast, in-memory data store hai jo
 primarily data ko RAM (memory) me store karta hai.
+Ye Application aur Database ke beech
+ek fast-access data layer provide karta hai.
 
 Redis ka primary working data RAM me hota hai,
 lekin Redis durability / recovery ke liye
 data ko disk par persist bhi kar sakta hai.
 
-
-## REDIS AS A CACHE
--------------------
-
-Caching ke context me Redis ko ek dedicated
-external cache ke roop me use kiya ja sakta hai.
-
-Ye Application aur Database ke beech
-ek fast-access data layer provide karta hai.
+Caching ke context me Redis ko Application aur Database ke
+beech ek external, distributed Cache ke roop me use kiya ja sakta hai,
+jise multiple application instances access kar sakti hain.
 
 
-Application
-     |
-     ↓
-   Redis
-  (Cache)
-     |
-     ↓
- Database
-
-
-## KEY-VALUE MODEL
--------------------
+-----------------------
+##1 : KEY-VALUE MODEL
+-----------------------
 
 Redis fundamentally key-value data model provide karta hai.
 
@@ -506,8 +520,56 @@ Application:
     Corresponding Value
 
 
-## TTL (TIME TO LIVE)
----------------------
+
+## QUESTION : REDIS KEY KAISE CREATE HOTI HAI ?
+------------------------------------------------
+
+Suppose request hai:
+
+    GET /products/101
+
+Controller ko path variable milta hai:
+
+    productId = 101
+
+
+Example:
+
+    @GetMapping("/products/{productId}")
+
+Application request se required identifier lekar
+apni predefined naming convention ke according Redis Key banati hai.
+
+Example:
+
+    Redis Key = "product:" + productId
+
+Result:
+
+    product:101
+
+
+## QUESTION : KYA KOI FIXED CONVENTION HAI?
+--------------------------------------------
+
+Nahi. Redis key ka koi fixed format force nahi karta.
+
+Application / developer apni naming convention define karta hai.
+
+Common pattern:
+
+    <resource>:<identifier>
+
+Example:
+
+    product:101
+    user:50
+    order:999
+
+
+-------------------------
+##2: TTL (TIME TO LIVE)
+-------------------------
 
 Redis keys ke saath TTL (Time To Live) set kiya ja sakta hai.
 
@@ -521,55 +583,16 @@ Example:
 TTL expire hone ke baad key available nahi rahegi.
 
 Agar usi key ke liye next request aaye,
-to data cache me available nahi hoga.
+to data redis me available nahi hoga.
 
 Application Database se fresh data retrieve karegi,
 usse Redis me dobara cache karegi,
 aur client ko response return karegi.
 
-Example:
 
-    Request
-       ↓
-    Redis
-       ↓
-    Key Not Found
-       ↓
-    Database
-       ↓
-    Fresh Data
-
-
-===============================
-## 5 : CACHE HIT vs CACHE MISS
-===============================
-
-## CACHE HIT
--------------
-
-Jab application requested data ko Cache me
-successfully find kar leti hai, to ise Cache Hit kehte hain.
-
-Is case me application directly Cache se data retrieve
-karke response return kar deti hai, aur Database ko
-hit karne ki zarurat nahi padti.
-
-
-## CACHE MISS
---------------
-
-Jab requested data Cache me available nahi hota,
-to ise Cache Miss kehte hain.
-
-Is case me application Database se data retrieve karti hai,
-use future requests ke liye Cache me store karti hai,
-aur phir response return karti hai.
-
-
-
-=========================================
-## 6 : CACHE IN MICROSERVICES ARCHITECTURE
-=========================================
+===========================================
+## 6 : REDIS IN MICROSERVICES ARCHITECTURE
+===========================================
 
 Suppose humare paas 3 microservices hain:
 
@@ -653,118 +676,144 @@ Architecture conceptually kuch aisa dikh sakta hai:
           +-------------+                +-------------+               +-------------+
 
 
-
+---------------------------------------
 ## REDIS AS A SHARED DISTRIBUTED CACHE
---------------------------------------
+---------------------------------------
 
-Ek microservice ki multiple instances same external
-Redis Cache ko access kar sakti hain.
+Ek microservice ki multiple instances same external Redis Cache
+ko access kar sakti hain.
 
-For example, Product Service ki 3 instances hain:
+For example, Product Service ki multiple instances hain:
 
-        P1
-        P2
-        P3
+    P1, P2, P3
 
-In teeno instances ke liye ek shared Product Redis Cache
-configured ho sakta hai
+In sab instances ke liye ek shared Redis Cache configured ho sakta hai.
+
+
+## EXAMPLE
+-----------
 
 Suppose client request bhejta hai:
 
     GET /products/101
 
 
-Load Balancer request ko Product Service ki instance `P1`
-tak route karta hai.
-
-Agar `product:101` pehli baar request hua hai aur data Product Redis Cache 
-me available nahi hoga, to `P1` Product Database se product data retrieve karti hai.
-
-
-## FLOW :
-----------
-
-  Client / User
-     | 
-     v
- API Gateway
-     | 
-     v
-Product Load Balancer  
-     | 
-     v
-Product Service Instance (P1)
-     | 
-     v
-Product Redis → Cache Miss
-     |
-     v
-Product Database
-     |
-     v
-Fetch Product Data
-     |
-     v
-Product Service Instance (P1)
-     |
-     |
-     v
-Store in Product Redis
-     |
-     |
-     v
-Return Response
-     |
-     v
-Product Load Balancer
-     |
-     v
-API Gateway
-     |
-     v
-Client / User  
-
-
-
-Ab `product:101` Redis Cache me available hai.
-
-Suppose next request:
-
-    GET /products/101
-
-Load Balancer kisi doosri instance, for example `P3`,
-ko bhej deta hai.
+Request API Gateway aur Product Load Balancer ke through
+Product Service ki kisi instance, for example P1, tak pahunchti hai.
 
 
     Client
-       |
-       v
-   Product LB
-       |
-       v
-  Product Service Instance (P1)
-       |
-       v
-  Product Redis
-       |
-       | Data Found
-       v
-  Return Response
-       |
-       v
-  Product Load Balancer
-      |
-      v
-  API Gateway
-      |
-      v
-  Client / User
+       ↓
+    API Gateway
+       ↓
+ Product Load Balancer
+       ↓
+      P1
 
 
-Isliye Redis jaise external cache ko multiple service
-instances ke beech shared fast-access data layer ke roop
-me use kiya ja sakta hai, jisse ek instance dwara cached
-data ko doosri instances bhi access kar sakti hain.
+P1 request receive karne ke baad defined naming convention ke
+basis par Cache Key construct karti hai:
+
+    product:101
+
+
+P1 shared Redis Cache me is key ke corresponding data check karti hai.
+
+### CASE 1: CACHE HIT
+---------------------
+
+Agar `product:101` ke corresponding data Cache me available hai:
+
+    P1
+     ↓
+Shared Redis Cache
+     ↓
+  Cache Hit
+     ↓
+Return Cached Data
+
+
+Is case me Database ko hit karne ki zarurat nahi padti.
+
+
+### CASE 2: CACHE MISS
+----------------------
+
+Agar `product:101` Cache me available nahi hai:
+
+    P1
+     ↓
+Shared Redis Cache
+     ↓
+  Cache Miss
+     ↓
+Product Database
+     ↓
+Fetch Product Data
+     ↓
+Store Data in Redis
+
+Application retrieved data ko usi Cache Key:
+
+    product:101
+
+ke against shared Redis Cache me store kar deti hai aur
+response client ko return kar deti hai.
+
+
+## NEXT REQUEST
+----------------
+
+Ab suppose same request dobara aati hai:
+
+    GET /products/101
+
+
+Is baar Load Balancer request ko kisi doosri instance,
+for example P3, tak route kar sakta hai.
+
+
+    Client
+       ↓
+Product Load Balancer
+       ↓
+      P3
+
+
+P3 bhi same defined naming convention ke basis par
+same Cache Key construct karegi:
+
+    product:101
+
+
+P3 shared Redis Cache me is key ko check karegi.
+
+Kyunki P1 pehle hi `product:101` ke corresponding data ko
+Redis me store kar chuki hai:
+
+    P3
+     ↓
+Shared Redis Cache
+     ↓
+  Cache Hit
+     ↓
+Return Cached Data
+
+
+Database ko dobara hit karne ki zarurat nahi padegi.
+
+
+## IMPORTANT
+-------------
+
+Isliye Redis jaise external cache ko multiple service instances ke
+beech ek shared distributed cache ke roop me use kiya ja sakta hai.
+
+Ek instance dwara Cache me store kiya gaya data, doosri instances bhi
+same Cache Key ke through access kar sakti hain.
+
+Yahi Redis ko horizontally scaled applications me useful banata hai,
+kyunki multiple instances ek hi shared Cache layer ko use kar sakti hain.
 
 
 ==========================
@@ -785,6 +834,47 @@ Agar data nahi mila → Database se fetch.
 Database se mila hua data Cache me store.
 Phir response return.
 
+
+---------
+## FLOW:
+---------
+
+    GET /products/101
+            ↓
+      productId = 101
+            ↓
+    Application constructs the Cache Key
+    using a predefined naming convention
+            ↓
+      "product:" + productId
+            ↓
+         product:101
+            ↓
+    Application checks the Cache using this key
+            ↓
+        Cache Hit?
+        │
+        ├── YES
+        │     ↓
+        │  Return Data
+        │
+        └── NO → Cache Miss
+                  ↓
+           Fetch Data from Database
+                  ↓
+           Application uses the same predefined
+           naming convention to construct the Cache Key
+                  ↓
+           "product:" + productId
+                ↓
+           product:101
+                ↓
+           Store Data in Cache
+                ↓
+           Return Response
+
+
+----------------
 ## IMPORTANT :
 ----------------
 
@@ -793,8 +883,8 @@ Cache Miss hone par Application Database se data fetch karti hai
 aur retrieved data ko Cache me store karti hai before returning
 the response.
 
-Lekin kuch caching patterns / architectures me Cache implementation Cache Miss hone par Database se data fetch kar sakti hai. Is concept ko broadly Read-Through Cache kehte hain.
-
+Lekin kuch caching patterns / architectures me Cache implementation Cache Miss hone par Database se data fetch kar sakti hai.
+Is concept ko broadly Read-Through Cache kehte hain.
 
 
 ====================
@@ -2122,6 +2212,10 @@ Isliye Redis me ek shared lock maintain karke multiple service instances ke beec
 ## REDIS ME LOCK KAISE CREATE HOTA HAI?
 ---------------------------------------
 
-Redis me lock bhi conceptually ek normal key ki tarah hi create hota hai.
+Redis lock basically ek normal Redis key hoti hai.
+
+Suppose GET /products/101 ki request aayi ab manlo ki cache miss hota hai 
+to request ko cater aknr en ke liye aplciation DB se data ko fetch karegi 
+and then ek cache key banegi and key ke correpsonding data cache mai store kar degi
 
 
