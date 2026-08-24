@@ -3093,6 +3093,70 @@ Stale-While-Revalidate:
 → Wait karne ki zarurat nahi hoti.
   Already available stale data immediately return kar diya jata hai.
 
+--------------------------------------------
+## WHEN IS STALE-WHILE-REVALIDATE USEFUL?
+--------------------------------------------
+
+Stale-While-Revalidate especially useful hota hai jab:
+
+1. Slightly stale data temporarily acceptable ho.
+
+2. Cached data derived / aggregated ho aur har underlying
+   data change par Cache Invalidation karna unnecessarily
+   expensive ho.
+
+3. Traffic high ho aur refresh ke time requests ko
+   wait nahi karwana ho.
+
+
+
+### EXAMPLE: TRENDING PRODUCTS LIST
+-------------------------------------
+
+Kabhi cache me jo data store hota hai, woh directly Database
+ki kisi ek table ki single row se nahi aata.
+
+Woh multiple tables aur other data sources se data combine karke
+ya calculate karke banaya gaya hota hai.
+
+Example:
+
+        Product Views
+        + Purchases
+        + Likes
+        + Recent Activity
+                ↓
+          Trending Score
+                ↓
+        Trending Products List
+
+
+Ab underlying data continuously aur rapidly change ho raha hai.
+
+Har view, purchase ya like ke baad Trending Products Cache ko
+invalidate karna unnecessarily expensive ho sakta hai.
+
+Saath hi, multiple tables / data sources se latest data fetch karke
+Trending Products List ko on-the-go dobara calculate karne me
+time lag sakta hai.
+
+Ab agar aise high-traffic situation me bahut saari requests
+latest data calculate hone ka wait karein, to response delay ho
+sakta hai, jisse user experience kharab ho sakta hai.
+
+Lekin agar Trending List kuch seconds ya minutes purani ho,
+to bhi generally acceptable ho sakti hai.
+
+Isliye aise cases me Fresh + Stale window use ki ja sakti hai.
+
+Stale period ke dauran users ko temporarily existing data serve
+kiya ja sakta hai, jisse requests ko latest data calculate hone ka
+wait nahi karna padta.
+
+Meanwhile, background me multiple tables / data sources se latest
+data lekar Trending Products List dobara calculate karke Cache
+refresh kar diya jata hai.
+
 
 ---------------
 ## TTL JITTER
