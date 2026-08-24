@@ -2585,7 +2585,498 @@ Aur koi bhi naya instance lock acquire nahi kar pata.
 ## STALE-WHILE-REVALIDATE
 ---------------------------
 
+Ye bhi ek approach hai jo popular cache entry ke expire hone ke
+baad Cache Stampede ko prevent karne ke liye use ki ja sakti hai.
 
+Basically normal caching scenario me har cache key ke saath ek TTL
+(Time To Live) associated hota hai.
+
+TTL expire hone ke baad corresponding key Redis se remove ho jaati hai.
+
+Agar usi time us key ke corresponding data ke liye bahut saari concurrent requests aati hain,
+to sabko Cache Miss mil sakta hai aur multiple requests backend /
+Database ko hit kar sakti hain.
+
+
+Stale-While-Revalidate approach me hum cache entry ki lifetime ko
+logically do periods me divide karte hain:
+
+    1. Fresh Time
+    2. Stale Time
+
+
+Example:
+
+Database me:
+
+    product:101
+    price = ₹79,999
+
+
+Hum is data ko Redis me cache karte hain.
+
+Ab hum decide karte hain:
+
+    Fresh Time = 10 minutes
+    Stale Time = 5 minutes
+
+
+Matlab:
+
+First 10 minutes tak data ko fresh maana jayega.
+
+Uske baad next 5 minutes tak data technically stale hoga,
+lekin temporarily client ko serve karna allowed hoga.
+
+
+So cache entry ko total:
+
+10 min Fresh
+      +
+5 min Stale
+--------------
+15 minutes
+
+tak Redis me available rakhna hoga.
+
+Conceptually:
+
+Redis TTL = Fresh Time + Stale Time
+
+Yahan:
+
+    Redis TTL = 15 minutes
+
+
+## TIMELINE:
+-------------
+
+Suppose data 10:00 AM par Redis me store hua.
+
+
+    10:00 → 10:10
+
+    Data = Fresh
+
+
+    10:10 → 10:15
+
+    Data = Stale, but still available in Redis
+    and temporarily serve kiya ja sakta hai.
+
+
+    After 10:15
+
+    Redis TTL expire ho sakta hai aur cache key
+    Redis se remove ho jaayegi.
+
+
+## REDIS KO KAISE PATA CHALEGA KI DATA STALE HAI?
+------------------------------------------------------
+
+Yahan ek important point hai.
+
+Redis ko sirf apni key ka actual TTL pata hota hai.
+
+Suppose humne decide kiya:
+
+Fresh Time = 10 minutes
+Stale Time = 5 minutes
+
+To Redis key ka total TTL ho sakta hai:
+
+10 min + 5 min = 15 minutes
+
+Redis ke perspective se:
+
+product:101
+TTL = 15 minutes
+
+yaani, Redis ke liye key simply 15 minutes tak exist karegi aur uske baad expire ho jayegi.
+
+Redis ko ye nahi pata hota ki:
+
+First 10 minutes → Fresh
+
+Next 5 minutes → Stale
+
+Isliye freshness determine karne ki responsibility application ki hoti hai.
+
+Application ko separately track karna padega ki data kab tak fresh maana jayega.
+
+For example, Redis me conceptually:
+
+Key:
+
+product:101
+{
+    "data": {
+        "id": 101,
+        "price": 79999
+    },
+    "freshUntil": "10:10 AM"
+}
+
+Aur Redis key ka actual:
+
+TTL = 15 minutes
+
+
+Ab application request ke time:
+
+Current Time < freshUntil
+        ↓
+     Fresh Data
+
+Aur:
+
+Current Time > freshUntil
+        ↓
+     Stale Data
+
+Lekin jab tak Redis key ka 15-minute TTL expire nahi hota, stale data Redis me available rahega aur application usse temporarily serve kar sakti hai.
+
+
+## AB REQUEST FLOW DEKHO :
+-----------------------------
+
+## CASE 1: 10:05 AM PAR REQUEST AAYI
+----------------------------------------
+
+Redis:
+
+Key exists? → YES
+
+freshUntil = 10:10
+
+Current Time = 10:05
+
+So:
+
+Current Time < freshUntil
+
+Data fresh hai.
+
+Request
+   ↓
+Redis
+   ↓
+Fresh Data
+   ↓
+Return immediately
+
+Koi DB call nahi.
+
+
+## CASE 2: 10:12 AM PAR REQUEST AAYI
+----------------------------------------
+
+Ab suppose 10:12 AM par request aayi.
+
+Redis me:
+
+product:101 = ₹79,999
+
+freshUntil = 10:10
+
+Redis TTL expires at = 10:15
+
+Current Time = 10:12
+
+Application check karti hai:
+
+Data Available? → YES
+
+Fresh? → NO
+
+Stale but allowed? → YES
+
+To normal cache miss ki tarah Database ko immediately hit nahi kiya jata.
+
+Instead:
+
+Request
+   ↓
+Redis
+   ↓
+Stale Data Found
+   ↓
+Return Stale Data Immediately
+
+Saath hi data ko background me refresh karne ki process trigger ki ja sakti hai.
+
+
+Ab Suppose same time (10:12) par:
+
+R1
+R2
+R3
+R4
+...
+R10,000
+
+sab requests stale data encounter karti hain.
+
+Isliye har request refresh lock for the same entry acquire karne ki koshish kar sakti hai so that DB wala udpated data cache mai sroe kiya ja sake.
+
+For example:
+
+Cache Key:
+
+product:101
+
+Corresponding Lock Key:
+
+lock:refresh:product:101
+
+Ab ideally hum nahi chahte ki sab 10,000 requests refresh process  ko start karein.
+Yaani ki duabra Cache Stampede wali problem aa gyi .
+Bas foreground se background me shift ho gaya 
+
+
+## KAUNSI REQUEST KO LOCK MILEGA?
+----------------------------------
+
+Suppose R1, R2, R3 ... R10,000 sab approximately same time par Redis ko lock acquire request bhejti hain:
+
+SET lock:refresh:product:101 <unique-owner-id> NX EX 10
+
+Redis ka NX ensure karta hai ki:
+
+Key sirf tab create hogi jab woh pehle se exist nahi karti.
+
+Initially:
+
+lock:refresh:product:101
+
+key Redis me exist nahi karti.
+
+Ab suppose R357 ki request Redis tak sabse pehle successfully pahunchti hai.
+
+R357 execute karti hai:
+
+SET lock:refresh:product:101 R357-xyz NX EX 10
+
+Redis successfully key create kar deta hai:
+
+lock:refresh:product:101 = R357-xyz
+
+TTL = 10 seconds
+
+So:
+
+R357 → Lock Acquired ✅
+
+
+Baki requests bhi same lock acquire karne ki koshish karengi but request fail ho jayegi:
+
+R1      → Lock Failed ❌
+R2      → Lock Failed ❌
+R3      → Lock Failed ❌
+...
+R10,000 → Lock Failed ❌
+
+Kyunki lock key ab already Redis me exist karti hai.
+
+
+
+## LOCK ACQUIRE KARNE WALI REQUEST KYA KARTI HAI?
+---------------------------------------------------
+
+Suppose R357 successfully refresh lock acquire kar leti hai.
+
+Ab R357 Cache refresh karne ke liye ek async/background job trigger
+kar deti hai.
+
+Background worker ko task milta hai:
+
+"product:101 ka latest data Database se fetch karke Redis Cache
+ko refresh karo."
+
+
+Async job successfully trigger hone ke baad, R357 client ko
+immediately stale data return kar deti hai.
+
+R357 ka HTTP request complete ho jata hai aur uska HTTP thread
+free ho jata hai.
+
+Use Database se latest data fetch hone aur Cache refresh complete
+hone ka wait nahi karna padta.
+
+
+### STEP 1: DATABASE SE LATEST DATA FETCH KARKE CACHE REFRESH KARNA
+---------------------------------------------------------------------
+
+Background Worker Database se latest product data fetch karti hai.
+
+Suppose Database me latest data hai:
+
+product:101
+
+price = ₹69,999
+
+
+Ab us existing stale data ko latest data se replace
+kar deti hai.
+
+Suppose Cache refresh successfully 10:12 AM par complete hui.
+
+## Cache Entry:
+-----------------
+
+Key:
+
+product:101
+
+
+Updated Value:
+
+{
+    "data": {
+        "id": 101,
+        "price": 69999
+    },
+
+    "freshUntil": "10:22 AM"
+}
+
+
+Humne Fresh Time = 10 minutes define kiya tha.
+
+Isliye:
+
+Fresh Until = 10:22 AM
+
+Yaani 10:12 AM se 10:22 AM tak updated data ko fresh
+maana jayega.
+
+
+### STEP 2: REDIS TTL RESET KARNA
+----------------------------------
+
+Humne:
+
+Fresh Time = 10 minutes
+Stale Time = 5 minutes
+
+define kiya tha.
+
+Isliye Cache refresh hone ke baad Redis TTL dobara:
+
+Fresh Time + Stale Time
+= 15 minutes
+
+ke liye reset kiya jayega.
+
+Since refresh 10:12 AM par complete hua:
+
+Redis Key Lifetime:
+
+10:12 AM → 10:27 AM
+
+Yaani Redis key total 15 minutes tak available rahegi.
+
+Isme:
+
+10:12 → 10:22 → Fresh Data
+
+10:22 → 10:27 → Stale Data
+
+10:27 ke baad → Cache Key Expire
+
+
+### STEP 3: REFRESH LOCK RELEASE KARNA
+---------------------------------------
+
+Jab background worker / async job Cache refresh ka kaam successfully
+complete kar leta hai, tab woh refresh lock release kar deta hai.
+
+Conceptually:
+
+DEL lock:refresh:product:101
+
+
+Ab future me jab same cache entry ko dobara refresh karne ki
+zarurat padegi, to koi nayi request is lock ko acquire karke
+refresh process initiate kar sakti hai.
+
+
+
+## JIN REQUESTS KO LOCK NAHI MILA, WO KYA KARENGI?
+-----------------------------------------------------
+
+Yahan Stale-While-Revalidate ka main benefit aata hai.
+
+Suppose:
+
+R1      → Lock Failed ❌
+R2      → Lock Failed ❌
+R3      → Lock Failed ❌
+...
+R10,000 → Lock Failed ❌
+
+Normal Cache Miss + Locking scenario me ye requests:
+
+Lock Failed
+    ↓
+Wait / Retry
+    ↓
+Cache Check Again
+
+kar sakti thi.
+
+Ye exact behavior application ki implemented strategy par depend karta hai.
+
+Lekin yahan situation different hai.
+
+In requests ke paas already:
+
+Stale Data Available
+
+hai.
+
+Isliye:
+
+Lock Failed
+      ↓
+Stale Data Available?
+      ↓
+     YES
+      ↓
+Return Stale Data Immediately
+
+Yaani R1, R2, R3 ... R10,000 ko lock ka wait karne ki zarurat nahi hai wo cleient ko stael data serve karti rahengi.
+
+
+## REFRESH COMPLETE HONE TAK KYA HOTA HAI?
+--------------------------------------------
+
+Jab tak background refresh process complete nahi hota,
+meanwhile aane wali new requests bhi Redis se same stale data
+receive kar sakti hain.
+In requests ko refresh complete hone ka wait nahi karna padta.
+
+
+## AGAR REFRESH PROCESS BAHUT SLOW HO JAYE TO?
+------------------------------------------------
+
+Suppose background refresh start ho chuka hai, lekin Database
+slow hone ki wajah se refresh complete hone me time lag raha hai.
+
+Jab tak Redis key stale period ke andar available hai aur uska actual
+TTL expire nahi hua hai, incoming requests stale data serve kar sakti hain.
+
+Lekin agar refresh complete hone se pehle Redis TTL expire ho jata hai,
+to cache entry remove ho jaayegi.
+
+Uske baad normal Cache Miss handling karni padegi.
+
+Agar usi time bahut saari concurrent requests aa jaati hain,
+to Cache Stampede ka risk dobara aa sakta hai.
+
+Isliye Stale Time ko sufficiently large rakhna important hai,
+taaki ideally background refresh stale period ke andar hi
+complete ho jaaye.
 
 
 ---------------
