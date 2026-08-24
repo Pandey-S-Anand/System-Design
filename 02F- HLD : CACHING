@@ -2056,18 +2056,6 @@ Yaani, popular data eviction ki wajah se Cache se suddenly unavailable ho gaya a
 → Locking / Request Coalescing
 
 
-### 4. CACHE FAILURE / CACHE UNAVAILABLE
-------------------------------------------
-
-Kabhi Redis/Cache temporarily unavailable ho sakta hai.
-
-Is case me Bahut saari requests Cache ko bypass karke directly Database par ja sakti hain. Isse Database par sudden load spike aa sakta hai.
-
-## SOLUTIONS:
----------------
-→ Circuit Breaker: Cache failure ke baad uncontrolled fallback requests ko Database tak jaane se control kar sakta hai.
-→ Rate Limiting : Backend par aane wali excessive requests ko limit karne me help karta hai.
-
 
 ---------------------------------
 ## LOCKING / REQUEST COALESCING  
