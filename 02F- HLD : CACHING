@@ -3078,6 +3078,21 @@ Isliye Stale Time ko sufficiently large rakhna important hai,
 taaki ideally background refresh stale period ke andar hi
 complete ho jaaye.
 
+-----------------------------------------------------------
+## LOCKING / REQUEST COALESCING VS STALE-WHILE-REVALIDATE
+-----------------------------------------------------------
+
+Jin requests ko particular cache entry ke liye Redis lock nahi mila:
+
+Normal Locking:
+→ Usually wait / retry karna padta hai until fresh data
+  Cache me available ho jaaye.
+
+
+Stale-While-Revalidate:
+→ Wait karne ki zarurat nahi hoti.
+  Already available stale data immediately return kar diya jata hai.
+
 
 ---------------
 ## TTL JITTER
