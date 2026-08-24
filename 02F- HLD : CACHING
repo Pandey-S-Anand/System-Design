@@ -1900,129 +1900,143 @@ use Cache me store karti hai, aur phir response return karti hai.
 
 Normally ye flow perfectly fine hai.
 
-
 -----------------------------
-## CACHE STAMPEDE KYA HAI ? 
+## CACHE STAMPEDE KYA HAI?
 -----------------------------
 
 Cache Stampede, jise Thundering Herd bhi kaha jata hai,
-tab hota hai jab koi cached data unavailable ho jata hai aur
-bahut saari concurrent requests ek saath Cache Miss encounter
-karke same data ke liye Database ya backend system ko hit
-karne lagti hain.
+tab hota hai jab cached data unavailable ho jata hai aur
+bahut saari concurrent requests Cache Miss encounter karke
+Database ya kisi backend system ko ek saath hit karne lagti hain.
 
 
-## EXAMPLE
------------
+--------------------------------
+## CACHE STAMPEDE KAB HOTA HAI?
+--------------------------------
 
-Suppose `product:101` Redis me cached hai aur:
-
-    TTL = 10 minutes
+Cache Stampede different situations ki wajah se ho sakta hai.
 
 
-TTL expire hone ke baad `product:101` Cache se remove ho gaya.
+### 1. SINGLE CACHE ENTRY EXPIRES
+---------------------------------
 
-Exactly usi time Product 101 ke liye 10,000 concurrent
-requests aa jaati hain
+Suppose ek popular product cache me stored hai:
 
-Sab requests Cache check karti hain aur:
+    Key:
+        product:101
+
+    Value:
+        {
+            "id": 101,
+            "name": "iPhone",
+            "price": 79999
+        }
+
+TTL = 10 minutes
+
+TTL expire hone ke baad `product:101` Cache se remove ho jata hai.
+
+Exactly usi time Product:101 ke liye 10,000 concurrent
+requests aa jaati hain.
+
+Sab requests Cache check karti hain aur unhe:
 
     Cache Miss
 
-Ab har request independently Database ko hit karne ki koshish karti hai:
+milta hai.
 
-            10,000 Requests
-                 ↓
-           GET /products/101
-                 ↓
-               Cache
-                 ↓
-            Cache Miss
-                 ↓
-                 ↓
-        ┌────────┴────────┐
-        ↓        ↓        ↓
-       DB       DB       DB
-        ↓        ↓        ↓
+Ab ye saari 10,000 concurrent requests independently same product data ke liye Database ya backend system ko hit karne lagti hain.
+Isse Database par ek sudden load spike aa sakta hai, jiske kaaran Database overload ho sakta hai, response time increase ho sakta hai, 
+aur overall application performance impact ho sakti hai.
 
-       ... thousands of
-       Database requests
+## PROBLEM :
+------------
+→ Same cache key ke liye bahut saari concurrent
+  requests Cache Miss encounter karti hain.
 
-
----------------------------------------
-## CACHE STAMPEDE SE PROBLEM KYA HAI ?
----------------------------------------
-
-Normally, agar 10,000 requests Cache Hit encounter karti hain, to
-Database ko hit karne ki zarurat nahi padti.
-
-Lekin Cache Stampede ke case me, agar 10,000 requests ek saath
-Cache Miss encounter karein, to sab Database ko hit kar sakti hain.
-
-Isse Database overload ho sakta hai, jiske result me response time
-increase ho sakta hai aur overall application performance impact ho sakti hai.
-
-
--------------------------------------------
-## CACHE STAMPEDE KO KAISE PREVENT KAREIN?
--------------------------------------------
-
-Hume ensure karna hai ki agar same key ke liye multiple
-requests ek saath Cache Miss encounter karein, to sab requests
-Database ko independently hit na karein.
-
-Ideally, sirf ek request Database se data fetch kare aur
-baaki requests us request ke result ka wait karein.
-
-Jab pehli request Database se data fetch karke Cache ko
-populate kar de, to baaki requests updated Cache se data
-retrieve kar sakein.
-
-
-Conceptually:
-
-    10,000 Requests
-          ↓
-         Cache
-          ↓
-       Cache Miss
-          ↓
-    ┌──────────────────────┐
-    │ One request fetches  │
-    │ the data from the DB │
-    └──────────┬───────────┘
-               ↓
-           Database
-               ↓
-        Store in Cache
-               ↓
-     Other Requests Wait
-               ↓
-           Cache Hit
-
-
-Is problem ko handle karne ke liye commonly:
-
-1. Locking / Request Coalescing
-2. TTL Jitter
-3. Stale Data While Refreshing
-
-jaise approaches use ki ja sakti hain.
+## SOLUTION :
+-------------
+→ Locking / Request Coalescing
 
 
 
-## 1. LOCKING / REQUEST COALESCING
--------------------------------------
+### 2. MULTIPLE CACHE ENTRIES EXPIRE AROUND THE SAME TIME
+---------------------------------------------------------
 
-Maan lo:
+Suppose application ne bahut saare products approximately
+ek hi time par cache kiye:
 
-GET /products/101
+    product:101 → TTL = 10 min
+    product:102 → TTL = 10 min
+    product:103 → TTL = 10 min
+    product:104 → TTL = 10 min
 
-ke liye 10,000 concurrent requests aati hain.
+
+Agar ye entries approximately same time par cache hui hain,
+to inki TTL bhi approximately same time par expire ho sakti hai.
+
+Result:
+
+    product:101 → Expired
+    product:102 → Expired
+    product:103 → Expired
+    product:104 → Expired
+
+
+Ab different products ke liye bahut saari requests aati hain:
+
+    Request → product:101 → Cache Miss
+    Request → product:102 → Cache Miss
+    Request → product:103 → Cache Miss
+    Request → product:104 → Cache Miss
+
+
+Result:
+
+        Many Cache Entries Expire
+                  ↓
+           Many Cache Misses
+                  ↓
+        Many Database Requests
+                  ↓
+            Database Load Spike
+
+
+Is situation me problem sirf ek cache key ke liye
+bahut saari concurrent requests ka nahi hai.
+
+Yahan multiple different cache entries approximately
+same time par expire ho jaati hain, jiske result me
+multiple Cache Misses aur Database par sudden load
+increase ho sakta hai.
+
+
+## PROBLEM:
+-----------
+→ Multiple cache keys around the same time expire hone ki wajah se
+  ek saath bahut saare Cache Misses ho sakte hain.
+
+
+## SOLUTION :
+-------------
+→ TTL Jitter
+
+
+---------------------------------
+## LOCKING / REQUEST COALESCING  
+---------------------------------
+
+## CORE IDEA
+-------------
+
+Single Cache Entry Expiration ki wajah se hone wale Cache Stampede ko prevent karne ka core idea ye hai ki same cache key ke liye 
+multiple concurrent Cache Misses hone par sab requests independently Database ko hit na karein.
+Ideally, sirf ek request Database se data fetch karke Cache ko populate kare, aur baaki requests us result ka wait karein. 
+Cache populate hone ke baad, woh requests Cache se data retrieve kar sakein.
 
 
 #1 : SINGLE SERVICE INSTANCE — LOCAL LOCK
------------------------------------------
+-------------------------------------------
 
 Agar Product Service ka sirf ek instance hai aur sab requests isi instance par aa rahi hain, to Cache Stampede handle karne ke liye local lock use kiya ja sakta hai.
 
@@ -2175,9 +2189,8 @@ Multiple service instances ke beech coordination ke liye
 Distributed Lock ki zarurat hoti hai.
 
 
-
-## DISTRIBUTED LOCK — MULTIPLE INSTANCES
-------------------------------------------
+## MULTIPLE SERVICE INSTANCES ME REDIS DISTRIBUTED LOCK SE CACHE STAMPEDE HANDLE KARNA
+-----------------------------------------------------------------------------------------
 
 Distributed system me hume aisa lock chahiye jo sabhi service instances ke beech shared ho.
 
@@ -2210,8 +2223,8 @@ Redis already sabhi Product Service instances ke liye shared hai.
 Isliye Redis me ek shared lock maintain karke multiple service instances ke beech coordination kiya ja sakta hai.
 
 
-## QUESTION : REDIS ME LOCK KAISE CREATE HOTA AND ACQUIRE KIYA JATA HAI ?
--------------------------------------------------------------------------
+## QUESTION : REDIS DISTRIBUTED LOCK KYA HAI AND KAISE CREATE HOTA HAI? ?
+----------------------------------------------------------------------------
 
 Redis lock basically ek normal Redis key hoti hai.
 
@@ -2230,15 +2243,14 @@ Yahan `lock:` koi Redis ka special keyword nahi hai.
 
 Ye sirf ek naming convention hai, jisse identify kiya ja sake ki:
 
-product:101       → Cached Data
+product:101       → Cached Data 
 lock:product:101  → Lock
 
 Dono Redis ke liye normal keys hi hain.
 
 
-
-## CACHE MISS KE BAAD KYA HOTA HAI?
---------------------------------------
+## CACHE MISS KE BAAD LOCK ACQUISITION KA FLOW
+------------------------------------------------
 
 Ab suppose:
 
@@ -2282,19 +2294,19 @@ karne ki koshish karti hain:
     SET lock:product:101 <owner-id> NX EX 10
 
 
-## QUESTION: IS COMMAND KA MATLAB KYA HAI?
+### QUESTION: IS COMMAND KA MATLAB KYA HAI?
 ---------------------------------------------
 
 SET lock:product:101 <unique-owner-id> NX EX 10
 
 
-### lock:product:101
+#### lock:product:101
 ----------------------
 
 Ye Redis key hai jo lock represent karti hai.
 
 
-### <unique-owner-id>
+#### <unique-owner-id>
 -----------------------
 
 Ye identify karta hai ki lock kis instance / request ne
@@ -2307,7 +2319,7 @@ P2 → P2-xyz
 P3 → P3-pqr
 
 
-### NX
+#### NX
 --------
 
 `NX` ka matlab:
@@ -2315,7 +2327,7 @@ P3 → P3-pqr
     Only create the key if it does NOT already exist.
 
 
-### EX 10
+#### EX 10
 -----------
 
 Lock ke saath:
@@ -2327,7 +2339,7 @@ Isse us cache entry ke liye lock automatically release ho jayega.
 
 
 
-## P1 LOCK ACQUIRE KARTI HAI
+### P1 LOCK ACQUIRE KARTI HAI
 --------------------------------
 
 Suppose P1 ki request Redis tak sabse pehle pahunchti hai:
@@ -2356,8 +2368,8 @@ Matlab:
 
 
 
-## AB P2 AUR P3 LOCK ACQUIRE KARNE KI KOSHISH KARTI HAIN
-----------------------------------------------------------
+### P2 AUR P3 LOCK ACQUIRE KYUN NAHI KAR PAATI?
+------------------------------------------------
 
 P2 and P3 bhi same lock acquire karne ki koshish karti hai:
 
@@ -2386,7 +2398,7 @@ P2 → Lock Not Acquired ❌
 P3 → Lock Not Acquired ❌
 
 
-## Conceptually:
+#### Conceptually:
 ------------------
 
                  ┌── P1 → Lock Acquired ✅
@@ -2403,20 +2415,22 @@ same lock key ko acquire karne ki koshish karein, lekin sirf ek request hi succe
 
 
 
-## P2 AUR P3 KO LOCK NA MILE TO KYA HOTA HAI?
-----------------------------------------------
+### LOCK ACQUISITION FAIL HONE PAR KYA HOTA HAI?
+------------------------------------------------
 
 P2 aur P3 ko lock nahi mila.
 
-## IMPORTANT:
+#### IMPORTANT:
 --------------
 
 Lock acquire fail hone ka matlab ye nahi hai ki Redis automatically unhe wait karwata hai.
 
 Application ko decide karna hota hai ki failure ke baad kya strategy use karni hai.
 
-## COMMON FLOW:
+
+#### COMMON FLOW:
 ----------------
+
 Cache Miss
     |
     v
@@ -2442,8 +2456,8 @@ Try to Acquire Lock
 
 
 
-## P1 LOCK MILNE KE BAAD KYA KARTA HAI ?
--------------------------------------------
+### LOCK ACQUIRE KARNE WALI REQUEST KYA KARTI HAI?
+--------------------------------------------------
 
 P1 ko lock mil gaya hai.
 
@@ -2493,7 +2507,7 @@ DEL lock:product:101
 Ab future me agar same data ke liye Cache Miss hota hai, to koi doosri request/instance dobara lock acquire kar sakti hai.
 
 
-## LOCK KE SAATH TTL KYUN ZARURI HAI?
+### LOCK KE SAATH TTL KYUN ZARURI HAI?
 ---------------------------------------
 
 Suppose P1 ne lock acquire kiya:
@@ -2518,3 +2532,103 @@ Try Lock
 Lock Already Exists ❌
 
 Aur koi bhi naya instance lock acquire nahi kar pata.
+
+
+---------------
+## TTL JITTER
+---------------
+
+Kabhi-kabhi bahut saari cache entries similar time par
+create / update ho sakti hain.
+
+Agar sabhi entries ke liye same TTL configured ho, to unki
+expiration bhi approximately same time par ho sakti hai.
+
+Ab maan lo jaise hi ye multiple cache entries expire hoti hain,
+usi time un entries ke liye bahut saari requests aa jaati hain.
+
+Result:
+
+Multiple Cache Entries Expire
+            ↓
+      Multiple Cache Misses
+            ↓
+     Many Database Requests
+            ↓
+   Sudden Database Load Increase
+
+
+Is situation me Database par sudden load spike aa sakta hai.
+
+Is problem ko reduce karne ke liye TTL Jitter approach
+use ki jaati hai.
+
+
+## CORE IDEA :
+---------------
+
+Jab bhi koi nayi cache entry create ya update hoti hai,
+us time Base TTL ke saath thoda random variation add kar diya
+jata hai. Isse cache entries different times par expire hoti hain.
+
+## EXAMPLE
+------------
+
+Base TTL = 10 minutes
+
+Jitter = Random(0–2 minutes)
+
+Actual TTL:
+
+    Base TTL + Random Jitter
+
+
+Har new cache entry ke liye TTL independently calculate ho sakti hai:
+
+
+product:101
+
+Created at → 10:00:00
+TTL        → 10 min + 43 sec
+
+
+product:102
+
+Created at → 10:00:05
+TTL        → 10 min + 1 min 27 sec
+
+
+product:103
+
+Created at → 10:00:12
+TTL        → 10 min + 18 sec
+
+
+Isliye in cache entries ka expiration bhi different times par
+hoga.
+
+
+## CONCEPTUALLY :
+------------------
+
+    Different Expiration Times
+              ↓
+    Cache Misses Spread Out
+              ↓
+    Database par sudden load spike
+    ka risk reduce hota hai
+
+
+## WHEN IS TTL JITTER USEFUL ?
+-------------------------------
+
+TTL Jitter especially useful hota hai jab bahut saari cache
+entries similar time window me populate ho rahi hon aur unke
+expire hone ka time synchronize ho sakta ho.
+
+Examples:
+
+    - Application startup / cache warm-up
+    - Batch processing
+    - Bulk caching
+    - Kisi event ke baad multiple cache entries populate hona
