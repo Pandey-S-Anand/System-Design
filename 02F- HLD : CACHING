@@ -719,6 +719,7 @@ basis par Cache Key construct karti hai:
 
 P1 shared Redis Cache me is key ke corresponding data check karti hai.
 
+
 ### CASE 1: CACHE HIT
 ---------------------
 
@@ -2227,62 +2228,87 @@ bana sakti hai:
 
 Yahan `lock:` koi Redis ka special keyword nahi hai.
 
-Ye sirf ek naming convention hai, jisse clearly identify
-kiya ja sake ki key cached data nahi, balki lock represent
-kar rahi hai.
+Ye sirf ek naming convention hai, jisse identify kiya ja sake ki:
+
+product:101       → Cached Data
+lock:product:101  → Lock
+
+Dono Redis ke liye normal keys hi hain.
 
 
-Redis ke liye dono normal keys hain:
 
-    product:101       → Cached Data
-    lock:product:101  → Lock
-
+## CACHE MISS KE BAAD KYA HOTA HAI?
+--------------------------------------
 
 Ab suppose:
 
     GET /products/101
 
-request aati hai.
+ki request same time par 3 different service instances ko milti hai:
 
-Application requested product ke liye application me defined naming convention ke according cache key construct karti hai.
+    Request 1 → P1
+    Request 2 → P2
+    Request 3 → P3
+
+
+Teeno instances requested product ke liye application me defined
+naming convention ke according same cache key construct karti hain:
 
     product:101
 
-Application pehle Redis Cache me is key ko check karti hai.
 
-Suppose data Cache me available nahi hai, yani Cache Miss hota hai.
+Teeno instances pehle Redis Cache me is key ko check karti hain.
 
-Ab isi cache entry ke corresponding lock acquire karne ke liye
-application naming convention ke according lock key derive karti hai:
+Lekin teeno ko data Cache me available nahi milta.
+
+Yaani:
+
+    Cache Miss
+
+
+Ab teeno instances isi cache entry ke corresponding lock acquire
+karne ke liye application me defined naming convention ke according
+lock key derive karti hain:
 
     Cache Key → product:101
             |
-            V
+            v
     Lock Key  → lock:product:101
 
-Huamre exmaple mai all 3 intances P1, P2 and P3 redis lock acquire karne ki kosish karengi ek saath
 
-SET lock:product:101 <owner-id> NX EX 10
+Ab teeno instances same lock key ke liye Redis me lock acquire
+karne ki koshish karti hain:
+
+    SET lock:product:101 <owner-id> NX EX 10
 
 
 ## QUESTION: IS COMMAND KA MATLAB KYA HAI?
 ---------------------------------------------
 
-    SET lock:product:101 <unique-owner-id> NX EX 10
+SET lock:product:101 <unique-owner-id> NX EX 10
 
 
 ### lock:product:101
+----------------------
 
 Ye Redis key hai jo lock represent karti hai.
 
 
 ### <unique-owner-id>
+-----------------------
 
 Ye identify karta hai ki lock kis instance / request ne
 successfully acquire kiya hai.
 
+Example:
+
+P1 → P1-abc
+P2 → P2-xyz
+P3 → P3-pqr
+
 
 ### NX
+--------
 
 `NX` ka matlab:
 
@@ -2290,83 +2316,205 @@ successfully acquire kiya hai.
 
 
 ### EX 10
+-----------
 
 Lock ke saath:
 
     TTL = 10 seconds
 
-Agar lock manually release na bhi ho, to Redis
-10 seconds baad ise automatically remove kar dega.
+Agar lock manually release na bhi ho, to Redis TTL expire hone ke baad automatically is lock key ko delete kar dega.
+Isse us cache entry ke liye lock automatically release ho jayega.
 
 
-----------------------------------
+
 ## P1 LOCK ACQUIRE KARTI HAI
-----------------------------------
+--------------------------------
 
-Suppose P1 ki request Redis tak pehle pahunchti hai:
+Suppose P1 ki request Redis tak sabse pehle pahunchti hai:
 
-    P1
-     │
-     ▼
+P1
+ |
+ v
 
-    SET lock:product:101 P1-abc NX EX 10
+SET lock:product:101 P1-abc NX EX 10
 
+Kyuki:
 
-Kyuki `lock:product:101` abhi Redis me exist nahi karti,
-Redis successfully ye key create kar deta hai:
+lock:product:101
 
-    lock:product:101 → P1-abc
+abhi Redis me exist nahi karti, Redis successfully key create kar deta hai:
 
-    TTL = 10 seconds
+lock:product:101 → P1-abc
 
+TTL = 10 seconds
 
-P1 ko successful response milta hai.
+P1 ko success response milta hai:
 
 Matlab:
 
     P1 → Lock Acquired ✅
 
 
---------------------------
-## AB P2 AND P3 AATI HAI
---------------------------
 
-P2 bhi same lock acquire karne ki koshish karti hai:
+## AB P2 AUR P3 LOCK ACQUIRE KARNE KI KOSHISH KARTI HAIN
+----------------------------------------------------------
 
-    SET lock:product:101 P2-xyz NX EX 10
+P2 and P3 bhi same lock acquire karne ki koshish karti hai:
 
+P2:
+
+SET lock:product:101 P2-xyz NX EX 10
+
+P3:
+
+SET lock:product:101 P3-pqr NX EX 10
 
 Lekin ab:
 
-    lock:product:101
+lock:product:101
 
-already Redis me exist karti hai.
+already exist karti hai.
 
-Aur `NX` ka rule hai:
+Aur NX ka rule hai:
 
-    Key sirf tab create karo
-    jab wo already exist na karti ho.
+Key sirf tab create karo
+jab wo already exist na karti ho.
 
+Isliye:
 
-Isliye Redis P2 ka command successful nahi karega.
-
-    P2 → Lock Not Acquired ❌
-
-Same:
-
-    P3 → Lock Not Acquired ❌
+P2 → Lock Not Acquired ❌
+P3 → Lock Not Acquired ❌
 
 
-## CONCEPTUALLY
-----------------
+## Conceptually:
+------------------
 
                  ┌── P1 → Lock Acquired ✅
                  │
-    Cache Miss ───┤
+Cache Miss ───────┤
                  │
                  ├── P2 → Lock Failed ❌
                  │
                  └── P3 → Lock Failed ❌
 
 
-Yahan Redis ka atomic operation ensure karta hai ki same cache key ke liye multiple concurrent requests me se sirf ek instance lock acquire kar sake.
+Redis ka atomic operation ensure karta hai ki multiple concurrent requests, even from different service instances, 
+same lock key ko acquire karne ki koshish karein, lekin sirf ek request hi successfully lock acquire kar sake.
+
+
+
+## P2 AUR P3 KO LOCK NA MILE TO KYA HOTA HAI?
+----------------------------------------------
+
+P2 aur P3 ko lock nahi mila.
+
+## IMPORTANT:
+--------------
+
+Lock acquire fail hone ka matlab ye nahi hai ki Redis automatically unhe wait karwata hai.
+
+Application ko decide karna hota hai ki failure ke baad kya strategy use karni hai.
+
+## COMMON FLOW:
+----------------
+Cache Miss
+    |
+    v
+Try to Acquire Lock
+    |
+    +── Lock Acquired
+    |        |
+    |        v
+    |    Fetch from DB
+    |
+    +── Lock Acquisition Failed
+             |
+             v
+       Wait briefly
+             |
+             v
+       Check Cache Again
+             ↓
+      Data Available?
+             ├── YES → Return Data
+             │
+             └── NO → Retry / handle accordingly
+
+
+
+## P1 LOCK MILNE KE BAAD KYA KARTA HAI ?
+-------------------------------------------
+
+P1 ko lock mil gaya hai.
+
+Ab P1 Database se data fetch karta hai:
+
+P1
+ |
+ v
+Redis Lock Acquired
+ |
+ v
+Product Database
+ |
+ v
+Fetch product:101
+ |
+ v
+Store Data in Redis Cache
+ |
+ v
+product:101 = Product Data
+
+
+Ab Cache populate ho chuki hai.
+
+P2 aur P3 jo wait/retry kar rahi thi, woh Cache ko dobara check karengi:
+
+GET product:101
+
+Aur ab unhe:
+
+Cache Hit
+
+milega.
+
+Isliye:
+
+P2 → Redis Cache → Return Data
+P3 → Redis Cache → Return Data
+
+Database ko dobara hit karne ki zarurat nahi padegi.
+
+Finally P1 lock release karti hai by deleting the lock key:
+
+DEL lock:product:101
+
+Ab future me agar same data ke liye Cache Miss hota hai, to koi doosri request/instance dobara lock acquire kar sakti hai.
+
+
+## LOCK KE SAATH TTL KYUN ZARURI HAI?
+---------------------------------------
+
+Suppose P1 ne lock acquire kiya:
+
+lock:product:101
+
+TTL = 10 seconds
+
+Ab Database se data fetch karte waqt P1 crash ho gayi:
+
+Agar TTL nahi hota, to:
+
+lock:product:101
+
+Redis me indefinitely reh sakti thi.
+
+Phir future requests:
+
+Try Lock
+   |
+   v
+Lock Already Exists ❌
+
+Aur koi bhi naya instance lock acquire nahi kar pata.
