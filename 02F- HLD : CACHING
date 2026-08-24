@@ -1949,6 +1949,7 @@ Ab ye saari 10,000 concurrent requests independently same product data ke liye D
 Isse Database par ek sudden load spike aa sakta hai, jiske kaaran Database overload ho sakta hai, response time increase ho sakta hai, 
 aur overall application performance impact ho sakti hai.
 
+
 ## PROBLEM :
 ------------
 → Same cache key ke liye bahut saari concurrent
@@ -1957,6 +1958,8 @@ aur overall application performance impact ho sakti hai.
 ## SOLUTION :
 -------------
 → Locking / Request Coalescing
+
+→ Stale-While-Revalidate / Serve Stale While Refreshing
 
 
 
@@ -2020,6 +2023,50 @@ increase ho sakta hai.
 ## SOLUTION :
 -------------
 → TTL Jitter
+
+
+
+### 3. CACHE EVICTION DUE TO RAM PRESSURE
+-------------------------------------------
+
+Cache Stampede sirf TTL expiry ki wajah se nahi hota.
+
+Suppose Redis ki configured maxmemory limit reach ho gayi aur eviction policy ke according ek popular cache entry remove ho gayi.
+
+Example:
+
+product:101
+
+Ab usi time product:101 ke liye bahut saari concurrent requests aati hain.
+
+Agar Cache Stampede protection configured nahi hai, to multiple concurrent requests independently Database ko hit kar sakti hain:
+
+10,000 Concurrent Requests
+            ↓
+        Cache Miss
+            ↓
+10,000 Requests hit Database
+            ↓
+     Database Load Spike
+
+Yaani, popular data eviction ki wajah se Cache se suddenly unavailable ho gaya aur multiple concurrent requests ek saath Database ko hit karne lagi.
+
+## SOLUTION
+------------
+→ Locking / Request Coalescing
+
+
+### 4. CACHE FAILURE / CACHE UNAVAILABLE
+------------------------------------------
+
+Kabhi Redis/Cache temporarily unavailable ho sakta hai.
+
+Is case me Bahut saari requests Cache ko bypass karke directly Database par ja sakti hain. Isse Database par sudden load spike aa sakta hai.
+
+## SOLUTIONS:
+---------------
+→ Circuit Breaker: Cache failure ke baad uncontrolled fallback requests ko Database tak jaane se control kar sakta hai.
+→ Rate Limiting : Backend par aane wali excessive requests ko limit karne me help karta hai.
 
 
 ---------------------------------
@@ -2532,6 +2579,13 @@ Try Lock
 Lock Already Exists ❌
 
 Aur koi bhi naya instance lock acquire nahi kar pata.
+
+
+---------------------------
+## STALE-WHILE-REVALIDATE
+---------------------------
+
+
 
 
 ---------------
