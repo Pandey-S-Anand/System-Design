@@ -1904,21 +1904,10 @@ Normally ye flow perfectly fine hai.
 ## CACHE STAMPEDE KYA HAI?
 -----------------------------
 
-Cache Stampede, jise Thundering Herd bhi kaha jata hai,
-tab hota hai jab cached data unavailable ho jata hai aur
-bahut saari concurrent requests Cache Miss encounter karke
-Database ya kisi backend system ko ek saath hit karne lagti hain.
-
-
---------------------------------
-## CACHE STAMPEDE KAB HOTA HAI?
---------------------------------
-
-Cache Stampede different situations ki wajah se ho sakta hai.
-
-
-### 1. SINGLE CACHE ENTRY EXPIRES
----------------------------------
+Cache Stampede, jise Thundering Herd bhi kaha jata hai, tab hota hai jab koi popular cached data 
+unavailable ho jata hai aur uske turant baad usi data ke liye bahut saari concurrent requests 
+ek saath aati hain. Ye requests Cache Miss encounter karti hain aur same data 
+ko fetch karne ke liye ek saath Database ya kisi backend system ko hit karne lagti hain.
 
 Suppose ek popular product cache me stored hai:
 
@@ -1950,111 +1939,46 @@ Isse Database par ek sudden load spike aa sakta hai, jiske kaaran Database overl
 aur overall application performance impact ho sakti hai.
 
 
-## PROBLEM :
-------------
-→ Same cache key ke liye bahut saari concurrent
-  requests Cache Miss encounter karti hain.
+----------------------------------
+## REASONS BEHIND CACHE STAMPEDE
+----------------------------------
 
-## SOLUTION :
--------------
+Popular cache entry unavailable hone ke common reasons:
+
+##1. TTL EXPIRY
+----------------
+
+   Popular cache key ka TTL expire ho jata hai.
+
+##2. CACHE EVICTION
+--------------------
+
+   Memory pressure ke kaaran eviction policy popular cache entry
+   ko remove kar sakti hai.
+
+##3. CACHE INVALIDATION
+------------------------
+
+   Data update hone par popular cache entry invalidate ya delete
+   ki ja sakti hai.
+
+##4. CACHE RESTART OR FAILURE
+------------------------------
+
+   Cache server restart, fail ya temporarily unavailable ho sakta hai.
+
+## 5. CACHE FLUSH
+-------------------
+
+   Cache ki multiple ya saari entries remove ho sakti hain.
+
+
+## CACHE STAMPEDE SOLUTIONS :
+------------------------------
+
 → Locking / Request Coalescing
 
 → Stale-While-Revalidate / Serve Stale While Refreshing
-
-
-
-### 2. MULTIPLE CACHE ENTRIES EXPIRE AROUND THE SAME TIME
----------------------------------------------------------
-
-Suppose application ne bahut saare products approximately
-ek hi time par cache kiye:
-
-    product:101 → TTL = 10 min
-    product:102 → TTL = 10 min
-    product:103 → TTL = 10 min
-    product:104 → TTL = 10 min
-
-
-Agar ye entries approximately same time par cache hui hain,
-to inki TTL bhi approximately same time par expire ho sakti hai.
-
-Result:
-
-    product:101 → Expired
-    product:102 → Expired
-    product:103 → Expired
-    product:104 → Expired
-
-
-Ab different products ke liye bahut saari requests aati hain:
-
-    Request → product:101 → Cache Miss
-    Request → product:102 → Cache Miss
-    Request → product:103 → Cache Miss
-    Request → product:104 → Cache Miss
-
-
-Result:
-
-        Many Cache Entries Expire
-                  ↓
-           Many Cache Misses
-                  ↓
-        Many Database Requests
-                  ↓
-            Database Load Spike
-
-
-Is situation me problem sirf ek cache key ke liye
-bahut saari concurrent requests ka nahi hai.
-
-Yahan multiple different cache entries approximately
-same time par expire ho jaati hain, jiske result me
-multiple Cache Misses aur Database par sudden load
-increase ho sakta hai.
-
-
-## PROBLEM:
------------
-→ Multiple cache keys around the same time expire hone ki wajah se
-  ek saath bahut saare Cache Misses ho sakte hain.
-
-
-## SOLUTION :
--------------
-→ TTL Jitter
-
-
-
-### 3. CACHE EVICTION DUE TO RAM PRESSURE
--------------------------------------------
-
-Cache Stampede sirf TTL expiry ki wajah se nahi hota.
-
-Suppose Redis ki configured maxmemory limit reach ho gayi aur eviction policy ke according ek popular cache entry remove ho gayi.
-
-Example:
-
-product:101
-
-Ab usi time product:101 ke liye bahut saari concurrent requests aati hain.
-
-Agar Cache Stampede protection configured nahi hai, to multiple concurrent requests independently Database ko hit kar sakti hain:
-
-10,000 Concurrent Requests
-            ↓
-        Cache Miss
-            ↓
-10,000 Requests hit Database
-            ↓
-     Database Load Spike
-
-Yaani, popular data eviction ki wajah se Cache se suddenly unavailable ho gaya aur multiple concurrent requests ek saath Database ko hit karne lagi.
-
-## SOLUTION
-------------
-→ Locking / Request Coalescing
-
 
 
 ---------------------------------
@@ -3146,35 +3070,534 @@ data lekar Trending Products List dobara calculate karke Cache
 refresh kar diya jata hai.
 
 
+
+===========================
+## 15 : CACHE PENETRATION
+===========================
+
+Normal Cache-Aside flow me, agar requested data Cache me available
+nahi hota, to Application Database se data fetch karti hai,
+Cache ko populate karti hai, aur response return kar deti hai.
+
+----------------------
+## PROBLEM KYA HAI ?
+----------------------
+
+Maan lo architecture hai:
+
+Product Service
+       ↓
+     Redis
+       ↓
+    Database
+
+
+Ab maan lo ek request aati hai:
+
+GET /products/999999
+
+
+Lekin `product:999999` Database me exist hi nahi karta.
+Isliye iska data Cache me bhi available nahi hoga.
+
+Application sabse pehle Redis Cache check karegi,
+lekin corresponding cache entry available nahi milegi.
+
+Cache Miss
+    ↓
+Application Database ko query karegi
+    ↓
+Product Database me bhi available nahi hoga
+    ↓
+Application `Product Not Found` response return kar degi
+
+
+Kyuki requested product Database me exist nahi karta,
+Application Cache me uska actual data store nahi kar sakti.
+
+Isliye agar same invalid product ke liye dobara request aaye:
+
+Request
+   ↓
+Redis → Cache Miss
+   ↓
+Database
+   ↓
+Product Not Found
+
+
+---------------------------
+## PROBLEM KAB HOTI HAI ?
+---------------------------
+
+Agar same non-existent product ke liye repeatedly requests aane lagen:
+
+Request 1 → Cache Miss → DB → Not Found
+Request 2 → Cache Miss → DB → Not Found
+Request 3 → Cache Miss → DB → Not Found
+Request 4 → Cache Miss → DB → Not Found
+
+
+Har request:
+
+Cache Miss
+    ↓
+Database Query
+    ↓
+Product Not Found
+
+
+Agar aisi requests bahut zyada ho jaayen:
+
+1,00,000 Requests
+        ↓
+1,00,000 Cache Misses
+        ↓
+1,00,000 Database Queries
+
+
+Yaani, jo data Database me exist hi nahi karta,
+uske liye bhi har request Database tak pahunch rahi hai.
+
+Isse Database par unnecessary load aa sakta hai.
+
+Isi problem ko Cache Penetration kehte hain.
+
+
+## DEFINITION
 ---------------
-## TTL JITTER
----------------
 
-Kabhi-kabhi bahut saari cache entries similar time par
-create / update ho sakti hain.
+Cache Penetration ek aisi situation hai jahan requests repeatedly
+aise data ke liye aati hain jo Database me exist nahi karta.
 
-Agar sabhi entries ke liye same TTL configured ho, to unki
-expiration bhi approximately same time par ho sakti hai.
+Kyuki Cache me us data ke corresponding koi entry available nahi hoti,
+har request Cache Miss ke baad Database tak pahunch jaati hai.
 
-Ab maan lo jaise hi ye multiple cache entries expire hoti hain,
-usi time un entries ke liye bahut saari requests aa jaati hain.
+Isse Database par unnecessary load aa sakta hai.
+
+
+--------------------------------
+## CACHE PENETRATION SOLUTIONS
+--------------------------------
+
+Cache Penetration ko prevent karne ke liye primarily
+do common approaches use ki ja sakti hain:
+
+1. Negative Caching / Cache Null Value
+2. Bloom Filter
+
+
+## 1: NEGATIVE CACHING
+-----------------------
+
+Negative Caching ka basic idea hai:
+
+Agar requested data Database me exist nahi karta,
+to us `NOT_FOUND` result ko bhi temporarily Cache me
+store kar sakte hain.
+
+
+Normal Cache-Aside me Cache actual data store karta hai:
+
+product:101
+      ↓
+{
+   id: 101,
+   name: "iPhone",
+   price: 70000
+}
+
+
+Lekin maan lo request aati hai:
+
+GET /products/999999
+
+Aur `product:999999` Database me exist nahi karta.
+
+
+### FIRST REQUEST
+------------------
+
+Request
+   ↓
+Redis → Cache Miss
+   ↓
+Database
+   ↓
+Product Not Found
+   ↓
+Store NOT_FOUND in Redis
+   ↓
+Return 404
+
+
+REDIS ME:
+
+product:999999 → NOT_FOUND
+
+TTL = 5 minutes
+
+
+### SUBSEQUENT REQUESTS
+-------------------------
+
+Agar same non-existent product ke liye dobara request aaye:
+
+GET /products/999999
+        ↓
+Redis
+        ↓
+Negative Cache Hit
+        ↓
+NOT_FOUND
+        ↓
+Return 404
+
+
+Is baar Database query nahi hogi.
+
+Is tarah repeatedly non-existent data ke liye aane wali
+requests Database tak nahi pahunchengi aur unnecessary
+Database load reduce ho jayega.
+
+
+### TTL KYUN USE KARTE HAIN?
+----------------------------
+
+Negative Cache entry ke saath TTL rakhne ke kuch reasons hain:
+
+
+1. Agar future me `product_id:999999` Database me create ho jaye
+   aur Cache invalidation fail ho jaye, to Redis me purani
+   `NOT_FOUND` entry stale ho sakti hai.
+
+   Lekin TTL expire hone ke baad:
+
+   NOT_FOUND Entry Expires
+           ↓
+   Next Request → Cache Miss
+           ↓
+   Latest Data Database se Fetch
+           ↓
+   Cache me Populate
+           ↓
+   Correct Data Return
+
+   Agar TTL na ho, to invalidation fail hone par `NOT_FOUND`
+   entry indefinitely Cache me reh sakti hai aur actual product
+   exist hone ke baad bhi Client ko `NOT_FOUND` milta rahega.
+
+
+2. Agar data kisi doosri service, batch job ya direct Database
+   operation ke through create ho aur us process me Cache
+   invalidation na ho, to Redis me stale `NOT_FOUND` entry reh sakti hai.
+
+   TTL expire hone ke baad entry remove ho jayegi aur next request
+   Database se correct data fetch karke Cache ko update kar degi.
+
+   TTL na ho to actual data Database me available hone ke bawajood,
+   user ko repeatedly stale `NOT_FOUND` response mil sakta hai.
+
+
+3. Random ya invalid IDs ke liye bahut saari `NOT_FOUND` entries
+   Cache me indefinitely store nahi rahengi aur unnecessary
+   Redis memory usage avoid hoga.
+
+
+## NEGATIVE CACHING KI LIMITATION
+----------------------------------
+
+Negative Caching tab effective hoti hai jab same non-existent ID repeatedly request ki ja rahi ho.
+
+Lekin agar continuously different non-existent IDs
+ke liye requests aa rahi hon, to har new ID ke liye:
+
+Redis → Cache Miss
+        ↓
+Database
+        ↓
+NOT_FOUND
+        ↓
+Store Negative Cache
+
+Is case me har new non-existent ID ki first request
+Database tak ja sakti hai.
+
+Isliye aise scenarios me Negative Caching alone
+sufficient nahi hoti.
+
+Aise cases me Bloom Filter use kiya ja sakta hai.
+
+
+
+## 2 : BLOOM FILTER
+---------------------
+
+
+## BLOOM FILTER KYA HAI?
+------------------------
+
+Bloom Filter ek **probabilistic data structure** hai jo quickly check karne ke liye use hota hai 
+ki koi item definitely exist nahi karta ya possibly exist kar sakta hai.
+
+Bloom Filter sirf do tarah ke answers deta hai:
+
+Definitely NOT Present → 100% sure ki item exist nahi karta.
+
+Possibly Present → Item exist kar sakta hai, lekin 100% guarantee nahi hoti. Is case me Redis ya Database se further check karna padta hai.
+
+Simple rule:
+
+Agar Bloom Filter "NO" bole, to definitely NO.
+Agar Bloom Filter "YES" bole, to maybe YES.
+
+
+Isliye Bloom Filter ko **final source of truth** nahi maana ja sakta.
+
+
+---------------------------------------------------
+## BLOOM FILTER INTERNALLY KAISE KAAM KARTA HAI?
+---------------------------------------------------
+
+High level par Bloom Filter mainly do cheezon ka use karta hai:
+
+    - Bit Array
+    - Multiple Hash Functions
+
+
+Conceptually:
+
+                    Item
+                      ↓
+              Multiple Hash Functions
+                /       |       \
+               ↓        ↓        ↓
+            Position  Position  Position
+               ↓        ↓        ↓
+                    Bit Array
+
+
+Jab koi item Bloom Filter me add kiya jata hai, uske multiple
+hash functions different positions calculate karte hain. In
+corresponding positions ke bits ko `1` set kar diya jata hai.
+
+Later, jab same ya koi doosra item check kiya jata hai, us item ke
+multiple hash functions dobara positions calculate karte hain aur
+Bloom Filter un positions ke bits check karta hai.
+
+At least one required bit = 0  → Definitely NOT Present
+
+All required bits = 1          → Possibly Present
+
+
+Lekin yahan ek important catch hai:
+
+Different items ki hash positions kabhi-kabhi overlap kar sakti hain.
+
+Is wajah se kisi aise item ki bhi saari required positions `1` mil
+sakti hain jo actually kabhi Bloom Filter me add hi nahi hua tha.
+Isi situation ko False Positive kehte hain.
+
+Yaani, overlapping hash positions False Positive ka main reason hain.
+Isi wajah se Bloom Filter ka "Possibly Present" result kabhi bhi
+100% certainty ke saath "Definitely Present" nahi hota.
+
+Yaani:
+
+    Possibly Present
+            ≠
+    Definitely Present
+
+-----------------------------------------
+## APPLICATION ME BLOOM FILTER KA USE
+-----------------------------------------
+
+Application request ko Redis ya Database ke paas bhejne se pehle
+Bloom Filter se check kar sakti hai:
+
+    "Kya requested product possibly exist karta hai?"
+
+
+## CASE 1 : DEFINITELY NOT PRESENT
+-----------------------------------
+
+Example:
+
+    GET /products/999999
+              ↓
+        Bloom Filter
+              ↓
+    Definitely NOT Present
+              ↓
+          Return 404
+
+Is case me item definitely valid items ke set ka part nahi hai.
+
+Isliye Redis aur Database ko hit karne ki zarurat nahi hoti.
+
+
+
+## CASE 2 : POSSIBLY PRESENT
+------------------------------
+
+Example:
+
+    GET /products/101
+            ↓
+      Bloom Filter
+            ↓
+     Possibly Present
+            ↓
+          Redis
+            ↓
+       Cache Hit?
+       ┌────┴────┐
+       │         │
+      YES        NO
+       │          │
+       ↓          ↓
+ Return Data    Database
+                  ↓
+             Data Found?
+             ┌────┴────┐
+             │         │
+            YES        NO
+             │          │
+             ↓          ↓
+       Store in Redis  Return 404
+             │
+             ↓
+        Return Data
+
+
+"Possibly Present" ka matlab ye nahi hai ki item definitely exist
+karta hai, kyunki False Positive possible hai.
+
+Different items ki hash positions overlap hone ki wajah se kisi item
+ki required bits `1` mil sakti hain, even though woh item Bloom
+Filter me kabhi add hi nahi hua tha.
+
+Example:
+
+    Bloom Filter → Possibly Present
+    Reality      → Item actually exist nahi karta
+
+Isi ko False Positive kehte hain.
+
+Isliye "Possibly Present" aane par actual verification ke liye
+Redis ya Database check karna padta hai.
+
+
+
+## BLOOM FILTER KA MAIN PURPOSE
+---------------------------------
+
+Bloom Filter ka main purpose hai:
+
+    Invalid ya non-existing requests ko
+    unnecessarily Redis aur Database tak
+    pahunchne se rokna.
+
+Isse unnecessary backend requests avoid hoti hain,
+jisse:
+
+    Redis Load    ↓
+    Database Load ↓
+
+
+## IMPORTANT POINT
+-----------------------
+
+Bloom Filter:
+
+    - Source of truth nahi hai.
+    - Actual data store nahi karta; sirf membership check
+      karne ke liye use hota hai.
+    - "Definitely Present" ki guarantee nahi deta,
+      kyunki False Positive possible hai.
+    - False Negative normally nahi hota.
+
+False Negative ka matlab:
+
+    Item actually present hai,
+    lekin Bloom Filter galti se
+    "Definitely NOT Present" return kar de.
+
+Standard Bloom Filter me normally aisa nahi hota.
+
+Isliye Bloom Filter ka result hota hai:
+
+    Definitely NOT Present → 100% sure
+
+    Possibly Present       → Actual existence ko
+                             Redis/Database se verify
+                             karna padega.
+
+
+==========================
+## 16 : CACHE AVALANCHE
+==========================
+
+Normal caching me different data Cache me store hota hai aur
+har cache entry ke saath TTL configured ho sakta hai.
+
+Suppose application ne bahut saare products approximately
+ek hi time par Cache me store kiye:
+
+    product:101 → TTL = 10 min
+    product:102 → TTL = 10 min
+    product:103 → TTL = 10 min
+    product:104 → TTL = 10 min
+
+
+Agar ye entries approximately same time par Cache me store hui hain
+aur in sabke liye similar TTL configured hai, to inki TTL bhi
+approximately same time par expire ho sakti hai.
 
 Result:
 
-Multiple Cache Entries Expire
-            ↓
-      Multiple Cache Misses
-            ↓
-     Many Database Requests
-            ↓
-   Sudden Database Load Increase
+    product:101 → Expired
+    product:102 → Expired
+    product:103 → Expired
+    product:104 → Expired
 
 
-Is situation me Database par sudden load spike aa sakta hai.
+Ab agar different products ke liye bahut saari requests aati hain:
 
-Is problem ko reduce karne ke liye TTL Jitter approach
-use ki jaati hai.
+    Request → product:101 → Cache Miss
+    Request → product:102 → Cache Miss
+    Request → product:103 → Cache Miss
+    Request → product:104 → Cache Miss
 
+
+Result:
+
+        Many Cache Entries Expire
+                  ↓
+           Many Cache Misses
+                  ↓
+        Many Database Requests
+                  ↓
+          Database Load Spike
+
+
+Cache Avalanche ek aisi situation hai jahan bahut saari Cache
+entries ek saath ya approximately same time par expire ya unavailable
+ho jaati hain. Jis wajah se bahut saari distinct requests Cache Miss
+encounter karti hain aur data fetch karne ke liye Database tak pahunchti hain.
+
+Isse Database par suddenly bahut zyada load aa sakta hai.
+
+
+---------------------------
+## SOLUTION : TTL JITTER
+---------------------------
+
+Cache Avalanche me problem tab hoti hai jab bahut saari cache entries 
+ek hi ya similar time par expire ho jaati hain.
+
+Humara aim hai ki unki expiration ko different time periods me spread out kiya ja sake, 
+taaki ek saath bahut zyada Cache Misses na hon aur Database par sudden load spike ka risk reduce ho.
 
 ## CORE IDEA :
 ---------------
@@ -3225,10 +3648,12 @@ hoga.
 
     Different Expiration Times
               ↓
-    Cache Misses Spread Out
+      Cache Misses Spread Out
               ↓
-    Database par sudden load spike
-    ka risk reduce hota hai
+    Database Requests Spread Out
+              ↓
+Database par sudden load spike ka
+risk reduce hota hai
 
 
 ## WHEN IS TTL JITTER USEFUL ?
