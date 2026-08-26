@@ -3581,12 +3581,9 @@ Result:
           Database Load Spike
 
 
-Cache Avalanche ek aisi situation hai jahan bahut saari Cache
-entries ek saath ya approximately same time par expire ya unavailable
-ho jaati hain. Jis wajah se bahut saari distinct requests Cache Miss
-encounter karti hain aur data fetch karne ke liye Database tak pahunchti hain.
-
-Isse Database par suddenly bahut zyada load aa sakta hai.
+Cache Avalanche ek aisi situation hai jahan bahut saari Cache entries ek saath ya approximately same time par expire ya unavailable ho jaati hain. 
+Is wajah se bahut saari different cache keys ke liye aane wali requests Cache Miss encounter karti hain aur data fetch karne ke liye Database tak pahunch jaati hain. 
+Isse Database par sudden load spike aa sakta hai.
 
 
 ---------------------------
@@ -3669,3 +3666,319 @@ Examples:
     - Batch processing
     - Bulk caching
     - Kisi event ke baad multiple cache entries populate hona
+
+
+
+================
+## 17 : HOT KEY
+================
+----------------------
+### HOT KEY KYA HAI?
+----------------------
+
+Hot Key ek aisi cache key hoti hai jiske liye normal keys ke comparison me disproportionately zyada requests aati hain. 
+Yaani, ek particular cache key ke around extremely high request traffic concentrate ho jata hai.
+
+Example:
+
+product:101 → 1,000,000 requests/sec  ← Hot Key
+product:102 → 100 requests/sec
+product:103 → 120 requests/sec
+product:104 → 90 requests/sec
+
+-------------------------------
+## HOT KEY SE PROBLEM KYA HAI?
+-------------------------------
+
+Normally Cache ka use Database par load reduce karne ke liye
+kiya jata hai. Agar requested data Cache me available hai aur
+Cache Hit mil raha hai, to generally Database ko query karne ki
+zarurat nahi padti.
+
+Lekin problem tab ho sakti hai jab ek particular Cache key ke liye
+extremely high traffic aaye.
+
+Is situation me Cache Hit milne ke bawajood, traffic ek single
+Hot Key ke around disproportionately concentrate ho jata hai.
+
+Yaani, Database par load nahi pad raha hota, lekin ek single Hot Key
+par extremely high traffic Cache infrastructure ko hi bottleneck
+bana sakta hai.
+
+Maan lo hamare paas ek Redis Cluster hai jisme multiple
+Redis nodes hain.
+
+Cluster me different cache keys different nodes par stored
+ho sakti hain:
+
+    product:101 → Node 1
+    product:102 → Node 2
+    product:103 → Node 3
+
+
+Normally isse different cache keys ka traffic multiple Redis
+nodes me distribute ho jata hai.
+
+Lekin maan lo `product:101` suddenly bahut popular ho jata hai.
+
+Ab requests:
+
+    product:101 → 1,000,000 requests/sec
+
+    product:102 → 100 requests/sec
+
+    product:103 → 120 requests/sec
+
+
+Kyuki `product:101` Node 1 par stored hai, is key ke liye
+aane wali requests primarily Node 1 ko handle karni padengi.
+
+
+                       Redis Cluster
+
+
+                    1,000,000
+                   requests/sec
+                         │
+                         ▼
+                  ┌──────────────┐
+                  │    Node 1    │
+                  │              │
+                  │ product:101  │
+                  │   HOT KEY    │
+                  └──────────────┘
+
+
+        ┌──────────────┐      ┌──────────────┐
+        │    Node 2    │      │    Node 3    │
+        │              │      │              │
+        │ product:102  │      │ product:103  │
+        │              │      │              │
+        │ 100 req/sec  │      │ 120 req/sec  │
+        └──────────────┘      └──────────────┘
+
+
+Ab situation kuch aisi hai:
+
+    Node 1 → Extremely High Load
+
+    Node 2 → Mostly Free
+
+    Node 3 → Mostly Free
+
+
+Yaani overall Redis Cluster ke paas enough capacity available
+ho sakti hai, lekin traffic evenly distributed nahi hai.
+
+Ek particular key ke liye bahut zyada requests aane ki wajah se
+traffic ek specific Redis node par concentrate ho gaya hai, jabki
+baaki nodes ke paas unused capacity available ho sakti hai.
+
+
+Result:
+
+        Hot Key
+           ↓
+Traffic concentrated on one Redis Node
+           ↓
+That Node becomes overloaded
+           ↓
+Increased latency / reduced performance
+
+
+--------------------------------
+## HOT KEY KAB BAN SAKTI HAI?
+--------------------------------
+
+### 1. VIRAL PRODUCT
+
+Flash Sale
+    ↓
+Most users access the same product
+    ↓
+Corresponding cache key becomes a Hot Key
+
+
+### 2. VIRAL CONTENT
+
+Millions of users access the same post/content
+    ↓
+Corresponding cache key becomes a Hot Key
+
+
+### 3. LIVE EVENT
+
+Bahut saare users repeatedly live score ya event data access karte hain
+    ↓
+Corresponding cache key becomes a Hot Key
+
+
+---------------------------------
+## HOT KEY PROBLEM KE SOLUTIONS
+---------------------------------
+
+Har Hot Key ke liye same solution use nahi hota.
+
+##1. LOCAL / IN-MEMORY CACHE
+------------------------------
+
+Abhi tak hum generally aisa architecture dekh rahe the:
+
+Client se request Application ke paas aati hai.
+
+Application sabse pehle Redis Cache ko check karti hai.
+
+- Agar requested data Redis me available hai, to Cache Hit hota hai
+  aur data Client ko return kar diya jata hai.
+
+- Agar Redis me data available nahi hota, to Cache Miss hota hai.
+  Application Database se data fetch karti hai.
+
+- Agar Database me data mil jata hai, to Application data ko Redis
+  Cache me store karti hai aur response return kar deti hai.
+
+- Agar Database me bhi data available nahi hota, to Application
+  `404 Not Found` response return karti hai.
+
+
+### LOCAL CACHE KYA HAI?
+-----------------------
+
+Local Cache ya In-Memory Cache ek aisa cache hota hai jo directly
+Application Instance ki RAM me maintain hota hai.
+
+Distributed System me agar multiple Application Instances hain,
+to Local Cache unke beech shared nahi hota.
+
+Har Application Instance apni separate Local Cache maintain karta hai.
+
+App Instance 1 → Local Cache 1
+App Instance 2 → Local Cache 2
+App Instance 3 → Local Cache 3
+
+
+
+### LOCAL CACHE REQUEST FLOW
+------------------------------
+
+Instead of har request ke liye directly Redis ko hit karne ke,
+Application frequently accessed data ko apni Local Cache me
+temporarily store kar sakti hai.
+
+Jab koi request Application ke paas aati hai, Application sabse pehle
+apni Local Cache me requested data check karti hai.
+
+Agar Local Cache me data mil jata hai, to Local Cache Hit hota hai
+aur data wahi se directly return kar diya jata hai.
+
+Agar Local Cache me requested data available nahi hota, to request
+Redis tak jaati hai.
+
+Agar Redis me data available hota hai, to Redis Cache Hit hota hai
+aur data Application ko return kar diya jata hai.
+
+Agar Redis me bhi requested data available nahi hota, to Redis Cache
+Miss hota hai. Application Database se data fetch karti hai.
+
+Agar Database me data mil jata hai, to Application us data ko Redis
+Cache me store karti hai aur response return kar deti hai.
+
+
+                                   USER
+                                     │
+                                     │ HTTP Request
+                                     ▼
+                                    DNS
+                                     │
+                                     ▼
+                           +-------------------+
+                           | Is Content Static?|
+                           +---------+---------+
+                                     │
+                          +----------+----------+
+                          │                     │
+                         YES                    NO
+                          │                     │
+                          ▼                     │
+                +------------------------+      │
+                | Is Content Available   |      │
+                |       in CDN?          |      │
+                +----------+-------------+      │
+                           │                    │
+                    +------+-------+            │
+                    │              │            │
+                   YES            NO            │
+                    │              │            │
+                    ▼              ▼            │
+             Return from CDN    Origin/API      │
+                                      │         │
+                                      └────┬────┘
+                                           │
+                                           ▼
+                                  +----------------+
+                                  |  API Gateway   |
+                                  +-------┬--------+
+                                          │
+                     ┌────────────────────┴────────────────────┐
+                     │                                         │
+                     ▼                                         ▼
+              Product Service                            User Service
+                     │                                         │
+                     ▼                                         ▼
+            Product Service LB                         User Service LB
+                     │                                         │
+              ┌──────┼──────┐                           ┌──────┼──────┐
+              │      │      │                           │      │      │
+              ▼      ▼      ▼                           ▼      ▼      ▼
+           Product Product Product                    User   User   User
+            App 1   App 2   App 3                     App 1  App 2  App 3
+              │      │      │                           │      │      │
+              ▼      ▼      ▼                           ▼      ▼      ▼
+            Local  Local  Local                       Local  Local  Local
+            Cache  Cache  Cache                       Cache  Cache  Cache
+              │      │      │                           │      │      │
+              └──────┼──────┘                           └──────┼──────┘
+                     │                                         │
+                     ▼                                         ▼
+               PRODUCT REDIS                              USER REDIS
+                Shared Cache                              Shared Cache
+                     │                                         │
+                     ▼                                         ▼
+                Product DB                                  User DB
+
+### IMPORTANT POINT
+---------------------
+
+Local / In-Memory Cache Redis ka replacement nahi hai.
+
+Ye Redis ke saath ek additional caching layer ke roop me
+use kiya ja sakta hai.
+
+
+### LOCAL CACHE KA MAIN BENEFIT
+--------------------------------
+
+Distributed Systems me Redis generally ek external Distributed Cache
+ki tarah use hota hai. Isliye Application ko Redis access karne ke liye
+network call karni padti hai.
+
+Even though Redis bahut fast hota hai, phir bhi Redis ko access karne me
+network communication ka overhead hota hai.
+
+Frequently accessed data ko Local Cache me store karne par, kai
+requests Redis tak pahunchne se pehle hi Application Instance ki
+Local Cache se serve ho sakti hain.
+
+Isse Redis par overall request traffic reduce hota hai. Redis ko kam
+requests jaane ki wajah se network calls bhi reduce hoti hain, jisse
+overall response latency reduce ho sakti hai.
+
+Benefits:
+
+    ↓ Redis Traffic
+    ↓ Network Calls
+    ↓ Response Latency
+
+
+### LOCAL CACHE KA PROBLEM
+-----------------------------
