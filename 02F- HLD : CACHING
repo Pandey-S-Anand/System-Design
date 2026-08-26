@@ -3982,3 +3982,136 @@ Benefits:
 
 ### LOCAL CACHE KA PROBLEM
 -----------------------------
+
+Distributed System me multiple Application Instances ho sakte hain aur 
+har Application Instance apni separate Local Cache maintain karta hai.
+Yaani, ye Local Caches ek dusre ke saath shared nahi hote.
+
+
+## EXAMPLE:
+------------
+
+Maan lo, initially `product:101` ka current data Database, Shared Redis Cache
+aur sabhi Application Instances ki Local Caches me consistent hai:
+
+Database               → product:101 → Price = ₹100
+
+Shared Redis Cache     → product:101 → Price = ₹100
+
+Instance 1 Local Cache → product:101 → Price = ₹100
+Instance 2 Local Cache → product:101 → Price = ₹100
+Instance 3 Local Cache → product:101 → Price = ₹100
+
+
+Ab maan lo product:101 ka price update karne ke liye ek write request Instance 1 ke paas aati hai:
+
+Price: ₹100 → ₹120
+
+
+## SCENARIO 1: LOCAL CACHE INVALIDATE HI NAHI HUI
+-------------------------------------------------
+
+Instance 1 Database me latest value update karti hai aur Shared Redis Cache me stored purani entry invalidate / update kar deti hai.
+
+## CURRENT STATE:
+------------------
+
+Database → product:101 → Price = ₹120
+
+Redis → product:101 → UPDATED / DELETED
+
+Lekin Local Caches automatically invalidate nahi hoti. Isliye unme purana data abhi bhi stored reh sakta hai:
+
+Instance 1 Local Cache → Price = ₹100
+Instance 2 Local Cache → Price = ₹100
+Instance 3 Local Cache → Price = ₹100
+
+Ab agar subsequent read request Instance 2 ke paas jaati hai:
+
+Request
+   ↓
+Instance 2
+   ↓
+Local Cache Check
+   ↓
+Cache Hit
+   ↓
+Price = ₹100
+
+Kyuki Instance 2 ki Local Cache me data available hai, Application Redis ya Database ko check nahi karegi aur directly Local Cache se response return kar degi.
+
+User receives → Price = ₹100
+
+Even though latest data hai:
+
+Database → Price = ₹120
+
+Redis → Old Entry Deleted / UPDATED
+
+
+## RESULT:
+-----------
+Local Cache me stored stale data user ko serve ho sakta hai.
+
+
+## SCENARIO 2: WRITING INSTANCE APNI LOCAL CACHE INVALIDATE KAR DETI HAI
+--------------------------------------------------------------------------
+
+Ab maan lo write request Instance 1 ke paas aati hai.
+
+Instance 1:
+
+1. Database update karti hai
+        ↓
+2. Shared Redis Cache ko update / invalidate karti hai
+        ↓
+3. Apni Local Cache ko invalidate karti hai
+
+
+## CURRENT STATE:
+------------------
+
+Database → product:101 → Price = ₹120
+
+Redis → product:101 → Updated / Deleted
+
+Instance 1 Local Cache → Deleted
+Instance 2 Local Cache → Price = ₹100
+Instance 3 Local Cache → Price = ₹100
+
+
+Ab agar subsequent read request Instance 1 ke paas jaati hai:
+
+Instance 1 Local Cache → MISS
+        ↓
+      Redis
+        ↓
+Updated Data / MISS
+        ↓
+Database → ₹120
+
+
+Instance 1 eventually latest value fetch karke return karegi.
+
+Lekin agar request Instance 2 ya Instance 3 ke paas jaati hai:
+
+Request
+   ↓
+Instance 2 / 3
+   ↓
+Local Cache → HIT
+   ↓
+Price = ₹100
+
+To stale data return ho jayega.
+
+
+## REASON :
+------------
+Har Application Instance apni separate Local Cache maintain karti hai.
+Isliye ek instance ki Local Cache invalidate hone se baaki instances ki Local Caches automatically invalidate nahi hoti.
+
+
+##2. EVENT-BASED CACHE INVALIDATION
+-------------------------------------
+
