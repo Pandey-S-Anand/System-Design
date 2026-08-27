@@ -3668,10 +3668,204 @@ Examples:
     - Kisi event ke baad multiple cache entries populate hona
 
 
+==============================
+## 17 : REDIS SCALING BASICS 
+==============================
+
+---------------------------
+## SINGLE REDIS INSTANCE
+---------------------------
+
+Small to medium scale systems me ek single Redis instance
+sufficient ho sakta hai.
+
+                 Application
+                      │
+                      ▼
+                   Redis
+                      │
+                      ▼
+                  Database
+
+
+Is setup me ek hi Redis instance:
+
+    → Saari cache keys store karta hai
+    → Read requests handle karta hai
+    → Write requests handle karta hai
+
+
+## LIMITATIONS
+--------------
+
+Jaise-jaise traffic aur cached data increase hota hai, ek single
+Redis instance bottleneck ban sakta hai.
+
+    Single Redis Instance
+            ↓
+       Limited Memory
+       Limited Throughput
+       Single Point of Failure
+
+
+----------------------------------------------
+## REDIS CLUSTER : MULTIPLE REDIS INSTANCES
+----------------------------------------------
+
+Ab maan lo hum multiple Redis instances use karte hain:
+
+                         Clients
+                            │
+                            ▼
+                     Load Balancer
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+              ▼             ▼             ▼
+        Product Service Product Service Product Service
+          Instance 1      Instance 2      Instance 3
+              │             │             │
+              └─────────────┼─────────────┘
+                            │
+                            ▼
+                     Redis Cluster
+              ┌─────────────┼─────────────┐
+              │             │             │
+              ▼             ▼             ▼
+           Redis Node 1  Redis Node 2  Redis Node 3
+              │             │             │
+              └─────────────┼─────────────┘
+                            │
+                            ▼
+                       Product DB
+
+----------------------------
+## KEY STORE KARNE KA FLOW
+----------------------------
+
+Maan lo Client ek naya product add karne ki request karta hai.
+
+Request Load Balancer ke through Product Service Instance 1 ke paas aati hai.
+
+Instance 1 data ko Database me store karti hai aur phir us data ko Redis me cache karna chahti hai.
+
+Key:
+
+product:101
+
+Value:
+
+{
+   id: 101,
+   name: "iPhone",
+   price: 70000
+}
+
+
+Instance 1 Redis me data store karne ke liye request bhejti hai:
+
+SET product:101 {product data}
+
+Jab koi key Redis Cluster me store karni hoti hai, to us key ka hash
+calculate kiya jata hai aur use ek hash slot se map kiya jata hai.
+
+Redis Cluster ke paas information hoti hai ki kaunsa hash slot
+kis Redis Node ki responsibility hai.
+
+Is slot-to-node mapping ke basis par determine hota hai ki key
+kis Redis Node par store hogi.
+
+
+High level par flow ye hai:
+
+Key
+ ↓
+Hash Calculate
+ ↓
+Hash Slot
+ ↓
+Slot → Redis Node Mapping
+ ↓
+Correct Redis Node
+ ↓
+Key Stored
+
+
+------------------------------
+## KEY FETCH KAISE HOTI HAI?
+------------------------------
+
+Maan lo Client `product:101` ke liye read request karta hai.
+
+Request Load Balancer ke through Product Service Instance 2 ke paas
+aati hai.
+
+Instance 2 Redis se data fetch karne ke liye request bhejti hai:
+
+GET product:101
+
+`product:101` key ka hash calculate kiya jata hai aur use ek hash slot
+se map kiya jata hai.
+
+Redis Cluster ke paas information hoti hai ki kaunsa hash slot kis
+Redis Node ki responsibility hai.
+
+Is mapping ke basis par `product:101` ke liye corresponding Redis Node
+identify kiya jata hai.
+
+Agar key Redis me available hai, to Cache Hit hota hai aur data
+Application ko return kar diya jata hai.
+
+Agar key Redis me available nahi hai, to Cache Miss hota hai.
+
+Application Database se data fetch karti hai.
+
+Key ke hash slot ki mapping ke basis par Redis Cluster me corresponding 
+Redis Node identify kiya jata hai aur data usi Node par store kiya jata hai.
+
+Uske baad Application response return kar deti hai.
+
+
+High level par flow ye hai:
+
+    product:101
+         ↓
+    Hash Calculate
+         ↓
+      Hash Slot
+         ↓
+Slot → Redis Node Mapping
+         ↓
+    Redis Node 2
+         ↓
+     Cache Hit?
+    ┌────┴────┐
+   YES       NO
+    │         │
+    ↓         ↓
+Return Data  Database
+                ↓
+           Fetch Data
+                ↓
+         SET product:101
+                ↓
+         Hash Calculate
+                ↓
+           Hash Slot
+                ↓
+    Slot → Redis Node Mapping
+                ↓
+      Correct Redis Node
+                ↓
+          Store Data
+                ↓
+          Return Data
+
 
 ================
-## 17 : HOT KEY
+## 18 : HOT KEY
 ================
+
 ----------------------
 ### HOT KEY KYA HAI?
 ----------------------
@@ -3791,6 +3985,7 @@ Increased latency / reduced performance
 --------------------------------
 
 ### 1. VIRAL PRODUCT
+---------------------
 
 Flash Sale
     ↓
@@ -3800,6 +3995,7 @@ Corresponding cache key becomes a Hot Key
 
 
 ### 2. VIRAL CONTENT
+---------------------
 
 Millions of users access the same post/content
     ↓
@@ -3807,6 +4003,7 @@ Corresponding cache key becomes a Hot Key
 
 
 ### 3. LIVE EVENT
+------------------
 
 Bahut saare users repeatedly live score ya event data access karte hain
     ↓
@@ -4203,4 +4400,214 @@ Populate Local Cache
 ##2. READ REPLICAS / REPLICA-BASED READ DISTRIBUTION
 ------------------------------------------------------
 
+Redis Cluster me multiple Redis Nodes ho sakte hain aur different
+cache keys different Redis Nodes par distributed ho sakti hain.
 
+Example:
+
+product:101 → Redis Node 1
+product:102 → Redis Node 2
+product:103 → Redis Node 3
+
+Isse cached data aur overall traffic multiple Redis Nodes me
+distribute ho sakta hai.
+
+Maan lo product:101 ek Hot Key ban gayi.
+
+Ye key Redis Node 1 par stored hai aur iske liye extremely high
+number of requests aa rahi hain:
+
+
+product:101
+      ↓
+Redis Node 1
+      ↓
+Handles all requests for this key
+
+Yaani Redis Cluster me multiple Nodes hone ke bawajood, ek particular
+Hot Key ka traffic primarily us Node par concentrate ho sakta hai
+jahan woh key stored hai.
+
+
+                   Redis Cluster
+
+              ┌──────────────────┐
+              │   Redis Node 1   │
+              │                  │
+              │   product:101    │
+              │                  │
+              │ 1M requests/sec  │
+              └──────────────────┘
+
+
+              ┌──────────────────┐
+              │   Redis Node 2   │
+              │                  │
+              │   product:102    │
+              │                  │
+              │ 100 requests/sec │
+              └──────────────────┘
+
+
+              ┌──────────────────┐
+              │   Redis Node 3   │
+              │                  │
+              │   product:103    │
+              │                  │
+              │ 120 requests/sec │
+              └──────────────────┘
+
+
+Yahan problem ye hai ki:
+
+Node 1 → High Load
+Node 2 → Low Load
+Node 3 → Low Load
+
+
+##1. READ TRAFFIC DISTRIBUTION
+-------------------------------
+
+Ab hum is Hot Key ke read load ko distribute karne ke liye
+Node 1 ki Replicas maintain kar sakte hain.
+
+Maan lo product:101 ka Primary Node, Node 1 hai.
+
+Node 1 ke saath multiple Redis Replicas configured hain:
+
+                    Redis Node 1
+                     (Primary)
+                          │
+                          │ Replication
+                 ┌────────┴────────┐
+                 │                 │
+                 ▼                 ▼
+          Node 1 Replica 1    Node 1 Replica 2
+
+
+Primary Node par stored data uski Replicas tak replicate kiya jata hai, 
+isliye Replicas par bhi us data ki copies available hoti hain.
+
+Ab read aur write traffic ko alag tarah se handle kiya ja sakta hai:
+
+    Write Requests → Primary Node
+
+    Read Requests  → Replicas
+
+
+## OBJECTIVE :
+--------------
+Hot Key ke case me main objective read traffic ko ek single Redis
+Node par concentrate hone se rokna hai.
+
+Isliye `product:101` ke liye aane wali read requests ko
+Application ya Redis Client, configured read-routing strategy ke
+basis par available Replicas ke across distribute kar sakta hai.
+
+Read requests ko distribute karne ke liye Round Robin, Random ya
+kisi appropriate load-balancing strategy ka use kiya ja sakta hai.
+
+Result:
+
+Single Redis Node par load ↓
+
+Read traffic multiple Redis instances me distributed
+
+Overall read throughput ↑
+
+
+## PREVIOUSLY:
+---------------
+
+1,000,000 Read Requests/sec
+           │
+           ▼
+     Redis Node 1
+       (Primary)
+
+
+## AFTER USING READ REPLICAS:
+------------------------------
+
+
+                    Application
+                    /           \
+                   /             \
+          Read Requests        Write Requests
+                │                   │
+         ┌──────┴──────┐            ▼
+         ▼             ▼        Primary Node
+     Replica 1      Replica 2       │
+                                    │ Replication
+                           ┌────────┴────────┐
+                           ▼                 ▼
+                      Replica 1          Replica 2
+
+
+Is tarah `product:101` ke read requests multiple Redis instances
+ke across distribute ho jaati hain.
+
+## NOTE:
+---------
+Spring Boot application Redis ke saath typically Spring Data Redis ke through interact karti hai, 
+jo internally Lettuce ya Jedis jaise Redis clients ka use kar sakti hai. Redis client cluster topology aur available 
+nodes ki information ke basis par appropriate Redis node se communication handle karta hai.
+
+
+##2. WRITE FLOW AND REPLICATION
+-------------------------------
+
+Ab maan lo product:101 ka data update karna hai:
+
+Price: ₹100 → ₹120
+
+Write request sabse pehle Database par update perform karegi. Database successfully update hone ke baad, corresponding Redis Primary Node ki cache entry ko update ya invalidate kiya jayega.
+
+Updated data Primary Node se Replication ke through uski associated Read Replicas tak propagate ho jayega.
+
+Agar Application Instances Local / In-Memory Cache maintain kar rahi hain, to corresponding Local Cache entries ko invalidate karne ke liye Cache Invalidation Event publish kiya ja sakta hai.
+
+High-level flow:
+Application
+     ↓
+Database Updated
+     ↓
+Redis Primary Updated / Invalidated
+     ↓
+Changes Replicated to Read Replicas
+     ↓
+Cache Invalidation Event
+     ↓
+Local Caches Invalidated
+
+
+## REPLICATION DELAY
+---------------------
+
+Primary Node par data update hone aur updated data ke sabhi Replicas tak propagate hone ke beech thoda delay ho sakta hai.
+
+Is duration me temporarily kuch aisa state ho sakta hai:
+
+Primary  → Price = ₹120
+Replica 1 → Price = ₹120
+Replica 2 → Price = ₹100
+
+Agar isi time koi read request Replica 2 ke paas route ho jaati hai, to user ko temporarily purana data mil sakta hai.
+
+### TRADE-OFF:
+--------------
+Read traffic multiple nodes me distribute hota hai, lekin replication delay ki wajah se temporary stale reads possible hain.
+
+
+## READ REPLICAS KAB USEFUL HAIN?
+----------------------------------
+
+Read Replicas especially useful hoti hain jab:
+
+- Kisi particular Redis Node par read traffic bahut high ho. Ye ek Hot Key ki wajah se ho sakta hai, ya multiple Hot Keys ki combined read traffic ki wajah se.
+- Temporary stale data acceptable ho, kyunki replication delay ki wajah se Replicas kabhi-kabhi temporarily outdated data return kar sakti hain.
+
+
+
+##3. HOT KEY REPLICATION 
+---------------------------
