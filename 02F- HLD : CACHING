@@ -3928,7 +3928,7 @@ Kyuki `product:101` Node 1 par stored hai, is key ke liye
 aane wali requests primarily Node 1 ko handle karni padengi.
 
 
-                       Redis Cluster
+                   Redis Cluster
 
 
                     1,000,000
@@ -4400,152 +4400,208 @@ Populate Local Cache
 ##2. READ REPLICAS / REPLICA-BASED READ DISTRIBUTION
 ------------------------------------------------------
 
-Redis Cluster me multiple Redis Nodes ho sakte hain aur different
-cache keys different Redis Nodes par distributed ho sakti hain.
+Redis Cluster me different cache keys different Redis Nodes par
+distributed ho sakti hain.
+
+Maan lo `product:101` ek Hot Key ban jaati hai aur iske liye
+extremely high number of requests aa rahi hain.
+
 
 Example:
 
-product:101 → Redis Node 1
-product:102 → Redis Node 2
-product:103 → Redis Node 3
+product:101 → Node 1 -> 1M req/sec 🔥
+product:102 → Node 2 -> 100 req/sec  
+product:103 → Node 3 -> 120 req/sec  
 
-Isse cached data aur overall traffic multiple Redis Nodes me
-distribute ho sakta hai.
-
-Maan lo product:101 ek Hot Key ban gayi.
-
-Ye key Redis Node 1 par stored hai aur iske liye extremely high
-number of requests aa rahi hain:
-
-
-product:101
-      ↓
-Redis Node 1
-      ↓
-Handles all requests for this key
 
 Yaani Redis Cluster me multiple Nodes hone ke bawajood, ek particular
-Hot Key ka traffic primarily us Node par concentrate ho sakta hai
-jahan woh key stored hai.
+Hot Key ka traffic usi Node par concentrate ho sakta hai jahan woh
+key stored hai.
 
-
-                   Redis Cluster
-
-              ┌──────────────────┐
-              │   Redis Node 1   │
-              │                  │
-              │   product:101    │
-              │                  │
-              │ 1M requests/sec  │
-              └──────────────────┘
-
-
-              ┌──────────────────┐
-              │   Redis Node 2   │
-              │                  │
-              │   product:102    │
-              │                  │
-              │ 100 requests/sec │
-              └──────────────────┘
-
-
-              ┌──────────────────┐
-              │   Redis Node 3   │
-              │                  │
-              │   product:103    │
-              │                  │
-              │ 120 requests/sec │
-              └──────────────────┘
-
-
-Yahan problem ye hai ki:
+Result:
 
 Node 1 → High Load
 Node 2 → Low Load
 Node 3 → Low Load
-
-
-##1. READ TRAFFIC DISTRIBUTION
--------------------------------
-
-Ab hum is Hot Key ke read load ko distribute karne ke liye
-Node 1 ki Replicas maintain kar sakte hain.
-
-Maan lo product:101 ka Primary Node, Node 1 hai.
-
-Node 1 ke saath multiple Redis Replicas configured hain:
-
-                    Redis Node 1
-                     (Primary)
-                          │
-                          │ Replication
-                 ┌────────┴────────┐
-                 │                 │
-                 ▼                 ▼
-          Node 1 Replica 1    Node 1 Replica 2
-
-
-Primary Node par stored data uski Replicas tak replicate kiya jata hai, 
-isliye Replicas par bhi us data ki copies available hoti hain.
-
-Ab read aur write traffic ko alag tarah se handle kiya ja sakta hai:
-
-    Write Requests → Primary Node
-
-    Read Requests  → Replicas
-
 
 ## OBJECTIVE :
 --------------
 Hot Key ke case me main objective read traffic ko ek single Redis
 Node par concentrate hone se rokna hai.
 
-Isliye `product:101` ke liye aane wali read requests ko
-Application ya Redis Client, configured read-routing strategy ke
-basis par available Replicas ke across distribute kar sakta hai.
+##SOLUTION:
+------------
+Ab hum is Hot Key ke read load ko distribute karne ke liye
+Node 1 ki multiple Redis Replicas maintain kar sakte hain.
 
-Read requests ko distribute karne ke liye Round Robin, Random ya
-kisi appropriate load-balancing strategy ka use kiya ja sakta hai.
+Maan lo `product:101` ka Primary Node, Node 1 hai aur
+Node 1 ke saath multiple Redis Replicas configured hain.
 
-Result:
+Architecture kuch aisa dikhega:
 
-Single Redis Node par load ↓
+                    REDIS CLUSTER
 
-Read traffic multiple Redis instances me distributed
+                        CLIENT
+                           │
+                           │ HTTP Request
+                           ▼
+                    Load Balancer
+                           │
+                 ┌─────────┼─────────┐
+                 ▼         ▼         ▼
+        Application   Application   Application
+         Instance 1    Instance 2    Instance 3
+                 │         │         │
+                 │         │         │
+                 └─────────┼─────────┘
+                           │
+                           ▼
+                     REDIS CLUSTER
+        ┌───────────────────────────────────────┐
+        │                                       │
+        │     Primary Node 1                    │
+        │     product:101                       │
+        │           │                           │
+        │           │ Replication               │
+        │       ┌───┴────┐                      │
+        │       ▼        ▼                      │
+        │   Replica 1  Replica 2                │
+        │                                       │
+        │      Node 2                           │
+        │     product:102                       │
+        │                                       │
+        │     Node 3                            │
+        │     product:103                       │
+        │                                       │
+        └───────────────────────────────────────┘
 
-Overall read throughput ↑
+
+Yahan Replica 1  & Replica 2  Node 1 (Primary node) ki copy hai.
+
+Primary Node par stored data uski Replicas tak replicate kiya jata hai, 
+isliye Replicas par bhi us data ki copies available hoti hain.
+
+Ab read aur write traffic ko alag tarah se handle kiya ja sakta hai:
+
+Write Requests → Corresponding Primary Node
+
+Read Requests → Primary Node ya Read Replicas
+
+Read request kahan route hogi, ye configured read-routing strategy par
+depend karta hai. Redis Client ko accordingly configure kiya ja sakta hai.
+
+Read-heavy use cases me reads ko available Replicas ke across distribute
+kiya ja sakta hai, jabki writes generally corresponding Primary Node par
+handle hoti hain.
 
 
-## PREVIOUSLY:
----------------
 
-1,000,000 Read Requests/sec
-           │
-           ▼
-     Redis Node 1
-       (Primary)
+## REQUEST FLOW WITH READ REPLICAS
+-------------------------------------
 
+Client
+   │
+   │ HTTP Request
+   ▼
+Load Balancer
+   │
+   ▼
+Application Instance
+   │
+   ▼
+Check Local / In-Memory Cache
+   │
+   ├───────────────────────────────────────┐
+   │                                       │
+   │ LOCAL CACHE HIT                       │ LOCAL CACHE MISS
+   │                                       │
+   ▼                                       ▼
+Return Data                            Redis Client
+to Client                                  │
+                                           ▼
+                                  Calculate Hash of Key
+                                           │
+                                           ▼
+                                  Determine Hash Slot
+                                           │
+                                           ▼
+                              Check Redis Cluster Topology
+                                           │
+                                           ▼
+                          Identify Primary Node responsible
+                                for the Hash Slot
+                                           │
+                                           ▼
+                            Identify associated Replicas
+                                           │
+                                  ┌────────┴────────┐
+                                  │                 │
+                                  ▼                 ▼
+                              Replica 1         Replica 2
+                                  │                 │
+                                  └────────┬────────┘
+                                           │
+                                           ▼
+                            Select one Replica for Read
+                                           │
+                                           ▼
+                                  Check Redis Cache
+                                           │
+                         ┌─────────────────┴─────────────────┐
+                         │                                   │
+                         ▼                                   ▼
+                   REDIS CACHE HIT                     REDIS CACHE MISS
+                         │                                   │
+                         ▼                                   ▼
+                Data returned to                      Fetch Data from
+              Application Instance                       Database
+                         │                                   │
+                         ▼                                   ▼
+               Populate Local Cache                      Data Found?
+                         │                             ┌─────┴─────┐
+                         ▼                             │           │
+                Return Response                      YES          NO
+                  to Client                           │            │
+                                                       ▼            ▼
+                                              Write Cache Entry   Return 404
+                                              to the Primary      to Client
+                                              Node responsible
+                                              for the Hash Slot
+                                                       │
+                                                       ▼
+                                               Primary Node 1
+                                                       │
+                                                       ▼
+                                              Cache Entry Stored
+                                                       │
+                                                       ▼
+                                              Data returned to
+                                            Application Instance 2
+                                                       │
+                                                       ▼
+                                             Populate Local Cache
+                                                       │
+                                                       ▼
+                                             Return Response
+                                                to Client
+                  
 
-## AFTER USING READ REPLICAS:
-------------------------------
+## IMPORTANT:
+--------------
 
+Redis Client key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
 
-                    Application
-                    /           \
-                   /             \
-          Read Requests        Write Requests
-                │                   │
-         ┌──────┴──────┐            ▼
-         ▼             ▼        Primary Node
-     Replica 1      Replica 2       │
-                                    │ Replication
-                           ┌────────┴────────┐
-                           ▼                 ▼
-                      Replica 1          Replica 2
+Cluster topology ke basis par Redis Client ko pata hota hai ki
+us Hash Slot ka Primary Node kaunsa hai aur uske associated Replicas
+kaunse hain.
 
+Agar Replica-based reads configured hain, to Redis Client
+configured read-routing strategy ke basis par available Replicas me
+se kisi appropriate Replica ko read request route kar sakta hai.
 
-Is tarah `product:101` ke read requests multiple Redis instances
-ke across distribute ho jaati hain.
+Write operations  corresponding Primary Node par jaati hain.
+
 
 ## NOTE:
 ---------
@@ -4554,49 +4610,97 @@ jo internally Lettuce ya Jedis jaise Redis clients ka use kar sakti hai. Redis c
 nodes ki information ke basis par appropriate Redis node se communication handle karta hai.
 
 
-##2. WRITE FLOW AND REPLICATION
+## BENEFITS OF READ REPLICAS
+----------------------------
+
+Hot Key ki read requests ko multiple Redis Replicas ke across
+distribute kiya ja sakta hai.
+
+Isse read traffic ek single Redis Node par concentrate nahi hota,
+jisse overall read throughput increase ho sakta hai aur kisi single
+Redis Node ke bottleneck banne ka risk reduce hota hai.
+
+
+
+## 2. WRITE FLOW AND REPLICATION
 -------------------------------
 
-Ab maan lo product:101 ka data update karna hai:
+Ab maan lo `product:101` ka data update karna hai:
 
 Price: ₹100 → ₹120
 
-Write request sabse pehle Database par update perform karegi. Database successfully update hone ke baad, corresponding Redis Primary Node ki cache entry ko update ya invalidate kiya jayega.
 
-Updated data Primary Node se Replication ke through uski associated Read Replicas tak propagate ho jayega.
+## WRITE REQUEST FLOW
+----------------------
 
-Agar Application Instances Local / In-Memory Cache maintain kar rahi hain, to corresponding Local Cache entries ko invalidate karne ke liye Cache Invalidation Event publish kiya ja sakta hai.
+Client
+   │
+   │ HTTP Request
+   ▼
+Load Balancer
+   │
+   ▼
+Application Instance
+   │
+   ▼
+Update Database
+   │
+   ▼
+Database Update Successful
+   │
+   ▼
+Calculate Hash of Key
+`product:101`
+   │
+   ▼
+Determine Hash Slot
+   │
+   ▼
+Redis Client checks Cluster Topology
+   │
+   ▼
+Identify Primary Node
+responsible for this Hash Slot
+   │
+   ▼
+Primary Redis Node 1
+   │                              
+   ▼                            
+Update / Invalidate Cache Entry                           
+   │
+   ▼
+Publish Cache Invalidation Event
+   │
+   ▼
+All relevant Application Instances
+receive the event
+   │
+   ▼
+Invalidate corresponding
+Local / In-Memory Cache entries
 
-High-level flow:
-Application
-     ↓
-Database Updated
-     ↓
-Redis Primary Updated / Invalidated
-     ↓
-Changes Replicated to Read Replicas
-     ↓
-Cache Invalidation Event
-     ↓
-Local Caches Invalidated
 
 
 ## REPLICATION DELAY
 ---------------------
 
-Primary Node par data update hone aur updated data ke sabhi Replicas tak propagate hone ke beech thoda delay ho sakta hai.
+Primary Node par hone wale updates ya invalidations Redis ke internal
+replication mechanism ke through associated Replicas tak propagate hote hain.
 
-Is duration me temporarily kuch aisa state ho sakta hai:
+Primary aur Replicas ke beech replication me thoda delay ho sakta hai.
+
+Example:
 
 Primary  → Price = ₹120
 Replica 1 → Price = ₹120
 Replica 2 → Price = ₹100
 
-Agar isi time koi read request Replica 2 ke paas route ho jaati hai, to user ko temporarily purana data mil sakta hai.
+Agar isi time read request Replica 2 ke paas route ho jaaye, to
+temporarily stale data return ho sakta hai.
 
 ### TRADE-OFF:
---------------
-Read traffic multiple nodes me distribute hota hai, lekin replication delay ki wajah se temporary stale reads possible hain.
+Read traffic multiple Redis Nodes me distribute kiya ja sakta hai,
+lekin replication delay ki wajah se temporary stale reads possible hain.
 
 
 ## READ REPLICAS KAB USEFUL HAIN?
