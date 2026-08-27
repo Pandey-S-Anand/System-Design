@@ -3988,9 +3988,6 @@ har Application Instance apni separate Local Cache maintain karta hai.
 Yaani, ye Local Caches ek dusre ke saath shared nahi hote.
 
 
-## EXAMPLE:
-------------
-
 Maan lo, initially `product:101` ka current data Database, Shared Redis Cache
 aur sabhi Application Instances ki Local Caches me consistent hai:
 
@@ -4007,58 +4004,6 @@ Ab maan lo product:101 ka price update karne ke liye ek write request Instance 1
 
 Price: ₹100 → ₹120
 
-
-## SCENARIO 1: LOCAL CACHE INVALIDATE HI NAHI HUI
--------------------------------------------------
-
-Instance 1 Database me latest value update karti hai aur Shared Redis Cache me stored purani entry invalidate / update kar deti hai.
-
-## CURRENT STATE:
-------------------
-
-Database → product:101 → Price = ₹120
-
-Redis → product:101 → UPDATED / DELETED
-
-Lekin Local Caches automatically invalidate nahi hoti. Isliye unme purana data abhi bhi stored reh sakta hai:
-
-Instance 1 Local Cache → Price = ₹100
-Instance 2 Local Cache → Price = ₹100
-Instance 3 Local Cache → Price = ₹100
-
-Ab agar subsequent read request Instance 2 ke paas jaati hai:
-
-Request
-   ↓
-Instance 2
-   ↓
-Local Cache Check
-   ↓
-Cache Hit
-   ↓
-Price = ₹100
-
-Kyuki Instance 2 ki Local Cache me data available hai, Application Redis ya Database ko check nahi karegi aur directly Local Cache se response return kar degi.
-
-User receives → Price = ₹100
-
-Even though latest data hai:
-
-Database → Price = ₹120
-
-Redis → Old Entry Deleted / UPDATED
-
-
-## RESULT:
------------
-Local Cache me stored stale data user ko serve ho sakta hai.
-
-
-## SCENARIO 2: WRITING INSTANCE APNI LOCAL CACHE INVALIDATE KAR DETI HAI
---------------------------------------------------------------------------
-
-Ab maan lo write request Instance 1 ke paas aati hai.
-
 Instance 1:
 
 1. Database update karti hai
@@ -4068,8 +4013,8 @@ Instance 1:
 3. Apni Local Cache ko invalidate karti hai
 
 
-## CURRENT STATE:
-------------------
+### UPDATE KE BAAD CURRENT STATE:
+----------------------------------
 
 Database → product:101 → Price = ₹120
 
@@ -4079,21 +4024,10 @@ Instance 1 Local Cache → Deleted
 Instance 2 Local Cache → Price = ₹100
 Instance 3 Local Cache → Price = ₹100
 
+Ab Instance 1 ki Local Cache invalidate ho gayi hai, lekin Instance 2
+aur Instance 3 ki Local Caches me purana data abhi bhi stored hai.
 
-Ab agar subsequent read request Instance 1 ke paas jaati hai:
-
-Instance 1 Local Cache → MISS
-        ↓
-      Redis
-        ↓
-Updated Data / MISS
-        ↓
-Database → ₹120
-
-
-Instance 1 eventually latest value fetch karke return karegi.
-
-Lekin agar request Instance 2 ya Instance 3 ke paas jaati hai:
+Agar subsequent request Instance 2 ke paas jaati hai:
 
 Request
    ↓
@@ -4106,12 +4040,167 @@ Price = ₹100
 To stale data return ho jayega.
 
 
-## REASON :
+### REASON :
 ------------
 Har Application Instance apni separate Local Cache maintain karti hai.
 Isliye ek instance ki Local Cache invalidate hone se baaki instances ki Local Caches automatically invalidate nahi hoti.
 
 
+### IS PROBLEM KO HANDLE KAISE KARTE HAIN?
+-------------------------------------------
+
+##1. SHORT TTL
+-----------------
+
+Distributed System me Application Instances ki Local Cache entries ke
+saath relatively short TTL configure ki ja sakti hai.
+
+## EXAMPLE :
+--------------
+
+product:101
+
+Local Cache TTL = 30 seconds
+
+Agar Database aur Shared Cache (e.g. Redis) update ho jaye, lekin kisi
+reason se Local Cache invalidate na ho, to stale data permanently Local
+Cache me nahi rahega.
+
+TTL expire hone ke baad:
+
+Local Cache → MISS
+       ↓
+Redis → Latest Data
+       ↓
+Populate Local Cache
+       ↓
+Return Latest Data
+
+TTL ek safety mechanism ki tarah kaam karta hai, lekin TTL expire
+hone tak stale data serve ho sakta hai.
+
+
 ##2. EVENT-BASED CACHE INVALIDATION
 -------------------------------------
+
+Abhi humne dekha ki Distributed System me har Application Instance apni
+separate Local / In-Memory Cache maintain karti hai.
+
+Write request ke case me Database update karna aur Shared Redis Cache
+ko invalidate/update karna relatively straightforward hai.
+
+Lekin Local Cache ke saath problem ye hai ki writing request jis
+Application Instance ke paas aati hai, woh maximum apni Local Cache
+ko invalidate kar sakti hai.
+
+Woh directly doosre Application Instances ki Local Caches ko
+invalidate nahi kar sakti.
+
+Isliye agar data Database me update ho jaye aur Redis bhi
+invalidate/update ho jaye, tab bhi doosre Application Instances ki
+Local Caches me purana data stored reh sakta hai.
+
+Agar subsequent request kisi aise instance ke paas jaati hai jahan
+Local Cache me purana data available hai, to stale data serve ho sakta hai.
+
+Is problem ko solve karne ke liye hume aisa mechanism chahiye jisse
+data update hone par sabhi Application Instances ko notify kiya ja sake
+ki corresponding Local Cache entry invalidate karni hai.
+
+Isi approach ko Event-Based Cache Invalidation kehte hain.
+
+
+## FLOW :
+----------
+
+Maan lo `product:101` ko update karne ke liye write request
+Application Instance 1 ke paas aati hai.
+
+Application Instance 1 Database update karti hai aur corresponding
+Redis Cache entry ko update ya invalidate karti hai.
+
+Uske baad Application ek Cache Invalidation Event publish karti hai:
+
+CacheInvalidationEvent : key = product:101
+
+Ye event aise messaging mechanism ke through sabhi relevant Application Instances tak deliver kiya jata hai, 
+jisse har instance corresponding Local Cache entry invalidate kar sake.
+
+Har Application Instance received key `product:101` ko apni Local
+Cache se invalidate kar deti hai.
+
+Ab kisi bhi instance par next request aane par Local Cache me stale
+data nahi milega. Application Redis se latest data fetch karke
+response return karegi.
+
+Is tarah Event-Based Cache Invalidation ke through Distributed Systems me 
+multiple Application Instances ki Local Caches ko invalidate kiya ja sakta hai.
+
+
+## LIMITATION: EVENT DELIVERY FAILURE
+-------------------------------------
+
+Event-Based Cache Invalidation me data update hone ke baad ek
+Cache Invalidation Event relevant Application Instances ko bheja
+jata hai taaki woh corresponding Local Cache entry invalidate kar saken.
+
+Lekin possible hai ki kisi instance ko event receive na ho.
+
+Maan lo product:101 update hua:
+
+Database Updated
+       ↓
+Redis Updated / Invalidated
+       ↓
+Cache Invalidation Event Published
+       ↓
+
+Event Instance 1 aur Instance 2 tak successfully pahunch gaya:
+
+Instance 1 → Event Received → Local Cache Invalidated
+
+Instance 2 → Event Received → Local Cache Invalidated
+
+Lekin kisi reason se Instance 3 event receive nahi kar paya:
+
+Instance 3 → Event Not Received
+     
+Isliye Instance 3 ki Local Cache me purana data abhi bhi stored reh
+sakta hai:
+
+Agar subsequent request Instance 3 ke paas jaati hai:
+
+Request
+   ↓
+Local Cache → HIT
+   ↓
+Stale Data
+
+
+## TTL AS A SAFETY NET
+-----------------------
+
+Agar kisi Application Instance ko Cache Invalidation Event miss ho jaye,
+to stale data uski Local Cache me indefinitely nahi rehna chahiye.
+
+Isliye Local Cache entries ke saath TTL configure kiya ja sakta hai.
+
+Event-Based Invalidation + TTL Safety Net → Prevents Stale Data from Remaining Indefinitely
+
+
+TTL expire hone ke baad:
+
+Local Cache Entry Expires
+          ↓
+Next Request → Local Cache MISS
+          ↓
+Fetch Latest Data from Shared Cache (e.g. Redis)
+          ↓
+Populate Local Cache
+
+
+
+##2. READ REPLICAS / REPLICA-BASED READ DISTRIBUTION
+------------------------------------------------------
+
 
