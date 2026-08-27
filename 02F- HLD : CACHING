@@ -4715,3 +4715,35 @@ Read Replicas especially useful hoti hain jab:
 
 ##3. HOT KEY REPLICATION 
 ---------------------------
+
+Read Replicas me Primary Redis Node ka pura data uski Replica Nodes
+par replicate hota hai.
+
+Hot Key Replication me ek particular Hot Key aur uske data ki
+multiple independent cached copies create ki jaati hain.
+
+Original key ke saath suffix append karke multiple different keys
+banayi ja sakti hain:
+
+product:101:1
+product:101:2
+product:101:3
+
+Kyunki ye different keys hain, Redis Client hashing ke basis par inhe different Hash Slots par map kar sakta hai.
+
+Is wajah se ye keys potentially cluster ke different Redis Nodes par
+distribute ho sakti hain.
+
+Is tarah read traffic multiple cache keys aur potentially multiple
+Redis Nodes ke across spread ho sakta hai.
+
+Conceptually:
+
+                    product:101
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+   product:101:1  product:101:2  product:101:3
+          │              │              │
+          ▼              ▼              ▼
+       Node 1         Node 2         Node 3
