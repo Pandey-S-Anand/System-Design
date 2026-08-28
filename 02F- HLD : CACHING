@@ -4014,7 +4014,12 @@ Corresponding cache key becomes a Hot Key
 ## HOT KEY PROBLEM KE SOLUTIONS
 ---------------------------------
 
-Har Hot Key ke liye same solution use nahi hota.
+1. LOCAL / IN-MEMORY CACHE
+
+2. READ REPLICAS / REPLICA-BASED READ DISTRIBUTION
+
+3. HOT KEY REPLICATION 
+
 
 ##1. LOCAL / IN-MEMORY CACHE
 ------------------------------
@@ -4716,11 +4721,11 @@ Read Replicas especially useful hoti hain jab:
 ##3. HOT KEY REPLICATION 
 ---------------------------
 
-Read Replicas me Primary Redis Node ka pura data uski Replica Nodes
-par replicate hota hai.
+Read Replicas me Primary Redis Node ka pura data uski Replica Nodes par
+replicate hota hai.
 
-Hot Key Replication me ek particular Hot Key aur uske data ki
-multiple independent cached copies create ki jaati hain.
+Hot Key Replication me ek particular Hot Key ki multiple independent
+cached copies create ki jaati hain.
 
 Original key ke saath suffix append karke multiple different keys
 banayi ja sakti hain:
@@ -4729,13 +4734,108 @@ product:101:1
 product:101:2
 product:101:3
 
-Kyunki ye different keys hain, Redis Client hashing ke basis par inhe different Hash Slots par map kar sakta hai.
+Kyunki ye different keys hain, Redis Cluster me ye different Hash Slots
+aur potentially different Redis Nodes par distribute ho sakti hain.
 
-Is wajah se ye keys potentially cluster ke different Redis Nodes par
-distribute ho sakti hain.
+Isse Hot Key ke read traffic ko multiple cache copies aur potentially
+multiple Redis Nodes ke across distribute kiya ja sakta hai.
 
-Is tarah read traffic multiple cache keys aur potentially multiple
-Redis Nodes ke across spread ho sakta hai.
+
+
+                     REDIS CLUSTER
+
+                        CLIENT
+                           │
+                           │ HTTP Request
+                           ▼
+                    Load Balancer
+                           │
+                 ┌─────────┼─────────┐
+                 ▼         ▼         ▼
+        Application   Application   Application
+         Instance 1    Instance 2    Instance 3
+                 │         │         │
+                 │         │         │
+                 └─────────┼─────────┘
+                           │
+                           ▼
+                     REDIS CLUSTER
+        ┌───────────────────────────────────────┐
+        │                                       │
+        │      Node 1                           │
+        │      product:101                      │
+        │                                       │
+        │      Node 2                           │
+        │      product:102                      │
+        │                                       │
+        │      Node 3                           │
+        │      product:103                      │
+        │                                       │
+        └───────────────────────────────────────┘
+
+
+
+##1. CREATE / INTIAL WRITE 
+----------------------------
+
+Maan lo ek naya product create karne ke liye request aati hai:
+
+POST /products
+
+Product:
+
+ID = 101
+Name = iPhone
+Price = ₹100
+
+Load Balancer is request ko kisi ek Application Instance ke paas route
+karta hai. Maan lo request Application Instance 1 ke paas jaati hai.
+
+Maan lo product:101 ko system ne ek Hot Key ke roop me identify kiya hai.
+
+Is Hot Key par high read traffic expected hai, isliye iska load distribute karne ke liye system iski:
+
+N = 3
+
+independent cached copies maintain karega.
+
+Isliye Instance 1 original key ke saath 1 se N tak suffix append
+karke multiple cache keys create karta hai:
+
+product:101:1
+product:101:2
+product:101:3
+
+Sabse pehle Application actual product data ko Database me store karti
+hai:
+
+Create Product Request
+↓
+Application
+↓
+Database
+↓
+product:101 Created
+
+
+Database successfully update hone ke baad, Application Instance 1 Redis
+me Hot Key ki multiple cached copies create karne ki request bhejti hai:
+
+SET product:101:1 {iPhone, ₹100}
+SET product:101:2 {iPhone, ₹100}
+SET product:101:3 {iPhone, ₹100}
+
+Redis Client har key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
+
+Redis Cluster ki slot-to-node mapping ke basis par Redis Client ko pata
+hota hai ki corresponding Hash Slot kis Redis Node ke paas assigned hai.
+
+Is mapping ke basis par request appropriate Redis Node tak route ki
+jaati hai aur key wahan store hoti hai.
+
+Kyunki ye different keys hain, ye different Hash Slots par map ho sakti
+hain aur potentially different Redis Nodes par distribute ho sakti hain.
 
 Conceptually:
 
@@ -4747,3 +4847,344 @@ Conceptually:
           │              │              │
           ▼              ▼              ▼
        Node 1         Node 2         Node 3
+
+Ab same product ki multiple independent cached copies Redis cluster ke different nodes mai available hain.
+
+
+##2. READ FLOW
+---------------
+
+Ab maan lo product:101 ke liye ek read request aati hai:
+
+GET /products/101
+
+Load Balancer request ko kisi Application Instance ke paas route karta
+hai. Maan lo request Application Instance 2 ke paas jaati hai.
+
+Application ko pata hai ki product:101 ki:
+
+N = 3
+
+cached copies available hain:
+
+product:101:1
+product:101:2
+product:101:3
+
+Application 1 se N ke beech ek random number generate karke
+corresponding cache copy select kar sakti hai.
+
+Maan lo Application ne:
+
+Random Number = 2 generate kiya.
+
+Application is number ko original key ke saath append karke final cache
+key banati hai:
+
+Base Key = product:101
+Selected Number = 2
+Final Cache Key = product:101:2
+
+Ab Application Redis Cluster se product:101:2 fetch karne ke liye
+request bhejti hai.
+
+Redis Client key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
+
+Redis Cluster ki slot-to-node mapping ke basis par Redis Client ko pata
+hota hai ki corresponding Hash Slot kis Redis Node ke paas assigned hai.
+
+Is mapping ke basis par request appropriate Redis Node tak route karta hai
+
+Agar selected cache key available hai:
+
+product:101:2 → {iPhone, ₹100}
+
+to Cache Hit hota hai aur data Client ko return kar diya jata hai.
+
+
+##3. UPDATE FLOW
+------------------
+
+Ab product:101 already exist karta hai aur Redis Cluster me iski
+multiple cached copies available hain.
+
+## CURRENT STATE
+-----------------
+
+Database me:
+
+product:101
+Name = iPhone
+Price = ₹100
+
+Redis Cluster me:
+
+product:101:1 → {iPhone, ₹100}
+product:101:2 → {iPhone, ₹100}
+product:101:3 → {iPhone, ₹100}
+
+Ab product ka price update karne ke liye ek request aati hai:
+
+PUT /products/101
+
+Price = ₹120
+
+Load Balancer request ko kisi ek Application Instance ke paas route
+karta hai. Maan lo request Application Instance 2 ke paas jaati hai.
+
+Sabse pehle Application product data ko Database me update karti hai.
+
+Database update hone ke baad:
+
+product:101 → Price = ₹120
+
+Lekin Redis me available cached copies abhi bhi purana data contain
+kar rahi hain:
+
+product:101:1 → {iPhone, ₹100}
+product:101:2 → {iPhone, ₹100}
+product:101:3 → {iPhone, ₹100}
+
+Agar is state me koi read request kisi bhi cache copy se data fetch
+karti hai, to user ko stale data mil sakta hai.
+
+Isliye Database update ke baad sabhi relevant cached copies ko bhi
+update ya invalidate karna zaroori hai.
+
+
+## APPROACH 1 : UPDATE ALL CACHE COPIES
+------------------------------------------
+
+Is approach me Database successfully update hone ke baad Application
+sabhi Hot Key cache copies ko latest data ke saath update karti hai.
+
+### CURRENT STATE
+-------------------
+Database:
+
+product:101 → {iPhone, ₹120}
+
+Redis:
+
+product:101:1 → {iPhone, ₹100}
+product:101:2 → {iPhone, ₹100}
+product:101:3 → {iPhone, ₹100}
+
+Application ko pata hai ki N = 3 copies maintain ki ja rahi hain.
+
+Application `1` se `N` tak har cache key ko latest data ke saath
+update karne ki request bhejti hai:
+
+SET product:101:1 {iPhone, ₹120}
+SET product:101:2 {iPhone, ₹120}
+SET product:101:3 {iPhone, ₹120}
+
+Redis Client har key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
+
+Redis Cluster ki slot-to-node mapping ke basis par Redis Client identify
+karta hai ki corresponding Hash Slot kis Redis Node ke paas assigned hai.
+
+Is mapping ke basis par update request appropriate Redis Node tak route
+ki jaati hai aur corresponding cache copy ko latest data ke saath update
+kar diya jata hai.
+
+Update ke baad:
+
+product:101:1 → {iPhone, ₹120}
+product:101:2 → {iPhone, ₹120}
+product:101:3 → {iPhone, ₹120}
+
+
+### PROBLEM
+------------
+
+Ek Database update ke baad sabhi N cache copies ko bhi update karna padta hai.
+
+Example: N = 3 → 1 Database Update + 3 Cache Updates
+
+
+### BENEFIT
+------------
+Agar sabhi cache copies successfully update ho jaati hain, to subsequent
+read requests ke liye kisi bhi cache copy se immediately latest data
+return kiya ja sakta hai.
+
+
+### FAILURE SCENARIO
+---------------------
+
+Sabhi cache copies ka update successful hona zaroori hai.
+
+Maan lo:
+
+product:101:1 → Updated
+product:101:2 → Updated
+product:101:3 → Update Failed
+
+Ab ek cache copy me purana data reh sakta hai.
+
+Agar read request us stale copy ko select kare, to user ko stale data
+mil sakta hai.
+
+Isliye multiple cache copies ke saath consistency maintain karna
+additional challenge hota hai.
+
+
+
+## APPROACH 2 : INVALIDATE ALL CACHE COPIES
+---------------------------------------------
+
+Is approach me Database successfully update hone ke baad Application
+sabhi Hot Key cache copies ko latest data se update karne ke bajaye
+invalidate (delete) kar deti hai.
+
+### CURRENT STATE
+------------------
+
+Database:
+
+product:101 → {iPhone, ₹120}
+
+Redis:
+
+product:101:1 → {iPhone, ₹100}
+
+product:101:2 → {iPhone, ₹100}
+
+product:101:3 → {iPhone, ₹100}
+
+Application ko pata hai ki `N = 3` cached copies maintain ki ja rahi hain.
+
+Isliye Application `1` se `N` tak sabhi cache copies ko delete karne
+ki request bhejti hai:
+
+DEL product:101:1
+DEL product:101:2
+DEL product:101:3
+
+Redis Client har key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
+
+Redis Cluster ki slot-to-node mapping ke basis par Redis Client identify
+karta hai ki corresponding Hash Slot kis Redis Node ko assigned hai.
+
+Is mapping ke basis par har delete request appropriate Redis Node tak
+route ki jaati hai aur corresponding cache copy delete kar di jaati hai.
+
+Delete hone ke baad:
+
+product:101:1 → Not Available
+product:101:2 → Not Available
+product:101:3 → Not Available
+
+
+### SUBSEQUENT READ REQUEST
+-----------------------------
+
+Ab maan lo `product:101` ke liye ek subsequent read request aati hai:
+
+GET /products/101
+
+Load Balancer request ko kisi ek Application Instance ke paas route
+karta hai.
+
+Maan lo request Application Instance 3 ke paas jaati hai.
+
+Application ko pata hai ki `product:101` ki `N = 3` cached copies
+maintain ki jaati hain.
+
+Application `1` se `N` ke beech ek random number generate karke
+ek cache copy select karti hai.
+
+Maan lo:
+
+Random Number = 2
+
+Isliye selected cache key hogi:
+
+product:101:2
+
+Application is key ko Redis Cluster se fetch karne ke liye request
+bhejti hai.
+
+Redis Client key ka hash calculate karke corresponding Hash Slot
+determine karta hai aur slot-to-node mapping ke basis par request ko
+appropriate Redis Node tak route karta hai.
+
+Lekin kyunki update ke baad sabhi cache copies invalidate kar di gayi
+thi:
+
+product:101:2 → Cache Miss
+
+Application latest product data Database se fetch karti hai:
+
+Database
+↓
+product:101
+↓
+{iPhone, ₹120}
+
+Ab Application ko latest data mil gaya hai.
+
+Kyuki Application ko pata hai ki `product:101` ek Hot Key hai aur iski
+`N = 3` cached copies maintain karni hain, Application multiple cache
+copies dobara create karti hai:
+
+SET product:101:1 {iPhone, ₹120}
+SET product:101:2 {iPhone, ₹120}
+SET product:101:3 {iPhone, ₹120}
+
+Redis Client har key ka hash calculate karke corresponding Hash Slot
+determine karta hai.
+
+Slot-to-node mapping ke basis par har cache write request appropriate
+Redis Node tak route ki jaati hai aur corresponding cache copy wahan
+store kar di jaati hai.
+
+Ab Redis Cluster me latest product data ki multiple independent cached
+copies available hain:
+
+product:101:1 → {iPhone, ₹120}
+product:101:2 → {iPhone, ₹120}
+product:101:3 → {iPhone, ₹120}
+
+Finally, Application Database se fetched latest product data Client ko
+return kar deti hai.
+
+
+### BENEFIT
+------------
+
+Database ko source of truth maan kar purani cache copies invalidate kar di jaati hain.
+Next subsequent request par Cache Miss hone par latest data Database se fetch kiya jata hai. 
+Uske baad required number of cache copies create karke unhe latest data ke saath populate kar diya jata hai.
+
+
+## PROBLEM
+------------
+
+Invalidate karne ke baad next read request ko Cache Miss encounter hota hai,
+jiske baad request latest data fetch karne ke liye Database tak jaati hai.
+
+Agar invalidation ke immediately baad bahut saari concurrent read requests
+aa jaayen, to multiple requests Database tak pahunch sakti hain aur
+Cache Stampede jaisi situation create ho sakti hai.
+
+
+## IMPORTANT POINT
+-------------------
+
+Hot Key Replication me multiple cache keys:
+
+product:101:1
+product:101:2
+product:101:3
+
+same underlying data ki copies hoti hain.
+
+Isliye Cache Stampede prevent karne ke liye lock individual replicated
+cache key ke basis par create karne ke bajaye base/original key ke basis
+par create kiya jana chahiye
+
