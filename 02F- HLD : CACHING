@@ -4020,6 +4020,8 @@ Corresponding cache key becomes a Hot Key
 
 3. HOT KEY REPLICATION 
 
+4. CDN / EDGE CACHE
+
 
 ##1. LOCAL / IN-MEMORY CACHE
 ------------------------------
@@ -5188,3 +5190,15 @@ Isliye Cache Stampede prevent karne ke liye lock individual replicated
 cache key ke basis par create karne ke bajaye base/original key ke basis
 par create kiya jana chahiye
 
+
+## 4. CDN / EDGE CACHE
+-------------------------
+
+CDN especially useful hai jab Hot Content geographically distributed
+users ke dwara access kiya ja raha ho.
+
+Agar Hot Content static ya safely cacheable HTTP response hai,
+to usse CDN / Edge Cache par store kiya ja sakta hai.
+
+Isse bahut saari requests Application, Redis aur Database tak pahunchne
+se pehle hi CDN se serve ho sakti hain.
