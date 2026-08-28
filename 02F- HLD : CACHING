@@ -3766,11 +3766,11 @@ Instance 1 Redis me data store karne ke liye request bhejti hai:
 
 SET product:101 {product data}
 
-Jab koi key Redis Cluster me store karni hoti hai, to us key ka hash
-calculate kiya jata hai aur use ek hash slot se map kiya jata hai.
+Redis Client har key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
 
-Redis Cluster ke paas information hoti hai ki kaunsa hash slot
-kis Redis Node ki responsibility hai.
+Redis Cluster ki slot-to-node mapping ke basis par Redis Client identify
+karta hai ki corresponding Hash Slot kis Redis Node ko assigned hai.
 
 Is slot-to-node mapping ke basis par determine hota hai ki key
 kis Redis Node par store hogi.
@@ -3804,8 +3804,8 @@ Instance 2 Redis se data fetch karne ke liye request bhejti hai:
 
 GET product:101
 
-`product:101` key ka hash calculate kiya jata hai aur use ek hash slot
-se map kiya jata hai.
+Redis Client `product:101` key ka hash calculate karke uska corresponding Hash Slot
+determine karta hai.
 
 Redis Cluster ke paas information hoti hai ki kaunsa hash slot kis
 Redis Node ki responsibility hai.
@@ -5052,9 +5052,7 @@ product:101 → {iPhone, ₹120}
 Redis:
 
 product:101:1 → {iPhone, ₹100}
-
 product:101:2 → {iPhone, ₹100}
-
 product:101:3 → {iPhone, ₹100}
 
 Application ko pata hai ki `N = 3` cached copies maintain ki ja rahi hain.
@@ -5202,3 +5200,78 @@ to usse CDN / Edge Cache par store kiya ja sakta hai.
 
 Isse bahut saari requests Application, Redis aur Database tak pahunchne
 se pehle hi CDN se serve ho sakti hain.
+
+
+============================
+## 18 : MULTI-LEVEL CACHING
+============================
+
+Multi-Level Caching ka matlab hai data ko ek se zyada caching layers
+me maintain karna.
+
+
+                         REQUEST
+                            │
+                            ▼
+                  ┌───────────────────┐
+                  │   LOCAL CACHE     │
+                  └─────────┬─────────┘
+                            │
+                     Cache Hit?
+                      /        \
+                   YES          NO
+                    │            │
+                    ▼            ▼
+              RETURN DATA   ┌───────────────┐
+                            │     REDIS     │
+                            └───────┬───────┘
+                                    │
+                             Cache Hit?
+                              /        \
+                           YES          NO
+                            │            │
+                            ▼            ▼
+                    POPULATE LOCAL   ┌───────────┐
+                        CACHE        │ DATABASE  │
+                            │        └─────┬─────┘
+                            │              │
+                            │       Data Found?
+                            │         /      \
+                            │       YES       NO
+                            │        │         │
+                            │        ▼         ▼
+                            │   POPULATE    RETURN
+                            │    REDIS        404
+                            │        │
+                            │        ▼
+                            │   POPULATE
+                            │  LOCAL CACHE
+                            │        │
+                            └────────┘
+                                    │
+                                    ▼
+                               RETURN DATA
+
+
+Different cache layers ke different benefits hote hain:
+
+Local Cache
+→ Fastest access
+→ No network call to Redis or Database
+
+Distributed Cache (Redis)
+→ Shared across multiple Application Instances
+→ Larger cache capacity
+→ Reduces Database calls
+
+
+Multi-Level Caching ke benefits:
+
+↓ Response Latency
+↓ Redis Traffic
+↓ Database Load
+
+
+============================
+## 19 : MULTI-LEVEL CACHING
+============================
