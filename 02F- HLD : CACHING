@@ -5279,6 +5279,7 @@ Multi-Level Caching ke benefits:
 Kuch situations me hume pehle se pata hota hai ki kisi particular time
 par kuch popular products ke liye bahut zyada traffic aane wala hai.
 
+-------------
 ### EXAMPLE:
 -------------
 
@@ -5305,7 +5306,7 @@ create ho sakti hai.
 Agar ek saath bahut saare different products ki Cache entries bhi
 Miss ho rahi hain, to Cache Avalanche jaisi situation create ho sakti hai.
 
-
+------------------------------
 ## SOLUTION : CACHE WARMING
 ------------------------------
 
@@ -5336,7 +5337,7 @@ Cache Miss hone ka wait nahi karna padta.
 
 Data pehle se Cache me available hota hai.
 
-
+---------------------------------
 ## CACHE WARMING KA MAIN BENEFIT
 ---------------------------------
 
@@ -5345,3 +5346,189 @@ Isliye Cache Warming ka main purpose hai:
 Agar kisi particular product ke liye **expected high traffic** hai, to uska data pehle hi Cache me populate kar diya jata hai, 
 taaki initial requests Cache Miss encounter karke unnecessarily Database ko overload na karein.
 
+
+
+=======================================
+## 20 : CACHE KEY DESIGN / KEY NAMING
+=======================================
+
+Cache me har data ko identify karne ke liye ek unique key hoti hai.
+
+---------------------
+## SINGLE PARAMETER
+---------------------
+
+Agar request sirf ek identifier par depend karti hai:
+
+### EXAMPLE:
+------------
+
+GET /products/101
+
+Cache Key:
+
+product:101
+
+Basic Convention:
+
+<entity>:<id>
+
+
+------------------------
+## MULTIPLE PARAMETERS
+------------------------
+
+Agar request multiple parameters par depend karti hai,
+to relevant parameters ko bhi Cache Key ka part banana chahiye.
+
+### EXAMPLE:
+-------------
+
+GET /products?category=mobile&page=2
+
+Cache Key:
+
+products:mobile:page:2
+
+Basic Convention:
+
+<entity>:<parameter1>:<parameter2>:...
+
+
+-----------------
+### BASIC RULES
+-----------------
+
+→ Cache Key unique honi chahiye.
+→ Consistent naming convention use karo, otherwise KEY COLLISION ho sakti hai.
+→ Relevant parameters ko key me include karo.
+→ Keys unnecessarily large nahi honi chahiye.
+
+
+=======================
+## 21 : TTL STRATEGY
+=======================
+
+Cache me har data ke liye same TTL rakhna zaroori nahi hota.
+
+TTL ka selection mainly data ki freshness requirement,
+change frequency aur access pattern par depend karta hai.
+
+--------------
+### EXAMPLE:
+--------------
+
+Frequently changing data:
+
+Stock Price → Short TTL
+
+Less frequently changing data:
+
+Product Details → Longer TTL
+
+Rarely changing data:
+
+Configuration → Very Long TTL
+
+
+=====================================
+## 22 : CACHE MONITORING & METRICS
+=====================================
+
+Cache ko properly monitor karne ke liye kuch important metrics
+track kiye jaate hain.
+
+------------------------
+### IMPORTANT METRICS:
+------------------------
+
+→ Cache Hit Ratio
+→ Cache Miss Ratio
+→ Cache Latency
+→ Cache Eviction Rate 
+
+
+-----------------------
+### 1. CACHE HIT RATIO
+-----------------------
+
+Kitni requests Cache se successfully serve hui.
+
+Higher Hit Ratio
+→ Better Cache Effectiveness
+
+
+----------------------
+###2. CACHE MISS RATIO
+----------------------
+
+Kitni requests ko Cache me data nahi mila aur backend/Database
+tak jaana pada.
+
+Higher Miss Ratio
+→ Higher Backend Load
+
+
+----------------------
+### 3. CACHE LATENCY
+----------------------
+
+Cache se data return hone me kitna time lag raha hai.
+
+Higher Latency
+→ Response time increase ho sakta hai.
+
+
+----------------------
+### 4. EVICTION RATE
+----------------------
+
+Kitni Cache entries memory/RAM pressure ki wajah se remove ho rahi hain.
+
+High Eviction Rate
+→ Cache ke liye allocated memory (RAM) insufficient ho sakti hai.
+
+
+
+=================================
+## 23 : WHEN NOT TO USE CACHE
+=================================
+
+Har type ke data ke liye Cache use karna zaroori nahi hota.
+
+Cache avoid karna chahiye jab:
+
+--------------------------------------------------------------------
+1: DATA FREQUENTLY CHANGE HOTA HO AUR STALE DATA ACCEPTABLE NA HO.
+--------------------------------------------------------------------
+
+   Example:
+   Stock Price / Live Account Balance
+
+   Kyun?
+   Data frequently change hone par har update ke baad Cache ko
+   invalidate/update karna padega, jisse unnecessary Cache
+   Invalidation overhead badhega.
+
+-------------------------------------
+2: DATA BAHUT RARELY ACCESS HOTA HO.
+-------------------------------------
+
+   Example:
+   Old / Archived Reports
+
+   Kyun?
+   Rarely accessed data ke liye Cache ka benefit bahut kam hota hai
+   aur Cache ki RAM unnecessarily occupy hogi.
+
+------------------------
+3: DATA BAHUT LARGE HO.
+------------------------
+
+   Example:
+   Large Video Files / Large Reports
+
+   Kyun?
+   Bahut large data ko Cache me store karne se limited Cache RAM
+   quickly consume ho sakti hai aur frequently accessed useful data
+   ke liye available Cache space kam ho sakta hai.
