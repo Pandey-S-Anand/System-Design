@@ -5275,3 +5275,73 @@ Multi-Level Caching ke benefits:
 =====================================
 ## 19 : CACHE WARMING / PREWARMING
 =====================================
+
+Kuch situations me hume pehle se pata hota hai ki kisi particular time
+par kuch popular products ke liye bahut zyada traffic aane wala hai.
+
+### EXAMPLE:
+-------------
+
+Black Friday Sale → 10:00 AM
+
+Agar Sale start hone ke time popular products ki Cache entries empty
+ya expired hain:
+
+Users
+   ↓
+Application
+   ↓
+Cache Miss
+   ↓
+Database
+
+
+Ab maan lo kisi ek popular product ke liye bahut saari concurrent
+requests aati hain aur sabhi requests Cache Miss encounter karti hain.
+Ye requests ek saath Database tak pahunch sakti hain, jisse Database
+par sudden load spike aa sakta hai aur Cache Stampede jaisi situation
+create ho sakti hai.
+
+Agar ek saath bahut saare different products ki Cache entries bhi
+Miss ho rahi hain, to Cache Avalanche jaisi situation create ho sakti hai.
+
+
+## SOLUTION : CACHE WARMING
+------------------------------
+
+Cache Warming / Prewarming ka matlab hai expected-to-be-frequently
+accessed data ko actual user requests aane se pehle proactively Cache
+me populate kar dena.
+
+Example:
+
+Black Friday Sale start hone wali hai
+↓
+System identifies popular products
+↓
+Fetch Data from Database
+↓
+Populate Redis Cache
+↓
+Sale Starts
+↓
+User Requests
+↓
+Cache Hit
+↓
+Return Data
+
+Is case me Cache ko populate karne ke liye actual user requests ke
+Cache Miss hone ka wait nahi karna padta.
+
+Data pehle se Cache me available hota hai.
+
+
+## CACHE WARMING KA MAIN BENEFIT
+---------------------------------
+
+Isliye Cache Warming ka main purpose hai:
+
+Agar kisi particular product ke liye **expected high traffic** hai, to uska data pehle hi Cache me populate kar diya jata hai, 
+taaki initial requests Cache Miss encounter karke unnecessarily Database ko overload na karein.
+
