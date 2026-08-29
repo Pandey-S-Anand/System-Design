@@ -349,6 +349,8 @@ isliye ye additional I/O latency aur processing overhead create karta hai.
 
 
 
+
+
 =========================
 ## 2 : WHAT IS CACHING ?
 =========================
@@ -403,6 +405,8 @@ Cache ka main purpose frequently accessed data ko cache se serve karke Database 
 Database Load kam hone se Database Response Time reduce ho sakta hai, jisse overall Application Performance improve hoti hai.
 
 
+
+
 ===============================
 ## 3 : CACHE HIT vs CACHE MISS
 ===============================
@@ -428,6 +432,9 @@ to ise Cache Miss kehte hain.
 Is case me application Database se data retrieve karti hai,
 use future requests ke liye Cache me store karti hai,
 aur phir response return karti hai.
+
+
+
 
 
 ==========================================
@@ -472,6 +479,9 @@ Yaani:
         Some cache implementations disk persistence
         support kar sakti hain, mainly data recovery /
         durability ke purpose se.
+
+
+
 
 
 =======================
@@ -588,6 +598,288 @@ to data redis me available nahi hoga.
 Application Database se fresh data retrieve karegi,
 usse Redis me dobara cache karegi,
 aur client ko response return karegi.
+
+
+-------------------------
+## 3: REDIS DATA TYPES
+-------------------------
+
+Redis ek key-value data store hai. Redis me jab hum Data Type bolte hain,
+practically hum Value ke data type / data structure ki baat kar rahe hote hain.
+
+Key khud String hoti hai, jabki Value alag-alag Redis data types ki ho
+sakti hai.
+
+
+Redis ke commonly used Data Types:
+
+Key:
+→ String
+
+Value:
+→ String
+→ Hash
+→ List
+→ Set
+→ Sorted Set (ZSet)
+→ Stream
+
+
+## 1: STRING
+------------
+
+String Redis ka simplest aur most commonly used data type hai.
+
+Key → String
+Value → String / number / serialized object
+
+
+### EXAMPLE:
+-------------
+
+Key:
+product:101
+
+Value:
+{"id":101,"name":"iPhone","price":70000}
+
+
+### COMMAND:
+-------------
+
+SET user:101 "Anurag"       → Key ke corresponding value store karta hai
+
+GET user:101               →  Key ke corresponding value retrieve karta hai
+
+Output:
+"Anurag"
+
+
+
+## 2: HASH
+-----------
+
+Ek key ke corresponding multiple field-value pairs
+store karne ke liye use hota hai.
+
+
+### EXAMPLE:
+-------------
+
+Key:
+user:101
+
+Value:
+name "Anurag"
+age "25"
+city "Bangalore"
+
+
+### COMMAND:
+-------------
+
+HSET user:101 name "Anurag" age "25" city "Bangalore"
+→ Multiple field-value pairs store karta hai
+
+HGET user:101 name
+→ Particular field ki value retrieve karta hai
+
+Output:
+"Anurag"
+
+
+
+## 3: LIST
+-----------
+
+Ordered collection of values.
+
+
+### EXAMPLE:
+-------------
+
+Key:
+orders:101
+
+Value:
+order1
+order2
+
+
+### COMMAND:
+-------------
+
+LPUSH orders:101 "order1"
+→ List ke beginning me value add karta hai
+
+LPUSH orders:101 "order2"
+→ List ke beginning me value add karta hai
+
+LRANGE orders:101 0 -1
+→ List ke specified range ki values retrieve karta hai
+  0  → Start from first element
+ -1 → Go till the last element
+
+Yaani poori list retrieve karo.
+
+
+
+## 4: SET
+----------
+
+Unique values ka unordered collection.
+
+
+### EXAMPLE:
+-------------
+
+Key:
+users:online
+
+Value:
+"user101"
+"user102"
+"user101"
+
+
+### COMMAND:
+-------------
+
+SADD users:online "user101"
+→ Set me value add karta hai
+
+SADD users:online "user102"
+→ Set me value add karta hai
+
+SADD users:online "user101"
+→ Duplicate value add nahi hogi
+
+
+
+## 5: SORTED SET (ZSET)
+-----------------------
+
+Unique values ko score ke saath store karta hai aur
+score ke basis par ordered rehta hai.
+Sorted Set me score ka matlab hai kisi value ki ranking/order decide karne wala number.
+
+### EXAMPLE:
+-------------
+
+Key:
+leaderboard
+
+Value:
+"user101" → 100
+"user102" → 200
+
+
+### COMMAND:
+-------------
+
+ZADD leaderboard 100 "user101"
+→ user101 ko score 100 ke saath add karta hai
+
+ZADD leaderboard 200 "user102"
+→ user102 ko score 200 ke saath add karta hai
+
+ZRANGE leaderboard 0 -1
+→ Score ke ascending order me saari values retrieve karta hai
+
+Agar highest score pehle chahiye, to:
+
+ZREVRANGE leaderboard 0 -1
+→ Highest score se lowest score tak values retrieve karta hai
+
+0  → Start from first element
+-1 → Go till the last element
+
+Yaani poori sorted set retrieve karo.
+
+
+
+## 6: STREAM
+-------------
+
+Ordered sequence of messages/events ko store karne ke liye
+use hota hai.
+
+
+### EXAMPLE:
+-------------
+
+Key:
+orders
+
+Value:
+userId = 101
+event = "ORDER_CREATED"
+
+
+### COMMAND:
+-------------
+
+XADD orders * userId 101 event "ORDER_CREATED"
+→ Stream me ek new event/message add karta hai
+
+
+------------------------------
+## 4: COMMON REDIS COMMANDS
+-------------------------------
+
+→ SET
+  Key ke corresponding value store karta hai
+
+→ GET
+  Key ke corresponding value retrieve karta hai
+
+→ DEL
+  Key ko Cache se delete karta hai
+
+→ EXPIRE
+  Key ke liye TTL set karta hai
+
+→ TTL
+  Key ka remaining TTL check karta hai
+
+→ HSET
+  Key ke corresponding Hash me multiple field-value pairs store karta hai
+
+→ HGET
+  Key ke corresponding stored hash value ka particular field retrieve karta hai
+
+→ HGETALL
+  Key ke corresponding Hash me stored saare field-value pairs retrieve karta hai
+
+→ LPUSH
+  List ke beginning me value add karta hai
+
+→ RPUSH
+  List ke end me value add karta hai
+
+→ LRANGE
+  List ke specified range ki values retrieve karta hai
+
+→ SADD
+  Set me value add karta hai
+
+→ SMEMBERS
+  Set ki saari values retrieve karta hai
+
+→ ZADD
+  Sorted Set me value ko score ke saath add karta hai
+
+→ ZRANGE
+  Score ke ascending order me values retrieve karta hai
+
+→ ZREVRANGE
+  Score ke descending order me values retrieve karta hai
+
+→ XADD
+  Stream me new event/message add karta hai
+
+
+
 
 
 ===========================================
@@ -817,6 +1109,9 @@ Yahi Redis ko horizontally scaled applications me useful banata hai,
 kyunki multiple instances ek hi shared Cache layer ko use kar sakti hain.
 
 
+
+
+
 ==========================
 ## 7 : CACHE-ASIDE PATTERN
 ==========================
@@ -888,6 +1183,9 @@ Lekin kuch caching patterns / architectures me Cache implementation Cache Miss h
 Is concept ko broadly Read-Through Cache kehte hain.
 
 
+
+
+
 ====================
 ## 8 : STALE DATA
 ====================
@@ -939,6 +1237,9 @@ Ab next request:
 Cache Hit hone par user ko purana price ₹79,999 mil sakta hai.
 
 Is purane / outdated cached data ko Stale Data kehte hain.
+
+
+
 
 
 ===========================
@@ -1003,6 +1304,9 @@ corresponding cache entry ko delete kiya jata hai.
 
 Next read par Application Database se latest data fetch
 karti hai aur Cache ko dobara populate kar deti hai.
+
+
+
 
 
 =============
@@ -1303,6 +1607,9 @@ TTL expire hone ke baad next request Database se latest data
 fetch karke Cache ko update kar deti hai.
 
 
+
+
+
 ==============================================
 ## 11 : REDIS RAM LIMIT vs TOTAL SERVER RAM
 ==============================================
@@ -1375,6 +1682,9 @@ Conceptually:
     Memory Freed
            ↓
     New Data Stored
+
+
+
 
 
 ========================
@@ -1656,6 +1966,8 @@ paayega aur write operation fail ho sakta hai.
 
 
 
+
+
 ============================
 ## 13 : CACHE WRITE PATTERNS
 ============================
@@ -1888,6 +2200,9 @@ jo Cache se data retrieve karne ke comparison me relatively
 slower ho sakta hai.
 
 Isliye write ke baad first read comparatively slower ho sakti hai.
+
+
+
 
 
 ===========================================
@@ -3071,6 +3386,8 @@ refresh kar diya jata hai.
 
 
 
+
+
 ===========================
 ## 15 : CACHE PENETRATION
 ===========================
@@ -3534,6 +3851,9 @@ Isliye Bloom Filter ka result hota hai:
                              karna padega.
 
 
+
+
+
 ==========================
 ## 16 : CACHE AVALANCHE
 ==========================
@@ -3666,6 +3986,9 @@ Examples:
     - Batch processing
     - Bulk caching
     - Kisi event ke baad multiple cache entries populate hona
+
+
+
 
 
 ==============================
@@ -3860,6 +4183,9 @@ Return Data  Database
           Store Data
                 ↓
           Return Data
+
+
+
 
 
 ================
@@ -5202,6 +5528,9 @@ Isse bahut saari requests Application, Redis aur Database tak pahunchne
 se pehle hi CDN se serve ho sakti hain.
 
 
+
+
+
 ============================
 ## 18 : MULTI-LEVEL CACHING
 ============================
@@ -5270,6 +5599,9 @@ Multi-Level Caching ke benefits:
 ↓ Response Latency
 ↓ Redis Traffic
 ↓ Database Load
+
+
+
 
 
 =====================================
@@ -5348,6 +5680,8 @@ taaki initial requests Cache Miss encounter karke unnecessarily Database ko over
 
 
 
+
+
 =======================================
 ## 20 : CACHE KEY DESIGN / KEY NAMING
 =======================================
@@ -5405,6 +5739,9 @@ Basic Convention:
 → Keys unnecessarily large nahi honi chahiye.
 
 
+
+
+
 =======================
 ## 21 : TTL STRATEGY
 =======================
@@ -5429,6 +5766,9 @@ Product Details → Longer TTL
 Rarely changing data:
 
 Configuration → Very Long TTL
+
+
+
 
 
 =====================================
@@ -5487,6 +5827,8 @@ Kitni Cache entries memory/RAM pressure ki wajah se remove ho rahi hain.
 
 High Eviction Rate
 → Cache ke liye allocated memory (RAM) insufficient ho sakti hai.
+
+
 
 
 
