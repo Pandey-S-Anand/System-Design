@@ -600,40 +600,40 @@ Critical Transaction Status
 5. Cache invalidation/update complete hone ke baad application success response client ko return kar deti hai.
 
 
-
 -------------------------------------------------------
 ## QUESTION: DATABASE REPLICATION KAISE HOTI HAI?
 -------------------------------------------------------
 
 Replication ka matlab hai:
 
-    Primary DB me jo bhi data changes hote hain,
-    un changes ko Read Replicas tak propagate/copy kiya jaata hai.
+Primary DB me hone wale data changes ko
+Read Replica(s) tak propagate/apply karna.
 
-Important point:
+## IMPORTANT
+--------------
 
-    Replication ka matlab ye nahi hota ki har write ke baad
-    poora primary database dobara copy kiya jaata hai replicas mai.
+Replication ka matlab ye nahi hota ki har write ke baad
+poora Primary DB dobara replicas me copy kiya jaata hai.
 
-    Poora database baar-baar copy karna extremely expensive hoga.
+Poora database baar-baar copy karna extremely expensive hoga.
 
-    Isliye databases usually incremental changes replicate karte hain.
+Isliye databases generally incremental changes replicate karte hain.
 
-    Matlab:
+Matlab:
 
-        Sirf wahi changes replicas tak bheje jaate hain
-        jo primary DB me naye hue hain.
+    Sirf Primary DB me hone wale naye changes
+    replicas tak propagate kiye jaate hain.
 
-Example MySQL style:
+Example — MySQL style:
 
-    1. Primary DB par write hota hai.
+1. Primary DB par write hota hai.
 
-    2. Primary database changes ko ek replication/change log mein record karta hai.
-        MySQL me ise Binary Log / Binlog bolte hain.
+2. Primary DB change ko replication/change log me record karta hai.
+   MySQL me ise Binary Log (Binlog) kehte hain.
 
-    3. Replica(s) primary DB ke change log se changes read karta hai.
+3. Replica(s) Primary ke change log se changes receive/read karti hain.
 
-    4. Replica(s) same changes apne me apply karta hai.
+4. Replica(s) un changes ko apne database me apply karti hain.
 
 
 ---------------------------------------
@@ -642,71 +642,60 @@ Example MySQL style:
 
 Replication instant nahi hoti.
 
-Primary DB par write hone ke baad replica(s) DB tak data pahunchne me thoda delay ho sakta hai.
+Primary DB par change hone aur Replica par
+us change ke apply hone ke beech jo delay hota hai,
+use Replication Lag kehte hain.
 
-Is delay ko replication lag bolte hain.
+## EXAMPLE:
+------------
+
+User profile update:
+
+    Old name: Anand
+    New name: Anurag
+
+Assume karo ki successful update ke baad
+application ne corresponding Redis aur
+application instances ke Local Cache entries
+invalidate kar di hain.
+
+Step 1:
+    Primary DB par name successfully update ho gaya.
+
+    Primary DB:
+        name = Anurag
+
+Step 2:
+    Redis aur Local Cache me old value available nahi hai,
+    isliye immediately updated name ke liye next read request
+    Read Replica se serve ki jaati hai.
+
+Step 3:
+    Replica par abhi tak latest change apply nahi hua tha.
+
+    Read Replica:
+        name = Anand
+
+Result:
+
+    User ki request Read Replica se serve hoti hai
+    aur user ko old name "Anand" milta hai.
+
+    Yaani database ke Primary DB me data already updated hai,
+    lekin replication lag ki wajah se user ki request par
+    usse stale (outdated) data mil raha hai.
+
+Is situation ko Stale Read kehte hain.
 
 
-
-================================================================================
-10. Is Replication Expensive?
-================================================================================
-
-Replication free nahi hoti.
-
-Cost involved:
-
-    - Primary DB ko changes log karne padte hain
-    - Network par changes replicas tak jaate hain
-    - Replica ko changes apply karne padte hain
-    - Replica storage bhi lagta hai
-    - Replication lag aa sakta hai
-
-But benefit:
-
-    - Read load primary se shift ho jaata hai
-    - Overall system zyada read traffic handle kar sakta hai
-
-So replication ka cost hota hai, but read-heavy systems me ye cost worth it hota hai.
-
-================================================================================
-11. Replication Lag
-================================================================================
-
-Replication instant nahi hoti.
-
-Primary par write hone ke baad replica tak data pahunchne me thoda delay ho sakta hai.
-
-Is delay ko replication lag bolte hain.
-
-Example:
-
-    User profile update:
-
-        Old name: Anand
-        New name: Anurag
-
-    Step 1:
-        Write primary DB par ho gaya.
-
-    Step 2:
-        Immediately read replica se data read kiya.
-
-    Step 3:
-        Replica abhi sync nahi hua tha.
-
-    Result:
-        User ko old name "Anand" dikh sakta hai.
-
-This is called stale read.
-
-================================================================================
-12. How to Handle Replication Lag
-================================================================================
+--------------------------------------------------
+## QUESTION: REPLICATION LAG KAISE HANDLE KARE ?
+--------------------------------------------------
 
 Common strategies:
 
-1. Read-your-write from Primary
+#1. READ-YOUR-WRITE FROM PRIMARY DB
+------------------------------------
 
     Agar user ne abhi data update kiya hai,
     to immediate next read primary DB se karao.
@@ -715,9 +704,10 @@ Common strategies:
 
         Update profile -> Primary DB
         Immediately fetch profile -> Primary DB
-        Later reads -> Replica
+        Later reads -> Replica(s)
 
-2. Critical reads from Primary
+2. CRITICAL READS FROM PRIMARY DB
+----------------------------------
 
     Important data primary database se read karo always.
 
@@ -727,7 +717,8 @@ Common strategies:
         Payment status
         Order confirmation
 
-    Non-critical or public data replicas se read karo.
+    Jahan slight staleness acceptable ho,
+    wahan reads Replica(s) se serve ki ja sakti hain.
 
     Example:
 
@@ -736,192 +727,38 @@ Common strategies:
         Catalog data
         Public feed
 
-================================================================================
-13. Redis Kaha Aata Hai?
-================================================================================
 
-Redis RAM/in-memory based hota hai, isliye DB se bahut fast hota hai.
+----------------------------------------------
+## QUESTION: KYA REPLICATION EXPENSIVE HAI ?
+----------------------------------------------
 
-Redis generally application aur database ke beech fast cache layer ke form me use hota hai.
+Haan, replication free nahi hoti.
 
-Redis ka most common use case caching hai.
+Costs:
 
-Without Redis:
+- Primary DB ko changes log karne padte hain
+- Changes replicas tak network ke through jaate hain
+- Replicas ko changes apply karne padte hain
+- Additional storage required hota hai
+- Replication lag ho sakta hai
 
-    Every request -> Database
+Benefits:
 
-With Redis:
+- Primary DB se read load shift ho jaata hai
+- System zyada read traffic handle kar sakta hai
 
-    Request -> Redis
-        |
-        | Cache Hit (Data Redis me mil gaya.)
-        v
-    Return from Redis
+So, replication ka cost hota hai, lekin read-heavy systems mein
+ye cost often worth it hota hai.
 
-    Request -> Redis
-        |
-        | Cache Miss (Data Redis me nahi mila.)
-        v
-    Database -> Store result in Redis -> Return response
 
-First request:
 
-    Redis me product:101 nahi mila.
-    DB se data fetch hua.
-    Redis me store hua.
-    Response return hua.
 
-Second request:
 
-    Redis me product:101 mil gaya.
-    DB hit nahi hua.
-    Response fast return hua.
 
-Most systems me:
 
-    Main DB  -> Source of truth
-    Redis    -> Fast temporary cache
 
-Redis me data temporary ho sakta hai.
 
-Redis keys ke saath TTL(Time To Live) set kar sakte hain.
 
-Example:
-
-    product:101 -> expires after 10 minutes
-
-TTL expire hone ke baad data Redis se delete ho jaata hai.
-Next request DB se fresh data fetch karegi.
-
-================================================================================
-14. Cache Invalidation
-================================================================================
-
-Example:
-
-    Suppose initially product ka price 70000 tha.
-
-    At this point:
-
-        Primary DB:
-            product:101 price = 70000
-
-        Read Replica:
-            product:101 price = 70000
-
-    Primary DB aur Read Replica dono synced hain.
-
-    Uske baad ek read request aati hai.
-
-    Read flow:
-
-        Application
-            |
-            v
-        Redis
-
-    Redis me product:101 key available nahi hai,
-    so cache miss hota hai.
-
-    Cache miss ke baad application data Read Replica se fetch karti hai.
-
-        Application
-            |
-            v
-        Read Replica
-
-    Read Replica se product ka price 70000 milta hai.
-
-    Application is data ko Redis me cache kar deti hai
-    and response return kar deti hai.
-
-    Redis:
-
-        product:101 price = 70000
-        TTL = 10 minutes
-
-    Now within these 10 minutes, product price Primary DB me update ho gaya:
-
-        Old price: 70000
-        New price: 65000
-
-    Primary DB:
-
-        product:101 price = 65000
-
-    Ab agar TTL expire hone se pehle ek aur read request aati hai,
-    to Redis me abhi bhi old price cached hai:
-
-        Redis:
-            product:101 price = 70000
-
-    Agar Redis se old cached data delete/update nahi kiya gaya,
-    to user ko old price 70000 dikh sakta hai.
-
-    Isliye write/update ke baad related Redis cache key ko invalidate karna important hota hai.
-
-Common approach:
-
-    Write DB first.
-    Then delete related Redis cache key.
-
-Flow:
-
-    Application
-        |
-        | update product price
-        v
-    Primary DB updated
-        |
-        v
-    Redis cache invalidated
-        |
-        | if related cache key exists:
-        |     delete/update that key
-        |
-        | if related cache key does not exist:
-        |     no action needed
-        v
-    Response returned
-
-Next read:
-
-    Redis miss hoga.
-    DB se fresh data aayega.
-    Redis me new value store hogi.
-    Fresh response return hoga.
-
-Example:
-
-    Before update:
-
-        DB:
-            product:101 price = 70000
-
-        Redis:
-            product:101 price = 70000
-            TTL = 10 minutes
-
-    After DB update:
-
-        DB:
-            product:101 price = 65000
-
-        Redis:
-            product:101 key should be deleted/updated
-
-    Next read:
-
-        Redis miss
-            |
-            v
-        Fetch fresh price 65000 from DB
-            |
-            v
-        Store fresh value in Redis
-            |
-            v
-        Return response
 
 ================================================================================
 15: DB Connection Pool
