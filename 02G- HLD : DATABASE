@@ -692,8 +692,9 @@ Primary DB ke changes uske baad asynchronously Replica(s) tak
 propagate/apply hote rehte hain.
 
 
-## ASYNCHRONOUS REPLICATION KA MAIN BENEFIT
----------------------------------------------------
+
+## BENEFIT
+------------
 
 #1. LOWER WRITE LATENCY
 ------------------------
@@ -714,8 +715,8 @@ propagate/apply hote rehte hain.
 
 
 
-## ASYNCHRONOUS REPLICATION KA MAIN PROBLEM
-----------------------------------------------
+## DRAWABACK 
+--------------
 
 ### 1. REPLICATION LAG
 ------------------------
@@ -742,11 +743,19 @@ Uske just baad Primary DB fail ho gaya.
 
 Agar isi Replica ko new Primary bana diya jaata hai,
 to recently acknowledged write us Replica par available
-nahi ho hoga. Is situation mein system ke perspective se 
+nahi ho hogi. Is situation mein system ke perspective se 
 recently acknowledged write lost ho sakti hai.
 
 
+--------------------------------------------------------------------------------------
+## QUESTION: READ REPLICAS MEIN KAUNSA COMMON HOTA HAI — ASYNCHRONOUS YA SYNCHRONOUS?
+--------------------------------------------------------------------------------------
 
+Read-replica architecture mein asynchronous replication commonly use ki jaati hai, kyunki iska main goal reads ko scale aur fast serve karna hota hai. 
+Synchronous replication mein Primary ko Replica(s) ke ACK ka wait karna padta hai, jisse write latency badh sakti hai. 
+Asynchronous replication mein Primary wait nahi karta, isliye write latency low rehti hai.
+Iska trade-off ye hai ki replication complete hone tak Replica Primary DB se peeche reh sakti hai, 
+isliye meanwhile aane wali read requests mein stale (outdated) data mil sakta hai.
 
 
 ---------------------------------------
