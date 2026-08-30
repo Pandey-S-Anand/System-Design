@@ -38,14 +38,16 @@ Agar data sirf application server ki RAM mein store karein, to server restart ho
 QUESTION: AGAR DATA FILES MEIN STORE KAR SAKTE HAIN, TO DATABASE KI ZAROORAT KYUN PADTI HAI?
 -----------------------------------------------------------------------------------------------
 
-Database ka kaam sirf data store karna nahi hai. Database data ko efficiently manage bhi karta hai.
+Database ka kaam sirf data store karna nahi hai. Database data ko efficiently manage karne ke liye various capabilities provide karta hai.
 
 Database helps with:
 
 * Efficient data searching/querying
-* Data insert, update and delete
-* Concurrent access — multiple requests accessing the same data ko properly handle karna
-* Data relationships manage karna — different entities jaise User, Wallet, Payment, Order ke beech relationships maintain karna.
+* Efficient data insertion, updation and deletion
+* Concurrent access — multiple requests accessing the same data ko properly
+  handle karna
+* Data relationships manage karna — different entities jaise User, Wallet,
+  Payment, Order ke beech relationships maintain karna
 * Transactions support karna, which helps maintain data consistency
 
 We can use files for simple applications, but as data and concurrent users grow, we need efficient querying, updates, concurrency control, transactions and consistency.
