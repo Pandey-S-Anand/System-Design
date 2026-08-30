@@ -666,12 +666,15 @@ Lekin agar read kisi aisi replica par jaaye jo required replicas ka part nahi th
 ## SYNCHRONOUS REPLICATION KA PROBLEM
 -----------------------------------------
 
-1: Replica(s) par bhi data persist/apply hone ka wait karna padta hai, isliye write latency aur consequently 
+1. HIGHER WRITE LATENCY
+------------------------
+   Replica(s) par bhi data persist/apply hone ka wait karna padta hai, isliye write latency aur consequently 
    application ka response time increase ho sakta hai, jisse user experience thoda degrade ho sakta hai.
 
-2: Agar required replica(s) mein se koi replica temporarily unavailable ya slow ho jaaye, to write acknowledgement delay ho sakta hai ya configured
-   replication policy ke according write fail/block ho sakta hai. Exactly kya behaviour hoga, ye database/system configuration par depend karta hai.
-
+2: PRIMARY DB KI REPLICA(S) PAR TIGHT COUPLING
+------------------------------------------------
+  Agar required replica(s) mein se koi replica temporarily unavailable ya slow ho jaaye, to write acknowledgement delay ho sakta hai ya configured
+  replication policy ke according write fail/block ho sakta hai. Exactly kya behaviour hoga, ye database/system configuration par depend karta hai.
 
 
 
@@ -679,28 +682,33 @@ Lekin agar read kisi aisi replica par jaaye jo required replicas ka part nahi th
 -----------------------------
 
 Is approach mein Primary DB par write successful hone ke baad,
-Primary DB required Replica(s) par change successfully replicate/apply 
-hone ka wait nahi karta hai and Application ko write success ka acknowledgement de deta hai.
-aur Application Client ko success response de sakti hai.
+Primary DB Replica(s) par change successfully replicate/apply hone
+ka wait nahi karta aur Application ko write success ka acknowledgement
+de deta hai.
 
-Uske baad Primary DB ke changes asynchronously Replica(s) tak
-propagate/apply hote rehte hain. is approach ami repalication lag 
-ka issue aa skata hai .
+Application uske baad Client ko success response de sakti hai.
+
+Primary DB ke changes uske baad asynchronously Replica(s) tak
+propagate/apply hote rehte hain.
 
 
 ## ASYNCHRONOUS REPLICATION KA MAIN BENEFIT
 ---------------------------------------------------
 
-1. Lower Write Latency
-
-   Primary DB ko required Replica(s) ke acknowledgement ka
+#1. LOWER WRITE LATENCY
+------------------------
+   Primary DB ko Replica(s) ke acknowledgement ka
    wait nahi karna padta.
-   Isliye Application ko write ka ack comparatively
-   jaldi mil sakta hai.
+   Isliye Primary DB Application ko write ka acknowledgement
+   comparatively jaldi bhej sakta hai.
 
-2. Primary Replica Availability Par Less Dependent Ho Sakta Hai
 
-   Agar koi Read Replica temporarily slow ya unavailable hai,
+#2: PRIMARY DB KI REPLICA(S) PAR LOOSE COUPLING
+------------------------------------------------
+   Unlike Synchronous Replication, Asynchronous Replication mein
+   Primary DB ko Replica(s) ke acknowledgement ka wait nahi karna padta.
+
+   Isliye agar koi Read Replica temporarily slow ya unavailable hai,
    to Primary DB ko us Replica ke acknowledgement ka wait
    nahi karna padta.
 
@@ -710,92 +718,32 @@ ka issue aa skata hai .
 ----------------------------------------------
 
 ### 1. REPLICATION LAG
+------------------------
 
 Primary DB par write successful hone ke baad,
-Replica par same change immediately available hona guaranteed nahi hai.
+Replica par same change immediately available nahi hota hai.
 Agar isi duration mein application Replica se read kare,
 to user ko stale/outdated data mil sakta hai.
 
 
-### 2. PRIMARY FAILURE KE CASE MEIN RECENT WRITE LOST HO SAKTI HAI
+### 2. PRIMARY DB KE IMMEDIATE FAILURE KE CASE MEIN RECENT WRITE LOST HO SAKTI HAI
+----------------------------------------------------------------------------------
 
 Maan lo:
 
-Primary DB par write successfully complete ho gayi.
+   Primary DB par write successfully complete ho gayi.
 
-Lekin us change ko Replica par abhi apply nahi kiya gaya.
+Lekin wo change abhi Replica(s) par apply nahi hua hai.
 
-Usi time Primary DB fail ho gaya.
+Primary DB ne Application ko write success ka acknowledgement
+de diya.
 
-```
-Primary:
-    DOWN
-```
-
-Replica ke paas abhi:
-
-```
-Balance = ₹10,000
-```
-
-available hai.
+Uske just baad Primary DB fail ho gaya.
 
 Agar isi Replica ko new Primary bana diya jaata hai,
-to recently acknowledged write available nahi ho sakti.
-
-Isliye asynchronous replication mein
-Primary failure ke case mein latest acknowledged writes
-Replica par available na hone ka risk ho sakta hai,
-depending on replication lag and failover mechanism.
-
-
-
-## SYNCHRONOUS VS ASYNCHRONOUS — CORE TRADE-OFF
-
----
-
-```
-Synchronous:
-
-    Primary
-       |
-       | wait for required ACK
-       v
-    Replica(s)
-       |
-       | ACK
-       v
-    Application Success
-
-
-    Consistency / durability guarantee stronger
-    Write latency higher
-    Replica availability ka impact higher
-
-
-Asynchronous:
-
-    Primary
-       |
-       | write successful
-       v
-    Application Success
-
-    Primary
-       |
-       | later replication
-       v
-    Replica(s)
-
-
-    Lower write latency
-    Replication lag possible
-    Stale reads possible
-    Primary failure par recent acknowledged
-    writes Replica par missing ho sakti hain
-```
-
-
+to recently acknowledged write us Replica par available
+nahi ho hoga. Is situation mein system ke perspective se 
+recently acknowledged write lost ho sakti hai.
 
 
 
