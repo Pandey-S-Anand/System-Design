@@ -637,30 +637,51 @@ Replication ke do common approaches samajhte hain:
 1. SYNCHRONOUS REPLICATION
 ---------------------------
 
-Is approach mein Primary DB par write successful hone ke baad,
-Primary DB required Replica(s) par bhi woh change successfully
-replicate/apply hone ka wait karta hai.
+Is approach mein Primary DB par write successfully complete hone ke baad,
+Primary DB Replica(s) se required acknowledgements milne ka wait karta hai.
 
-Required Replica(s) se acknowledgement milne ke baad,
+Ye acknowledgements Replica(s) par woh change successfully
+replicate/apply hone ke baad milte hain.
+
+Required acknowledgements milne ke baad,
 Primary DB Application ko write success ka acknowledgement bhejta hai,
 aur Application Client ko success response deti hai.
+
 
 ## IMPORTANT:
 ---------------
 
-"Required Replica(s)" important hai — zaroori nahi ki Primary DB
-har replica ka ACK wait kare. Required acknowledgements ki count
-database/system configuration par depend karti hai.
+"Required acknowledgements" important hain.
+
+Synchronous Replication mein zaroori nahi ki Primary DB
+har Replica ka ACK wait kare.
+
+Write ko successfully acknowledge karne ke liye kitne
+acknowledgements required hain (suppose 4 ACK chahiye), aur woh
+acknowledgements specific Replica(s) se chahiye ya available
+Replica(s) mein se kisi bhi 4 Replicas ke ACK chahiye —
+ye database/system ki replication configuration aur policy
+par depend karta hai.
+
 
 
 ## SYNCHRONOUS REPLICATION KA MAIN BENEFIT
 --------------------------------------------
 
-Synchronous replication mein write ko acknowledge karne se pehle required replicas par bhi data persist/apply hone ka wait kiya jaata hai.
-Isliye Primary DB fail hone par required replicas ke paas bhi latest acknowledged write available hone ki stronger guarantee hoti hai.
-Saath hi, agar subsequent read us Read Replica par jaaye jo required replicas ka part thi, to us replica par bhi latest acknowledged write 
-available hone ki stronger guarantee hoti hai aur stale data milne ka risk significantly kam ho jaata hai.
-Lekin agar read kisi aisi replica par jaaye jo required replicas ka part nahi thi aur abhi tak update nahi hui hai, to stale data mil sakta hai.
+Synchronous Replication mein write ko acknowledge karne se pehle,
+Primary DB Replica(s) se required acknowledgements milne ka wait karta hai.
+
+Isliye Primary DB fail hone par, jin Replica(s) se required
+acknowledgements receive ho chuke hain, unke paas latest
+acknowledged write available hone ki stronger guarantee hoti hai.
+
+Saath hi, agar subsequent read kisi aise Read Replica par jaaye
+jisne latest write ke liye acknowledgement diya tha,
+to us Replica par latest acknowledged write already available hoti hai.
+Isliye us particular read request ke liye latest/fresh data milta hai.
+
+Lekin agar read kisi aisi Replica par jaaye jis par latest change
+abhi tak replicate/apply nahi hua hai, to stale data mil sakta hai.
 
 
 ## SYNCHRONOUS REPLICATION KA PROBLEM
@@ -668,13 +689,58 @@ Lekin agar read kisi aisi replica par jaaye jo required replicas ka part nahi th
 
 1. HIGHER WRITE LATENCY
 ------------------------
-   Replica(s) par bhi data persist/apply hone ka wait karna padta hai, isliye write latency aur consequently 
-   application ka response time increase ho sakta hai, jisse user experience thoda degrade ho sakta hai.
+  Primary DB par write successfully complete hone ke baad, usko required Replica(s)
+  par bhi us change ke persist/apply hone ke acknowledgement ka wait karna padta hai.
+  Isliye Primary DB ko Application ko write success acknowledgement bhejne mein comparatively zyada samay lag sakta hai.
+  Consequently, Application ko bhi Client/User ko write success response bhejne mein zyada samay lag sakta hai.
+  Is wajah se overall write latency badh sakti hai, jisse user experience thoda degrade ho sakta hai.
+
 
 2: PRIMARY DB KI REPLICA(S) PAR TIGHT COUPLING
 ------------------------------------------------
-  Agar required replica(s) mein se koi replica temporarily unavailable ya slow ho jaaye, to write acknowledgement delay ho sakta hai ya configured
-  replication policy ke according write fail/block ho sakta hai. Exactly kya behaviour hoga, ye database/system configuration par depend karta hai.
+
+Primary DB ko Application ko write success acknowledgement dene se pehle,
+configured replication policy ke according Replica(s) se required
+acknowledgements milne ka wait karna padta hai.
+
+Isliye Primary DB ki write acknowledgement Replica(s) ki
+availability aur performance par depend kar sakti hai.
+
+Agar required acknowledgements dene wali Replica(s) slow ho,
+to unke acknowledgements late aa sakte hain, jiski wajah se
+Primary DB ki write acknowledgement bhi delay ho sakti hai.
+
+Agar Replica(s) temporarily unavailable ho jaayein, jiski wajah se
+required acknowledgements receive na ho paayein, to Primary DB
+configured timeout tak wait kar sakta hai.
+
+Uske baad write request ke saath exactly kya behaviour hoga,
+ye database ki replication configuration aur policy
+par depend karta hai.
+
+
+1. PRIMARY DB PAR WRITE COMMITTED REH SAKTI HAI, LEKIN CLIENT KO FAILURE / TIMEOUT RESPONSE MIL SAKTA HAI
+-------------------------------------------------------------------------------------------------------------
+
+   Primary DB ne apna local write commit kar diya hota hai, lekin 
+   required Replica acknowledgements configured timeout tak receive nahi hue.
+   Aisi situation mein Client ko failure ya timeout response mil sakta hai.
+
+   Yahan Client ko lag sakta hai ki write fail ho gayi,
+   lekin Primary DB par data actually persist ho chuka ho sakta hai.
+
+   Client agar bina verify kiye blindly same write request retry kare,
+   to duplicate write ka risk ho sakta hai.
+   Isi wajah se practical distributed systems mein
+   idempotency important hoti hai.
+
+2. PRIMARY DB PAR WRITE ROLLBACK HO SAKTI HAI
+-----------------------------------------------
+    Agar required replication condition satisfy nahi hoti, to write ko successfully committed
+    nahi maana jaata aur Primary DB par write rollback ki ja sakti hai.
+    Is case mein Primary DB aur Client dono ke perspective se write unsuccessful hoti hai.
+
+
 
 
 
@@ -751,11 +817,16 @@ recently acknowledged write lost ho sakti hai.
 ## QUESTION: READ REPLICAS MEIN KAUNSA COMMON HOTA HAI — ASYNCHRONOUS YA SYNCHRONOUS?
 --------------------------------------------------------------------------------------
 
-Read-replica architecture mein asynchronous replication commonly use ki jaati hai, kyunki iska main goal reads ko scale aur fast serve karna hota hai. 
-Synchronous replication mein Primary ko Replica(s) ke ACK ka wait karna padta hai, jisse write latency badh sakti hai. 
-Asynchronous replication mein Primary wait nahi karta, isliye write latency low rehti hai.
+Asynchronous Replication commonly use ki jaati hai kyunki Primary DB par write successful hone ke
+baad Primary DB ko Replica(s) ke acknowledgement ka wait nahi karna padta.
+
+Isliye Primary DB Application ko write success acknowledgement comparatively jaldi bhej sakta hai,
+jisse Client ko write request ka success response jaldi milta hai aur client-facing write latency comparatively kam rehti hai.
+
+Note: Write execution necessarily fast nahi hua; bas write request ka end-to-end acknowledgement fast hua.
+
 Iska trade-off ye hai ki replication complete hone tak Replica Primary DB se peeche reh sakti hai, 
-isliye meanwhile aane wali read requests mein stale (outdated) data mil sakta hai.
+jisse meanwhile Replica se aane wali read requests mein stale (outdated) data mil sakta hai.
 
 
 ---------------------------------------
