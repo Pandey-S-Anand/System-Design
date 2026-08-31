@@ -1191,7 +1191,47 @@ kaunsi state authoritative hai.
 ## QUESTION: SPLIT BRAIN KO PREVENT KAISE KAREIN?
 ----------------------------------------------------
 
+Split Brain prevent karne ka main goal ye ensure karna hota hai ki
+database cluster mein ek hi time par sirf ek node Primary ki tarah
+behave kare aur writes accept kare.
 
+Agar Primary DB unavailable maana jaata hai aur kisi Replica ko
+New Primary ke role mein promote kiya ja raha hai, to system ko
+ensure karna hota hai ki Original Primary ab writes accept na kar sake.
+
+Iske liye Failover mechanisms different techniques use karte hain.
+
+1: FENCING
+--------------
+Failover ke time system Original Primary ko
+network se isolate karke writes accept karne se stop karne ki koshish karta hai.
+
+
+2. QUORUM / CONSENSUS BASED DECISION
+--------------------------------------
+Failover ka decision kisi ek single monitoring node ke observation ke basis par nahi liya jaata. 
+Multiple monitoring/coordination nodes ki agreement ke baad hi Replica ko New Primary promote kiya jaata hai.
+
+
+## MANUAL VS AUTOMATIC FAILOVER
+----------------------------------
+
+Failover do tarah se ho sakta hai:
+
+1. AUTOMATIC FAILOVER
+
+Monitoring / Failover System Primary DB failure detect karke
+automatically kisi healthy Replica ko New Primary ke role mein
+promote kar deta hai.
+
+2. MANUAL FAILOVER
+
+Human / DBA situation verify karke manually kisi healthy Replica ko
+New Primary ke role mein promote karta hai.
+
+Ye approach tab use ho sakti hai jab automatic failover configured
+na ho, ya system failover decision ke liye human intervention
+require karta ho.
 
 
 
