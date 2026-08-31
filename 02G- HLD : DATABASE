@@ -127,6 +127,9 @@ Databases provide these capabilities, making them more suitable than plain files
 
 
 
+
+
+
 =======================================================
 2. EK SINGLE DATABASE BOTTLENECK KYUN BAN JAATA HAI?
 =======================================================
@@ -302,6 +305,9 @@ resource pressure create ho sakta hai.
 
 
 
+
+
+
 ====================================
 3. DATABASE KO SCALE KAISE KAREIN ?
 ====================================
@@ -391,6 +397,9 @@ Horizontal scaling ke different approaches ho sakte hain:
 
 1: Replication → Read Replicas
 2: Sharding / Partitioning
+
+
+
 
 
 
@@ -1258,6 +1267,35 @@ use ho sakta hai.
 
 Isliye Application ko manually specific Primary ya Read Replica
 nodes ki information manage nahi karni padti.
+
+
+
+
+
+
+============================================================================
+#4. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING
+============================================================================
+
+Read-intensive application mein humne Read Replicas use karke read traffic
+ko multiple database nodes ke across distribute kiya.
+
+Lekin writes generally abhi bhi Primary DB par hi jaati hain.
+
+Isliye agar write traffic significantly increase ho jaaye, to saari writes ek hi 
+Primary DB ko handle karni padengi, aur woh eventually write bottleneck ban sakta hai.
+
+Is problem ko solve karne ke liye write load ko bhi multiple database nodes ke across distribute karne ki zarurat pad sakti hai.
+
+
+
+
+
+
+
+
+
+
 
 
 
