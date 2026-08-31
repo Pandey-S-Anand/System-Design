@@ -1035,7 +1035,9 @@ Isi situation ko Split Brain kehte hain.
 ## QUESTION: SPLIT BRAIN DANGEROUS KYUN HAI?
 ------------------------------------------------
 
-Split Brain mein ek hi database cluster mein multiple nodes Primary ki tarah behave karke writes accept karne lagte hain, jisse data inconsistency aur conflicting writes ka risk hota hai.
+Split Brain mein ek hi database cluster mein multiple nodes Primary ki tarah behave karke writes accept karne lagte hain, 
+jisse data inconsistency aur conflicting writes ka risk hota hai.
+
 
 ## EXAMPLE :
 --------------
@@ -1107,7 +1109,7 @@ name = Anand
 
 Ab dono Primary DB's ki state different ho gayi:
 
-Original Primary db:
+Original Primary DB:
 Name = Anurag
 
 New Primary DB:
@@ -1147,42 +1149,51 @@ Rahul
 Anand
 
 
-NETWORK PROBLEM RESOLVE HO JAATI HAI
+## NETWORK PROBLEM RESOLVE HO JAATI HAI
+-------------------------------------------
 
-Ab network connectivity wapas aa jaati hai.
+Ab network connectivity restore ho jaati hai.
 
-Lekin ab dono Primaries ke paas same data ki
-different state hai:
+Lekin ab dono Primary DB's ke paas same data ki different state hai:
 
-Original Primary:
-
+Original Primary DB:
 Name = Anurag
 
-New Primary:
-
+New Primary DB:
 Name = Anand
 
 System ko ab decide karna hoga ki kaunsa node
-authoritative Primary maana jaaye.
+authoritative Primary DB maana jaaye.
 
-Agar system Original Primary ko authoritative maan leta hai,
-to New Primary par accept hui:
+
+Agar system Original Primary DB ko authoritative maan leta hai,
+to New Primary DB par accept hui:
 
 Rahul → Anand
-
 wali write discard ho sakti hai.
 
-Aur agar system New Primary ko authoritative maan leta hai,
-to Original Primary par accept hui:
+
+Aur agar system New Primary DB ko authoritative maan leta hai,
+to Original Primary DB par accept hui:
 
 Rahul → Anurag
 
 wali write discard ho sakti hai.
 
-Yaani network restore hone ke baad dono Primaries ko simply
+
+Yaani network restore hone ke baad dono Primary DB's ko simply
 synchronize karna straightforward nahi hai, kyunki system ko
 decide karna pad sakta hai ki conflicting data history mein
 kaunsi state authoritative hai.
+
+
+----------------------------------------------------
+## QUESTION: SPLIT BRAIN KO PREVENT KAISE KAREIN?
+----------------------------------------------------
+
+
+
+
 
 ================================================================================
 15: DB Connection Pool
