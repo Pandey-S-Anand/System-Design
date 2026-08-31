@@ -444,6 +444,7 @@ Isse database bottleneck ban sakta hai:
 ----------------------------------------------------------------------------------------
 ## QUESTION: KYA READ REQUESTS KO HANDLE KARNE KE LIYE CACHE KA USE KIYA JA SAKTA HAI?
 ----------------------------------------------------------------------------------------
+
 Haan.
 
 Agar same data baar-baar request ho raha hai, to hum frequently accessed
@@ -743,7 +744,6 @@ par depend karta hai.
 
 
 
-
 2. ASYNCHRONOUS REPLICATION 
 -----------------------------
 
@@ -944,14 +944,245 @@ So, replication ka cost hota hai, lekin read-heavy systems mein
 ye cost often worth it hota hai.
 
 
+--------------------------------------------------------
+## QUESTION: PRIMARY DB FAIL HO JAAYE TO KYA HOTA HAI?
+--------------------------------------------------------
+
+Agar Primary DB fail ho jaaye, to Application naye writes perform nahi kar paayegi.
+High Availability setup mein, system ek healthy Read Replica ko
+new Primary ke role mein promote kar sakta hai.
+Is process ko Failover kehte hain.
+
+Uske baad:
+
+Writes → New Primary
+
+Aur remaining Replica(s) new Primary se replication continue karti hain.
+
+Isliye Replication sirf Read Scaling ke liye nahi,
+balki High Availability provide karne mein bhi help karti hai.
+
+
+----------------------------------------------------------------------------
+## QUESTION: SYSTEM KO KAISE PATA CHALEGA KI PRIMARY DB FAIL HO GAYA HAI?
+----------------------------------------------------------------------------
+
+System Primary DB ki availability ko periodically Health Checks ke through
+monitor karta hai.
+
+Yahan "System" se matlab un components se hai jo database infrastructure
+ko monitor aur manage kar rahe hote hain.
+
+System periodically Primary DB ko check karta hai:
+
+    "Kya Primary DB reachable hai aur requests handle kar raha hai?"
+
+Agar Primary DB multiple consecutive Health Checks ka response nahi deta,
+to system usse unavailable ya suspected failed maan sakta hai.
+
+Lekin yahan ek important problem hai.
+
+Agar System ko Primary DB se response nahi mil raha hai,
+to iska ye matlab zaroori nahi hai ki Primary DB actually fail ho gaya hai.
+
+Primary DB actually running aur healthy ho sakta hai,
+lekin temporary network ya connectivity issue ki wajah se
+System ko Primary DB ka response nahi mil paa raha ho.
+
+Is situation mein agar System immediately Primary ko failed maan kar
+kisi Replica ko promote kar de, aur original Primary actually healthy
+aur running ho, to ek hi time par multiple Primary databases active
+ho sakte hain.
+
+Is situation ko Split Brain kehte hain.
+
+Isliye system ek single failed Health Check ke basis par
+immediately failover nahi karta.
+
+Multiple failed Health Checks aur configured timeouts ke basis par
+decide kiya jaata hai ki Primary actually unavailable hai
+ya temporary network issue ki wajah se unreachable hai.
+
+
+------------------------------------------------
+## QUESTION: SPLIT BRAIN EXACTLY KYA HOTA HAI?
+------------------------------------------------
+
+Split Brain ka simple matlab broadly yehi hai ki ek Database Cluster mein
+ek hi time par 2 Primary nodes active ho jaate hain.
+
+Ye situation tab ho sakti hai jab Primary DB aur Monitoring/Failover
+System ke beech network connectivity issue aa jaaye.
+Is wajah se Monitoring/Failover System ko Primary DB ka response nahi milta 
+aur woh assume kar leta hai ki Primary DB fail ho gaya hai.
+Lekin actually Primary DB healthy ho sakta hai aur abhi bhi writes 
+handle kar raha hota hai.
+
+Agar Monitoring/Failover System is situation mein kisi Read Replica 
+ko New Primary promote kar de, to problem create ho sakti hai.
+
+Ab:
+
+- Old Primary bhi active hai aur writes accept kar raha hai.
+- New Primary bhi active hai aur writes accept kar raha hai.
+
+Yaani ek hi Database Cluster mein ek hi time par 2 nodes Primary ki tarah writes accept karne lagte hain.
+
+Isi situation ko Split Brain kehte hain.
+
+
+------------------------------------------------
+## QUESTION: SPLIT BRAIN DANGEROUS KYUN HAI?
+------------------------------------------------
+
+Split Brain mein ek hi database cluster mein multiple nodes Primary ki tarah behave karke writes accept karne lagte hain, jisse data inconsistency aur conflicting writes ka risk hota hai.
+
+## EXAMPLE :
+--------------
+
+Initially cluster mein ek Primary DB aur 3 Read Replicas hain.
+
+                 Original Primary
+                 Name = Rahul
+                      |
+                   Replication
+                      |
+        +-------------+-------------+
+        |             |             |
+        v             v             v
+   Replica 1      Replica 2      Replica 3
+   Name=Rahul    Name=Rahul      Name=Rahul
+
+
+Ab maan lo temporary network problem ki wajah se Failover System
+Original Primary DB ko unreachable maan leta hai.
+
+Lekin Original Primary DB actually healthy hai aur
+writes accept kar raha hai.
+
+Failover System Replica 1 ko promote karke New Primary DB bana deta hai.
+
+Ab ek hi time par:
+
+    Original Primary DB           New Primary DB   
+     (Still Active)                (Replica 1)
+
+         WRITE                       WRITE
+
+Dono independently writes accept kar sakte hain.
+
+## WRITE 1 — ORIGINAL PRIMARY PAR
+-----------------------------------
+
+Ek request Original Primary DB par jaati hai:
+
+UPDATE User
+SET name = 'Anurag'
+WHERE user_id = 101;
+
+Original Primary DB ki state:
+
+user_id = 101
+name = Anurag
+
+
+## WRITE 2 — NEW PRIMARY PAR
+--------------------------------
+
+Ab ek dusri request New Primary DB
+(Previously Replica 1) par jaati hai:
+
+UPDATE User
+SET name = 'Anand'
+WHERE user_id = 101;
+
+New Primary DB ki state:
+
+user_id = 101
+name = Anand
+
+
+## PROBLEM
+------------
+
+Ab dono Primary DB's ki state different ho gayi:
+
+Original Primary db:
+Name = Anurag
+
+New Primary DB:
+Name = Anand
+
+
+Do independent Primary DB's same logical data ke liye
+apni-apni data history maintain kar rahe hain.
 
 
 
+## IDEALLY DATA UPDATE HISTORY KYA HONI CHAHIYE THI?
+-------------------------------------------------------
+
+Agar dono writes ek hi Primary node par sequentially execute hui hoti,
+to expected data history hoti:
+
+Rahul
+↓
+Anurag
+↓
+Anand
+
+Lekin Split Brain ki wajah se dono writes
+different Primary DB's par execute ho gayi.
+
+Original Primary DB ki history:
+
+Rahul
+↓
+Anurag
+
+New Primary DB ki history:
+
+Rahul
+↓
+Anand
 
 
+NETWORK PROBLEM RESOLVE HO JAATI HAI
 
+Ab network connectivity wapas aa jaati hai.
 
+Lekin ab dono Primaries ke paas same data ki
+different state hai:
 
+Original Primary:
+
+Name = Anurag
+
+New Primary:
+
+Name = Anand
+
+System ko ab decide karna hoga ki kaunsa node
+authoritative Primary maana jaaye.
+
+Agar system Original Primary ko authoritative maan leta hai,
+to New Primary par accept hui:
+
+Rahul → Anand
+
+wali write discard ho sakti hai.
+
+Aur agar system New Primary ko authoritative maan leta hai,
+to Original Primary par accept hui:
+
+Rahul → Anurag
+
+wali write discard ho sakti hai.
+
+Yaani network restore hone ke baad dono Primaries ko simply
+synchronize karna straightforward nahi hai, kyunki system ko
+decide karna pad sakta hai ki conflicting data history mein
+kaunsi state authoritative hai.
 
 ================================================================================
 15: DB Connection Pool
