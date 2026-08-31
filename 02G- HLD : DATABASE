@@ -1213,18 +1213,21 @@ Failover ka decision kisi ek single monitoring node ke observation ke basis par 
 Multiple monitoring/coordination nodes ki agreement ke baad hi Replica ko New Primary promote kiya jaata hai.
 
 
-## MANUAL VS AUTOMATIC FAILOVER
-----------------------------------
+---------------------------------------------
+## QUESTION: MANUAL VS AUTOMATIC FAILOVER ?
+---------------------------------------------
 
 Failover do tarah se ho sakta hai:
 
 1. AUTOMATIC FAILOVER
+-----------------------
 
 Monitoring / Failover System Primary DB failure detect karke
 automatically kisi healthy Replica ko New Primary ke role mein
 promote kar deta hai.
 
 2. MANUAL FAILOVER
+---------------------
 
 Human / DBA situation verify karke manually kisi healthy Replica ko
 New Primary ke role mein promote karta hai.
@@ -1232,6 +1235,29 @@ New Primary ke role mein promote karta hai.
 Ye approach tab use ho sakti hai jab automatic failover configured
 na ho, ya system failover decision ke liye human intervention
 require karta ho.
+
+
+-----------------------------------------------------------------------------------------------
+## QUESTION: FAILOVER KE BAAD APPLICATION KO KAISE PATA CHALEGA KI NAYA PRIMARY DB KAUN HAI?
+-----------------------------------------------------------------------------------------------
+
+Application ideally kisi specific Database node ka address hardcode nahi karti.
+
+Write aur Read requests ke liye separate Database Endpoints ho sakte hain:
+
+Application → Write Endpoint → Current Primary DB
+
+Application → Read Endpoint → Available Read Replica(s)
+
+Failover ke baad Primary DB change hone par,
+Write Endpoint automatically New Primary DB ki taraf route ho jaata hai.
+
+Read Endpoint ke peeche available healthy Read Replica(s) ke beech
+read traffic distribute karne ke liye Load Balancing / Routing mechanism
+use ho sakta hai.
+
+Isliye Application ko manually specific Primary ya Read Replica
+nodes ki information manage nahi karni padti.
 
 
 
