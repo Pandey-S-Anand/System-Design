@@ -1663,8 +1663,8 @@ request us corresponding Shard par route ki jaati hai.
 
 
 
-## QUESTION:  RANGE-BASED SHARDING KA MAJOR PROBLEM — HOT SHARD
-------------------------------------------------------------------
+## RANGE-BASED SHARDING KA MAJOR PROBLEM — HOT SHARD
+--------------------------------------------------------
 
 Range-Based Sharding mein Shard Key ki values ko predefined ranges mein
 divide kiya jaata hai aur har range ek particular Shard ko assign hoti hai.
@@ -1708,8 +1708,8 @@ to woh Shard bhi Hot Shard ban sakta hai.
 
 
 
-## QUESTION: HOT SHARD KO HANDLE KAISE KIYA JA SAKTA HAI?
------------------------------------------------------------
+## QUESTION: HOT SHARD KO HANDLE KAISE KIYA JA SAKTA HAI? - REBALANCING
+--------------------------------------------------------------------------
 
 Agar kisi particular Shard par disproportionately zyada data ya
 traffic aa raha hai, to us Shard ki existing range ko split kiya
@@ -1778,6 +1778,31 @@ routing configuration update karni pad sakti hai.
 
 2. HASH-BASED SHARDING
 -------------------------
+
+Hash-Based Sharding mein Shard Key ki value par ek Hash Function apply kiya jaata hai.
+
+Hash Function ka output use karke system decide karta hai ki data kis Shard par store ya retrieve kiya jayega.
+
+
+## EXAMPLE:
+------------
+
+Maan lo:
+
+Shard Key = user_id
+
+Total Shards = 3
+
+
+Routing rule:
+
+hash(user_id) % Number of Shards
+
+
+## HASH-BASED SHARDING KA BENEFIT
+-----------------------------------
+
+
 
 
 ================================================================================
