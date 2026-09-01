@@ -1630,12 +1630,18 @@ Common Shard Routing Strategies:
 1. RANGE-BASED SHARDING
 -------------------------
 
-Shard Key ki values ko different predefined ranges mein divide kiya jaata hai.
+Range-Based Sharding mein Shard Key ki values ko different
+predefined ranges mein divide kiya jaata hai.
+
 Har range ko ek particular Shard assign kiya jaata hai.
 
-Manlo :
+
+Maan lo:
 
 Shard Key = user_id
+
+
+Aur user_id Shard Key ke liye ranges kuch aise define ki gayi hain:
 
 
 Shard 1:
@@ -1652,9 +1658,14 @@ Shard 3:
 
     user_id → 666,667 to 1,000,000
 
-Ab based on request 
+
+Request ki Shard Key value jis predefined range mein aati hai,
+request us corresponding Shard par route ki jaati hai.
 
 
+
+## RANGE-BASED SHARDING KA MAJOR PROBLEM — HOT SHARD
+------------------------------------------------------
 
 
 
