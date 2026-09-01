@@ -1615,8 +1615,44 @@ jaise problems aa sakti hain.
 ## QUESTION: SHARD KEY KE BASIS PAR SYSTEM KAISE DECIDE KARTA HAI KI DATA KAUNSE SHARD PAR JAAYEGA? — SHARD ROUTING STRATEGIES
 ---------------------------------------------------------------------------------------------------------------------------------
 
+Shard Key identify karne ke baad, system ko ek routing strategy ki zarurat hoti hai
+jiske basis par Shard Key ki value ko kisi specific Shard se map kiya ja sake.
+
+Common Shard Routing Strategies:
+
+1. Range-Based Sharding
+2. Hash-Based Sharding
+3. Consistent Hashing
+4. Directory / Lookup-Based Sharding
 
 
+
+1. RANGE-BASED SHARDING
+-------------------------
+
+Shard Key ki values ko different predefined ranges mein divide kiya jaata hai.
+Har range ko ek particular Shard assign kiya jaata hai.
+
+Manlo :
+
+Shard Key = user_id
+
+
+Shard 1:
+
+    user_id → 1 to 333,333
+
+
+Shard 2:
+
+    user_id → 333,334 to 666,666
+
+
+Shard 3:
+
+    user_id → 666,667 to 1,000,000
+
+Ab based on request 
 
 
 
