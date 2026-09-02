@@ -2379,8 +2379,8 @@ Har Shard total dataset ka sirf ek subset store karta hai aur
 apne assigned data ke Write Traffic ko handle karta hai.
 
 
-QUESTION : AGAR WRITE TRAFFIC MULTIPLE SHARDS KE ACROSS DISTRIBUTE HO CHUKA HAI, TO HAR SHARD KE READ TRAFFIC KO KAISE SCALE KIYA JAAYEGA?
--------------------------------------------------------------------------------------------------------------------------------------------- 
+## QUESTION : AGAR WRITE TRAFFIC MULTIPLE SHARDS KE ACROSS DISTRIBUTE HO CHUKA HAI, TO HAR SHARD KE READ TRAFFIC KO KAISE SCALE KIYA JAAYEGA?
+------------------------------------------------------------------------------------------------------------------------------------------------
 
 Sharding ke baad har Shard apne assigned subset of data ke Writes
 handle karta hai aur apne Read Traffic ko scale karne ke liye
@@ -2565,12 +2565,137 @@ karne ki zarurat nahi padti aur Cross-Shard Join ki additional complexity aur la
 
 
 
-------------------------------------------------
-## QUESTION: CROSS-SHARD TRANSACTIONS KYA HAI ?
-------------------------------------------------
+---------------------------------------------
+## QUESTION: DATABASE TRANSACTION KYA HAI?
+--------------------------------------------
+
+Database Transaction ek ya multiple Database Operations ka
+aisa group hota hai jise Database ek single logical unit of work
+ki tarah treat karta hai.
+
+Transaction ke andar included Operations:
+
+* Ya to sabhi Operations successfully complete honge aur
+  unke changes permanently commit honge.
+
+* Ya agar koi Operation fail ho jaaye, to Transaction ke andar
+  pehle successfully execute hue Operations ke changes bhi
+  rollback kar diye jaayenge, taaki Database consistent state mein rahe.
+
+
+Yaani Transaction ensure karti hai:
+
+All Operations Successful
+        ↓
+      COMMIT
+
+Any Operation Failed
+        ↓
+     ROLLBACK
+
+
+----------------------------------------------------------
+## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
+----------------------------------------------------------
+
+Normal / Local Database Transaction mein saare required Operations ko execute 
+karne ke liye required data ek hi Database Node / Shard par stored hota hai.
+Isliye databse Transaction ke saare Operations ek hi Database
+ke andar execute kiye ja sakte hain.
+
+Cross-Shard databse Transaction woh transaction hoti hai jiske Operations ko 
+execute karne ke liye required data different Shards par stored hota hai.
+Yaani ek databse Transaction ko complete karne ke liye multiple 
+independent Shards par Operations execute karne pad sakte hain.
+
+
+## EXAMPLE
+------------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
+
+Initial State:
+
+Account A → ₹10,000
+Account B → ₹5,000
+
+## Required Operations:
+
+1. Account A se ₹1,000 deduct
+2. Account B mein ₹1,000 add
+
+
+## CASE 1: NORMAL / LOCAL DATABASE TRANSACTION
+-------------------------------------------------
+
+Maan lo dono Accounts same Shard mein stored hain:
+
+Account A → Shard 1
+Account B → Shard 1
+
+## Transaction:
+
+BEGIN TRANSACTION
+Deduct ₹1,000 from Account A
+Add ₹1,000 to Account B
+COMMIT
+
+
+Agar dono Operations successfully complete ho jaati hain:
+
+COMMIT
+
+
+## Final State:
+
+Account A → ₹9,000
+Account B → ₹6,000
 
 
 
+## AGAR BEECH MEIN FAILURE HO JAAYE TO ?
+-----------------------------------------
+
+Maan lo:
+
+Account A se ₹1,000 deduct ho gaye
+
+Lekin
+
+Account B mein ₹1,000 add karte time failure aa gaya
+
+Transaction failure par:
+
+ROLLBACK
+    ↓
+Account A ka deduction undo
+
+Final State:
+
+Account A → ₹10,000
+Account B → ₹5,000
+
+
+
+## CASE 2: CROSS-SHARD DATABASE TRANSACTION
+-----------------------------------------------
+
+Ab maan lo dono Accounts different Shards mein stored hain:
+
+Account A → Shard 1
+Account B → Shard 2
+
+
+Transaction ke required Operations bhi different Shards par execute honge:
+
+Shard 1:
+Deduct ₹1,000 from Account A
+
+Shard 2:
+Add ₹1,000 to Account B
+
+Yaani ek  logical Transaction ke Operations multiple
+independent  Shards par execute ho rahe hain.
 
 
 
