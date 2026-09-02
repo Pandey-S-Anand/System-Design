@@ -334,8 +334,8 @@ After scaling:
 
 
 
-## VERTICAL SCALING KA BENIFIT
----------------------------------
+## BENIFIT :
+-------------
 
 Vertical scaling relatively simple hota hai because
 application architecture mein major changes nahi karne padte.
@@ -352,8 +352,8 @@ More Powerful DB
 
 
 
-## VERTICAL SCALING KI LIMITATIONS
-------------------------------------
+## LIMITATIONS :
+-----------------
 
 1. COST
 ---------
@@ -611,7 +611,7 @@ Critical Transaction Status
 
 
 -------------------------------------------------------
-## QUESTION: DATABASE REPLICATION KAISE HOTI HAI?
+## QUESTION: DATABASE REPLICATION KAISE HOTA HAI?
 -------------------------------------------------------
 
 Replication ka matlab hai:
@@ -675,8 +675,8 @@ par depend karta hai.
 
 
 
-## SYNCHRONOUS REPLICATION KA MAIN BENEFIT
---------------------------------------------
+## BENEFIT :
+-------------
 
 Synchronous Replication mein write ko acknowledge karne se pehle,
 Primary DB Replica(s) se required acknowledgements milne ka wait karta hai.
@@ -694,8 +694,8 @@ Lekin agar read kisi aisi Replica par jaaye jis par latest change
 abhi tak replicate/apply nahi hua hai, to stale data mil sakta hai.
 
 
-## SYNCHRONOUS REPLICATION KA PROBLEM
------------------------------------------
+## LIMITATION :
+----------------
 
 1. HIGHER WRITE LATENCY
 ------------------------
@@ -790,8 +790,8 @@ propagate/apply hote rehte hain.
 
 
 
-## DRAWABACK 
---------------
+## LIMITATION :
+---------------
 
 ### 1. REPLICATION LAG
 ------------------------
@@ -1273,9 +1273,9 @@ nodes ki information manage nahi karni padti.
 
 
 
-============================================================================
+=======================================================================
 #4. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING
-============================================================================
+=======================================================================
 
 Read Replicas se reads multiple nodes ke across distribute ho gaye.
 Lekin writes abhi bhi Primary DB par hi ja rahi hain.
@@ -1520,7 +1520,7 @@ Is request mein Application ke paas email hai,
 lekin directly user_id available nahi hai.
 
 Agar user_id Shard Key hai, to Application directly
-correct Shard identify nahi kar sakti.
+correct Shard identify nahi kar sakta.
 
 Aise case mein commonly kuch approaches use ki ja sakti hain.
 
@@ -1536,6 +1536,9 @@ Aise case mein commonly kuch approaches use ki ja sakti hain.
 
    Jis Shard mein required User milta hai,
    wahan se result return kiya ja sakta hai.
+
+   Jab correct Shard directly identify nahi kiya ja sakta aur query ko multiple
+   Shards par execute karna padta hai, to woh Cross-Shard Query ka ek case hota hai.
 
    ## PROBLEM 
    ------------
@@ -2358,9 +2361,113 @@ Highly Available banana padta hai.
 Iske liye commonly Multiple Replicated Instances maintain ki jaati hain.
 
 
+
 --------------------------------------------------------------------
 ## QUESTION: SHARDING KE BAAD READ REPLICAS KAISE WORK KARTI HAIN?
 --------------------------------------------------------------------
+
+Non-Sharded Read Scaled Architecture mein:
+
+Writes → Primary Database
+Reads → Read Replicas
+
+Read Replicas Primary Database se data replicate karti hain.
+
+Lekin Sharding ke baad data multiple Shards mein distributed hota hai.
+
+Har Shard total dataset ka sirf ek subset store karta hai aur
+apne assigned data ke Write Traffic ko handle karta hai.
+
+
+QUESTION : AGAR WRITE TRAFFIC MULTIPLE SHARDS KE ACROSS DISTRIBUTE HO CHUKA HAI, TO HAR SHARD KE READ TRAFFIC KO KAISE SCALE KIYA JAAYEGA?
+-------------------------------------------------------------------------------------------------------------------------------------------- 
+
+Sharding ke baad har Shard apne assigned subset of data ke Writes
+handle karta hai aur apne Read Traffic ko scale karne ke liye
+multiple Read Replicas maintain kar sakta hai.
+
+Architecture conceptually kuch aisi hogi:
+
+                         REQUEST
+                            |
+                            v
+                      Application
+                            |
+                            v
+                    Shard Routing Layer
+                            |
+              +-------------+-------------+
+              |                           |
+              v                           v
+         Logical Shard 1             Logical Shard 2
+              |                           |
+              v                           v
+          Primary DB                  Primary DB
+           /       \                   /       \
+          v         v                 v         v
+      Replica 1   Replica 2       Replica 1   Replica 2
+
+
+## WRITE REQUEST FLOW
+------------------------
+
+Jab bhi Write Request aati hai, Application request se Shard Key ki value identify karti hai.
+Us Shard Key par Shard Routing Logic apply karke pehle correct Shard identify kiya jaata hai.
+Uske baad Write Request directly us Shard ke Primary Database par execute hoti hai.
+
+Write successfully execute hone ke baad, Shard 2 ka Primary Database
+apne corresponding Read Replicas ko data replicate karta hai.
+
+
+## READ REQUEST FLOW
+----------------------
+
+Jab bhi Read Request aati hai, Application request se Shard Key ki value identify karti hai.
+Us Shard Key par Shard Routing Logic apply karke pehle correct Shard identify kiya jaata hai.
+Uske baad Application us particular Shard ke available Read Replicas mein se
+kisi ek Replica ko select karti hai.
+
+Selected Read Replica se data fetch karke Application response return kar deti hai.
+
+
+## COMPLETE FLOW:
+--------------------
+
+                    REQUEST
+                       |
+                       v
+                 Application
+                       |
+                       v
+              Extract Shard Key
+                       |
+                       v
+              SHARD ROUTING LOGIC
+                       |
+                       v
+                CORRECT SHARD
+                       |
+                       v
+                REQUEST TYPE?
+                 /          \
+                /            \
+            WRITE             READ
+              |                 |
+              v                 v
+         Shard Primary      Replica Selection
+              |                 |
+              v                 v
+         Execute Write      Read Replica
+              |
+              v
+       Replicate Changes
+              |
+       +------+------+
+       |             |
+       v             v
+   Replica 1      Replica N
+
+
 
 
 
