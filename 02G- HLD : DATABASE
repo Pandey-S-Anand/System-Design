@@ -2278,6 +2278,92 @@ Yahan:
 8 users mein se sirf 1 user migrate hua.
 
 
+
+4. DIRECTORY / LOOKUP-BASED SHARDING
+--------------------------------------
+Directory / Lookup-Based Sharding mein Application (ya dedicated Shard Routing Layer i.e Database Proxy / Routing Service)
+ek separate mapping / lookup table maintain karti hai. Is mapping ke basis par decide kiya jaata hai ki particular data
+kis Shard mein store hoga aur future mein usi data ke UPDATE / DELETE requests ko kis Shard par route kiya jaayega.
+
+
+## BENIFITS :
+----------------
+
+1: FLEXIBILITY
+----------------
+
+Directory / Lookup-Based Sharding ka biggest benefit flexibility hai.
+
+Shard 1 → Heavy Load
+Shard 2 → Medium Load
+Shard 3 → Low Load
+
+Agar new User create ho raha hai, Shard Routing Layer usse suitable Shard, jaise Shard 3, par store kar sakti hai.
+
+Uske baad Directory mein mapping store hoti hai:
+
+user_id = 101 → Shard 3
+
+Future Update/Delete requests mein:
+
+user_id = 101
+        ↓
+Directory Lookup
+        ↓
+Shard 3
+
+Yaani Directory mapping ke through future requests consistently usi Shard par route hoti hain jahan User ka data stored hai.
+
+
+2: FLEXIBLE REBALANCING 
+-------------------------
+
+Agar kisi particular data ke liye bahut zyada write requests aa rahi hain aur woh data kisi particular Shard par stored hai, 
+to us Shard par disproportionate load aa sakta hai aur woh Hot Shard ban sakta hai.
+Aise case mein heavily accessed data ko comparatively underutilized Shard par migrate kiya ja sakta hai.
+Migration ke baad Lookup / Directory Mapping ko update kar diya jaata hai, taaki future requests naye Shard par route ho sakein.
+
+Is approach ka advantage ye hai ki routing kisi fixed Range ya Hash Formula
+par directly dependent nahi hoti.
+
+Isliye selected keys/data ko independently migrate karke unki mapping update
+ki ja sakti hai.
+
+
+
+## LIMITATIONS :
+----------------
+
+Correct Shard identify karne ke liye Application ya dedicated
+Shard Routing Layer (for example, Database Proxy / Routing Service) ko
+pehle Lookup / Directory Mapping check karni pad sakti hai.
+
+Isse:
+
+- Additional Network Call ho sakti hai.
+- Overall Request Latency increase ho sakti hai.
+- Lookup / Directory Layer khud Single Point of Failure (SPOF) ban sakti hai.
+
+
+## SINGLE POINT OF FAILURE KA RISK
+-----------------------------------
+
+Agar Lookup / Directory Service single instance mein running hai aur
+woh unavailable ho jaati hai, to Application correct Shard identify
+nahi kar paayegi.
+
+Isliye Production Systems mein Lookup / Directory Layer ko bhi
+Highly Available banana padta hai.
+
+Iske liye commonly Multiple Replicated Instances maintain ki jaati hain.
+
+
+--------------------------------------------------------------------
+## QUESTION: SHARDING KE BAAD READ REPLICAS KAISE WORK KARTI HAIN?
+--------------------------------------------------------------------
+
+
+
 ================================================================================
 15: DB Connection Pool
 ================================================================================
