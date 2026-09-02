@@ -1470,13 +1470,13 @@ New User create karte time, Application user_id ko Shard Key ke roop mein use ka
 Shard Routing Rule apply karegi aur User ko corresponding Shard mein store karegi.
 
 
-## FUTURE READ / UPDATE
---------------------------
+## FUTURE UPDATE
+-------------------
 
-Future mein same User ke liye Read ya Update request aane par, Application dobara 
+Future mein same User ke liye Update request aane par, Application dobara 
 user_id ko Shard Key ke roop mein use karke same Shard Routing Rule apply karegi.
 
-Isliye particular user_id ke related reads aur writes consistently same Shard par route hote hain.
+Isliye particular user_id ke related writes consistently same Shard par route hote hain.
 
 
 
@@ -1685,15 +1685,15 @@ Shard 3 → user_id 666,667 to 1,000,000
 Ab maan lo user_id sequentially generate ho raha hai
 
 Isliye naye User creation requests aur unse se related
-initial traffic disproportionately Shard 1 par aa sakta hai,
+write (Update) traffic disproportionately Shard 1 par aa sakta hai,
 jabki baaki Shards comparatively kam utilized ya idle ho sakte hain.
 
 Aisi situation mein ek Shard baaki Shards ke comparison mein
 significantly zyada load handle karne lagta hai and hot shard ban jata hai.
 
 
-## EXAMPLE 2 :
----------------
+## EXAMPLE 2:
+--------------
 
 Shard Key = country
 
@@ -1703,15 +1703,25 @@ India   → Very High Traffic
 US      → Medium Traffic
 Others  → Low Traffic
 
-aur India-related data ek particular Shard par route ho raha hai,
-to woh Shard bhi Hot Shard ban sakta hai.
+
+Agar India-related data ke liye Write Requests bahut high hain,
+to India ki Shard Key value ke corresponding Shard par
+baaki Shards ke comparison mein disproportionately zyada
+Write Traffic aa sakta hai.
+
+Jabki baaki Shards comparatively kam Write Traffic handle kar
+rahe ho sakte hain.
+
+Is wajah se India-related data ko handle karne wala Shard
+disproportionately zyada load handle karne lag sakta hai
+and hot shard ban sakta hai.
 
 
 
 ## QUESTION: HOT SHARD KO HANDLE KAISE KIYA JA SAKTA HAI? - REBALANCING
 --------------------------------------------------------------------------
 
-Agar kisi particular Shard par disproportionately zyada data ya
+Agar kisi particular Shard par disproportionately zyada write
 traffic aa raha hai, to us Shard ki existing range ko split kiya
 ja sakta hai.
 
