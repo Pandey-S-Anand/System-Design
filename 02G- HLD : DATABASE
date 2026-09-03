@@ -2645,17 +2645,17 @@ successfully complete honge aur unke changes commit honge, ya transaction ke
 kisi bhi operation mein failure hone ki situation mein pehle successfully
 completed operations ke changes bhi rollback ho jaayenge.
 
-Cross-Shard databse Transaction woh transaction hoti hai jiske Operations ko 
-execute karne ke liye required data different Shards par stored hota hai.
+Cross-Shard databse Transaction ke operations ko execute karne ke
+liye required data different Shards par stored hota hai.
 Yaani ek databse Transaction ko complete karne ke liye multiple 
 Shards par Operations execute karne padta hai.
 
 
-------------------------------------------------------------
-## QUESTION: CROSS-SHARD DATABASE TRANSACTION KI PROBLEM ?
-------------------------------------------------------------
+--------------
+## PROBLEM ?
+--------------
 
-Cross-Shard Transaction mein required operations multiple
+Cross-Shard database transaction ke operations multiple
 different Shards par execute hote hain.
 
 Problem tab aati hai jab ek Shard par operation successfully
@@ -2663,17 +2663,26 @@ complete ho jaaye, lekin doosre Shard par operation fail ho jaaye.
 
 
 ## EXAMPLE
-------------
+--------------
 
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain aur 
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain aur
 dono Accounts different Shards mein stored hain:
 
 Account A → Shard 1
 Account B → Shard 2
 
-Operations:
+Required Operations:
 
-Shard 1 → Account A se ₹1,000 deduct → SUCCESS
+Shard 1 → Account A se ₹1,000 deduct
+Shard 2 → Account B mein ₹1,000 add
+
+Ab maan lo Shard 1 par ₹1,000 deduct karne wali database
+transaction successfully execute aur commit ho jaati hai:
+
+Shard 1 → Account A se ₹1,000 deduct → SUCCESS → COMMIT
+
+Lekin Shard 2 par Account B mein ₹1,000 credit karne wali
+database transaction fail ho jaati hai:
 
 Shard 2 → Account B mein ₹1,000 add → FAIL
 
@@ -2682,49 +2691,35 @@ Result:
 Account A → ₹9,000
 Account B → ₹5,000
 
-Yaani ₹1,000 source account se successfully deduct ho gaye, lekin destination account mein add nahi hue.
+Yaani ₹1,000 source account se successfully deduct ho gaye,
+lekin destination account mein add nahi hue.
+
+Problem ye hai ki Shard 2 par database transaction fail hone ke baad bhi
+Shard 1 par previously committed database transaction automatically rollback
+nahi hogi.
+
+Kyuki dono database transactions apne respective Shards ke transactional
+scope ke andar independently execute aur manage hoti hain.
+
+Isliye ek Shard par database transaction ke failure ki wajah se doosre Shard
+par already committed database transaction automatically undo nahi hota.
+
+Yahi Cross-Shard database transaction ki main challenge hai.
 
 
-## ROOT CAUSE :
-----------------
+--------------------------------------
+## SOLUTION - TWO-PHASE COMMIT (2PC) 
+--------------------------------------
 
-Shard 2 par Local Transaction fail hone ki wajah se Account B mein
-₹1,000 credit nahi ho paaye.
-
-Lekin Shard 1 par ₹1,000 deduct karne wali Local Transaction
-already successfully commit ho chuki hai.
-
-Shard 2 ki Local Transaction fail hone par Shard 1 ki already
-committed Local Transaction automatically rollback nahi hogi,
-kyunki dono Local Transactions apne respective Shards ke
-transactional scope ke andar independently execute aur manage hoti hain.
-
-Isliye ek Shard par Local Transaction ke failure ki wajah se doosre
-Shard par already committed Local Transaction automatically undo nahi hoti.
-
-Cross-Shard Transaction mein agar kisi Local Transaction ke fail hone se pehle
-kuch Local Transactions successfully execute aur commit ho chuki hain,
-to un already committed Local Transactions ke effects ko automatically
-normal database rollback ke through undo nahi kiya ja sakta.
-
-
-----------------------------------------------------------------------------
-## QUESTION: CROSS-SHARD / DISTRIBUTED TRANSACTION KA SOLUTION ?
-----------------------------------------------------------------------------
-
-1. TWO-PHASE COMMIT (2PC)
---------------------------
-
-Cross-Shard / Distributed Transaction mein transaction ke operations
+Cross-Shard database transaction ke operations
 multiple independent Shards par execute hote hain.
 
 In operations ko coordinated way mein manage karne ke liye
 ek Transaction Coordinator use kiya ja sakta hai.
 
-Transaction Coordinator ek component/service hota hai jo distributed transaction
-ke participating databases / shards ko coordinate karta hai aur ensure karta hai
-ki sab participants collectively COMMIT ya collectively ABORT karein.
-
+Transaction Coordinator ek component/service hota hai jo distributed database
+transaction ke participating shards ko coordinate karta hai aur ensure karta hai
+ki sab participating shards collectively COMMIT ya collectively ABORT karein.
 
 Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai jisme 
 Transaction Coordinator transaction ko do phases mein manage karta hai:
@@ -2855,14 +2850,14 @@ Abort Everywhere
 ## LIMITATIONS :
 ------------------
 
-1. Multiple Databases/Shards ko coordinate karne ke liye Transaction Coordinator ko participating 
-   Shards ke saath multiple network communications karni padti hain.
-   Is wajah se Distributed Transaction ki overall latency increase ho sakti hai.
+1. Multiple Shards ko coordinate karne ke liye Transaction Coordinator ko participating 
+   Shards ke saath multiple network communications karni padti hain. Is wajah se Distributed
+   database transaction ki overall latency increase ho sakti hai.
 
 2. Prepare Phase ke dauran participating Shards required resources ko lock/reserve kar sakte hain.
    Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye,
-   to ye resources unnecessarily locked reh sakte hain aur doosri transactions ko wait karna pad sakta hai.
-   Isse Database throughput aur overall system performance impact ho sakti hai.
+   to ye resources unnecessarily locked reh sakte hain aur doosri database transactions ko wait karna 
+   padta hai. Isse Database throughput aur overall system performance impact ho sakti hai.
 
 
 
