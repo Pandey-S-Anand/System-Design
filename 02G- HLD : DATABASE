@@ -2594,21 +2594,6 @@ Any Operation Failed
      ROLLBACK
 
 
-----------------------------------------------------------
-## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
-----------------------------------------------------------
-
-Normal / Local Database Transaction mein saare required Operations ko execute 
-karne ke liye required data ek hi Database Node / Shard par stored hota hai.
-Isliye databse Transaction ke saare Operations ek hi Database
-ke andar execute kiye ja sakte hain.
-
-Cross-Shard databse Transaction woh transaction hoti hai jiske Operations ko 
-execute karne ke liye required data different Shards par stored hota hai.
-Yaani ek databse Transaction ko complete karne ke liye multiple 
-independent Shards par Operations execute karne pad sakte hain.
-
-
 ## EXAMPLE
 ------------
 
@@ -2624,14 +2609,6 @@ Account B → ₹5,000
 1. Account A se ₹1,000 deduct
 2. Account B mein ₹1,000 add
 
-
-## CASE 1: NORMAL / LOCAL DATABASE TRANSACTION
--------------------------------------------------
-
-Maan lo dono Accounts same Shard mein stored hain:
-
-Account A → Shard 1
-Account B → Shard 1
 
 ## Transaction:
 
@@ -2653,8 +2630,8 @@ Account B → ₹6,000
 
 
 
-## AGAR BEECH MEIN FAILURE HO JAAYE TO ?
------------------------------------------
+## QUESTION: AGAR BEECH MEIN KOI OPERATION FAIL HO JAAYE TO ?
+---------------------------------------------------------------
 
 Maan lo:
 
@@ -2676,26 +2653,83 @@ Account A → ₹10,000
 Account B → ₹5,000
 
 
+----------------------------------------------------------
+## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
+----------------------------------------------------------
 
-## CASE 2: CROSS-SHARD DATABASE TRANSACTION
------------------------------------------------
+Normal / Local Database Transaction mein saare Operations ko execute 
+karne ke liye required data ek hi Database Node / Shard par stored hota hai.
+Isliye databse Transaction ke saare Operations ek hi Database
+ke andar execute kiye ja sakte hain.
 
-Ab maan lo dono Accounts different Shards mein stored hain:
+Cross-Shard databse Transaction woh transaction hoti hai jiske Operations ko 
+execute karne ke liye required data different Shards par stored hota hai.
+Yaani ek databse Transaction ko complete karne ke liye multiple 
+independent Shards par Operations execute karne pad sakte hain.
+
+------------------------------------------------------------
+## QUESTION: CROSS-SHARD DATABASE TRANSACTION KI PROBLEM ?
+------------------------------------------------------------
+
+Cross-Shard Transaction mein required operations multiple
+different Shards par execute hote hain.
+
+Problem tab aati hai jab ek Shard par operation successfully
+complete ho jaaye, lekin doosre Shard par operation fail ho jaaye.
+
+
+## EXAMPLE
+------------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
+and dono Accounts different Shards mein stored hain
 
 Account A → Shard 1
 Account B → Shard 2
 
+₹1,000 transfer karne hain:
 
-Transaction ke required Operations bhi different Shards par execute honge:
+Shard 1 → Account A se ₹1,000 deduct → SUCCESS
+Shard 2 → Account B mein ₹1,000 add → FAIL
 
-Shard 1:
-Deduct ₹1,000 from Account A
+Result:
 
-Shard 2:
-Add ₹1,000 to Account B
+Account A → ₹9,000
+Account B → ₹5,000
 
-Yaani ek  logical Transaction ke Operations multiple
-independent  Shards par execute ho rahe hain.
+Yaani ₹1,000 deduct ho gaye, lekin destination account mein add nahi hue.
+
+
+## ROOT CAUSE :
+----------------
+
+Different Shards independent Database Nodes hote hain. Ek Shard ka local transaction 
+automatically doosre Shard ke operation ko rollback nahi kar sakta.
+
+Isliye Cross-Shard Transaction mein multiple Shards par execute hone wale
+operations ko coordinated way mein manage karna padta hai, taaki:
+
+- All Operations Successful → COMMIT Transaction
+- Any Operation Failed → ABORT Transaction
+
+Agar kisi operation ke fail hone se pehle kuch operations successfully
+execute ho chuke hain, to un successfully executed operations ke changes ko
+rollback / revert karna padta hai.
+
+Isse sabhi involved Shards ka data previous consistent state mein
+wapas aa sake.
+
+
+----------------------------------------------------------------------------
+## QUESTION: CROSS-SHARD / DISTRIBUTED DATABASE TRANSACTION KA SOLUTION ?
+----------------------------------------------------------------------------
+
+Cross-Shard / Distributed Transaction mein multiple Shards 
+par operations execute hote hain.
+
+Isliye ek Transaction Coordinator ki zarurat pad sakti hai jo
+involved Shards ke operations ko coordinate kare.
+
 
 
 
