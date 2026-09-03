@@ -2604,48 +2604,24 @@ Initial State:
 Account A → ₹10,000
 Account B → ₹5,000
 
-## Required Operations:
+Transaction ke andar:
 
-1. Account A se ₹1,000 deduct
-2. Account B mein ₹1,000 add
+Account A se ₹1,000 deduct
+Account B mein ₹1,000 add
 
+Dono operations successful:
 
-## Transaction:
+→ COMMIT
 
-BEGIN TRANSACTION
-Deduct ₹1,000 from Account A
-Add ₹1,000 to Account B
-COMMIT
-
-
-Agar dono Operations successfully complete ho jaati hain:
-
-COMMIT
-
-
-## Final State:
+Final State:
 
 Account A → ₹9,000
 Account B → ₹6,000
 
+Agar koi operation fail ho jaaye:
 
-
-## QUESTION: AGAR BEECH MEIN KOI OPERATION FAIL HO JAAYE TO ?
----------------------------------------------------------------
-
-Maan lo:
-
-Account A se ₹1,000 deduct ho gaye
-
-Lekin
-
-Account B mein ₹1,000 add karte time failure aa gaya
-
-Transaction failure par:
-
-ROLLBACK
-    ↓
-Account A ka deduction undo
+Maan lo second operation fail ho jaaye, to Transaction ROLLBACK ho jaayega
+i.e Account A se deduction ko ROLLBACK kar diya jaayega.
 
 Final State:
 
@@ -2687,8 +2663,6 @@ and dono Accounts different Shards mein stored hain
 Account A → Shard 1
 Account B → Shard 2
 
-₹1,000 transfer karne hain:
-
 Shard 1 → Account A se ₹1,000 deduct → SUCCESS
 Shard 2 → Account B mein ₹1,000 add → FAIL
 
@@ -2724,12 +2698,292 @@ wapas aa sake.
 ## QUESTION: CROSS-SHARD / DISTRIBUTED DATABASE TRANSACTION KA SOLUTION ?
 ----------------------------------------------------------------------------
 
-Cross-Shard / Distributed Transaction mein multiple Shards 
-par operations execute hote hain.
+1. TWO-PHASE COMMIT (2PC)
+--------------------------
 
-Isliye ek Transaction Coordinator ki zarurat pad sakti hai jo
-involved Shards ke operations ko coordinate kare.
+Cross-Shard / Distributed Transaction mein transaction ke operations
+multiple independent Shards par execute hote hain.
 
+In operations ko coordinated way mein manage karne ke liye
+ek Transaction Coordinator use kiya ja sakta hai.
+
+Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai
+jisme Transaction Coordinator multiple participating Shards ko
+coordinate karta hai.
+
+Transaction generally do phases mein complete hoti hai:
+
+- PREPARE PHASE
+- COMMIT / ABORT PHASE
+
+
+## PHASE 1: PREPARE
+---------------------
+
+Transaction Coordinator participating Shards ko PREPARE request bhejta hai.
+
+Transaction Coordinator
+        |
+        +------> Shard 1 → PREPARE
+        |
+        +------> Shard 2 → PREPARE
+
+
+Har Shard validate karta hai ki requested operation successfully perform
+aur later commit kiya ja sakta hai ya nahi.
+
+
+## EXAMPLE
+-----------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
+
+Account A → Shard 1
+Account B → Shard 2
+
+### SHARD 1
+------------
+
+Shard 1 ka operation:
+
+Account A se ₹1,000 deduct karna.
+
+Shard 1 check karega:
+
+* Account exist karta hai?
+* Balance sufficient hai?
+* Account blocked/frozen nahi hai?
+
+
+### SHARD 2
+-------------
+
+Shard 2 ka operation:
+
+Account B mein ₹1,000 add karna.
+
+Shard 2 check karega:
+
+* Account B exist karta hai?
+* Account active hai?
+* Account blocked/frozen nahi hai?
+
+
+### AGAR OPERATION POSSIBLE HAI:
+---------------------------------
+
+Shard required resources reserve karke response deta hai:
+
+READY
+
+Yaani:
+
+"Main transaction commit karne ke liye ready hoon."
+
+Is stage par changes abhi final commit nahi hote.
+
+
+### AGAR OPERATION POSSIBLE NAHI HAI:
+--------------------------------------
+
+Shard response deta hai:
+
+FAIL
+
+Yaani:
+
+"Main transaction commit karne ke liye ready nahi hoon."
+
+
+
+## PHASE 2: COMMIT / ABORT
+-----------------------------
+
+Prepare Phase complete hone ke baad Transaction Coordinator
+sabhi participating Shards ke responses receive karta hai.
+
+### AGAR SABHI SHARDS 'READY' STATE MEIN HAIN:
+-------------------------------------------------
+
+Agar sabhi participating Shards READY response dete hain,
+to Transaction Coordinator sabhi Shards ko COMMIT command bhejta hai.
+
+Iske baad har Shard apne respective operation ko final commit kar deta hai.
+and Transaction successfully complete ho jaati hai.
+
+
+### AGAR KOI BHI PARTICIPATING SHARD 'FAIL' STATE MEIN HAI:
+------------------------------------------------------------
+
+Agar koi bhi participating Shard FAIL response deta hai,
+to Transaction Coordinator sabhi participating Shards ko ABORT
+command bhejta hai.
+
+Iske baad jin Shards ne Prepare Phase ke dauran resources reserve
+kiye the, woh transaction ko abort karke reserved resources release
+kar dete hain and Transaction cancel ho jaata hai.
+
+
+## CORE IDEA :
+--------------
+
+All Shards Ready
+      ↓
+Commit Everywhere
+
+Any Shard Fails
+      ↓
+Abort Everywhere
+
+
+## LIMITATIONS :
+------------------
+
+1. Multiple Databases/Shards ko coordinate karne ke liye Transaction Coordinator ko participating 
+   Shards ke saath multiple network communications karni padti hain.
+   Is wajah se Distributed Transaction ki overall latency increase ho sakti hai.
+
+2. Prepare Phase ke dauran participating Shards required resources ko lock/reserve kar sakte hain.
+   Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye,
+   to ye resources unnecessarily locked reh sakte hain aur doosri transactions ko wait karna pad sakta hai.
+   Isse Database throughput aur overall system performance impact ho sakti hai.
+
+3. Distributed Transaction ko complete karne ke liye multiple participating Shards available hone pad sakte hain.
+   Agar koi required Shard unavailable ho jaaye, Transaction complete nahi ho paayegi aur abort karni pad sakti hai.
+
+
+
+2. SAGA PATTERN
+-----------------
+
+Saga Pattern bhi Distributed / Cross-Shard Transactions 
+ko handle karne ka ek approach hai.
+
+Is approach mein ek large Distributed Transaction
+ko multiple smaller Local Transactions mein divide kar diya jaata hai.
+
+Har Local Transaction apne respective Database / Shard 
+ke andar independently execute aur commit hoti hai.
+
+Agar saari Local Transactions successfully complete ho jaati hain, 
+to overall Distributed Transaction successfully complete ho jaati hai.
+
+Lekin agar kisi Local Transaction mein failure aa jaaye, to pehle 
+successfully completed Local Transactions ke business effects ko 
+reverse karne ke liye Compensating Transactions execute ki jaati hain.
+
+Compensating Transaction normal Database Rollback nahi hoti.
+
+Ye ek new Local Transaction hoti hai jo previously successfully completed 
+operation ke business effect ko logically reverse karne ka kaam karti hai.
+
+Ye Compensating Transaction usi Database / Shard par execute hoti hai jahan
+corresponding Local Transaction previously successfully commit hui thi.
+
+
+## EXAMPLE:
+-------------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
+
+Account A → Shard 1
+Account B → Shard 2
+
+Local Transaction 1:
+Shard 1 → Deduct ₹1,000 from Account A
+
+Local Transaction 2:
+Shard 2 → Credit ₹1,000 to Account B
+
+
+## SUCCESS FLOW:
+------------------
+
+Local Transaction 1 → Commit
+          ↓
+Local Transaction 2 → Commit
+          ↓
+Distributed Transaction Successfully Complete
+
+
+## FAILURE FLOW:
+-----------------
+
+Agar Local Transaction 1 successfully commit ho jaati hai, lekin Local Transaction 2 fail ho jaati hai:
+
+Local Transaction 1 → Commit
+          ↓
+Local Transaction 2 → Fail
+          ↓
+Execute Compensating Transaction
+          ↓
+Shard 1 → Add ₹1,000 back to Account A
+
+
+## LIMITATIONS :
+------------------
+
+1:  TEMPORARY DATA INCONSISTENCY 
+----------------------------------
+
+   Saga Pattern mein har Local Transaction independently commit hoti hai.
+   Isliye transaction ke beech mein kuch time ke liye different Shards ka
+   state temporarily inconsistent ho sakta hai.
+
+   Example:
+
+   Maan lo Account A se Account B mein ₹1,000 transfer kiye ja rahe hain:
+
+   Shard 1 → Account A se ₹1,000 successfully deduct ho gaye.
+
+   Shard 2 → Account B mein ₹1,000 credit karne ki operation abhi process ho rahi hai.
+
+   Is temporary state mein:
+
+   Account A → ₹1,000 deduct ho chuke hain
+   Account B → Abhi ₹1,000 receive nahi hue hain
+
+   Agar Distributed Transaction ki saari Local Transactions successfully complete ho jaati hain, 
+   to eventually sabhi participating Shards/Databases consistent state mein aa jaate hain.
+
+   Aur agar kisi bhi Local Transaction mein failure ho jaata hai, to previously successfully completed
+   Local Transactions ke effects ko reverse karne ke liye Compensating Transactions execute ki jaati hain.
+   Compensating Transactions complete hone ke baad, sabhi participating Shards/Databases phir
+   se eventually consistent state mein aa jaate hain.
+
+   Isliye Saga Pattern Immediate Consistency provide nahi karta, balki system ko eventually Consistent State mein laata hai.
+
+
+
+2:  COMPENSATING TRANSACTIONS KA OVERHEAD
+-------------------------------------------
+
+Saga Pattern mein agar koi later Local Transaction fail ho jaati hai, to previously successful Local Transactions
+ke business effects ko logically reverse karne ke liye respective Database / Shard par Compensating Transactions execute karni padti hain.
+
+Kyuki Saga Pattern mein previously successful Local Transactions already independently commit ho chuki hoti hain, 
+unhe normal database rollback ke through automatically undo nahi kiya ja sakta.
+
+Isliye failure ki situation mein unke business effects ko reverse karne ke liye explicitly Compensating Transactions
+implement aur execute karni padti hain, jisse additional application logic aur complexity introduce hoti hai.
+
+
+3: FAILURE HANDLING AND RETRY COMPLEXITY
+------------------------------------------
+
+Distributed Environment mein Network Failure ya Timeout ki wajah se operation ka result uncertain ho sakta hai.
+
+Example: Shard 1 par ₹1,000 successfully deduct ho gaye, lekin Shard 2 par ₹1,000 credit request ke baad
+Network Timeout aa gaya. Ab system ko clear nahi hoga ki Credit operation successfully execute hui ya nahi.
+
+Agar system Credit operation ko blindly retry kare aur operation pehle hi successfully execute
+ho chuki ho, to Account B mein duplicate ₹1,000 credit ho sakte hain.
+
+Isliye Saga ke Local Transactions ko generally Idempotent design karna important hota hai, 
+taaki same operation multiple times retry hone ke baad bhi final business result incorrect na ho.
+
+Isliye Saga Pattern mein failure handling aur retry logic additional implementation 
+complexity introduce kar sakte hain.
 
 
 
