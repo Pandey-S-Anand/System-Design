@@ -2717,11 +2717,13 @@ multiple independent Shards par execute hote hain.
 In operations ko coordinated way mein manage karne ke liye
 ek Transaction Coordinator use kiya ja sakta hai.
 
-Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai
-jisme Transaction Coordinator multiple participating Shards ko
-coordinate karta hai.
+Transaction Coordinator ek component/service hota hai jo distributed transaction
+ke participating databases / shards ko coordinate karta hai aur ensure karta hai
+ki sab participants collectively COMMIT ya collectively ABORT karein.
 
-Transaction generally do phases mein complete hoti hai:
+
+Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai jisme 
+Transaction Coordinator transaction ko do phases mein manage karta hai:
 
 - PREPARE PHASE
 - COMMIT / ABORT PHASE
@@ -2739,8 +2741,8 @@ Transaction Coordinator
         +------> Shard 2 → PREPARE
 
 
-Har Shard validate karta hai ki requested operation successfully perform
-aur later commit kiya ja sakta hai ya nahi.
+Har Shard validate karta hai ki requested operation successfully 
+execute karke later commit kiya ja sakta hai ya nahi.
 
 
 ## EXAMPLE
@@ -2857,9 +2859,6 @@ Abort Everywhere
    Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye,
    to ye resources unnecessarily locked reh sakte hain aur doosri transactions ko wait karna pad sakta hai.
    Isse Database throughput aur overall system performance impact ho sakti hai.
-
-3. Distributed Transaction ko complete karne ke liye multiple participating Shards available hone pad sakte hain.
-   Agar koi required Shard unavailable ho jaaye, Transaction complete nahi ho paayegi aur abort karni pad sakti hai.
 
 
 
