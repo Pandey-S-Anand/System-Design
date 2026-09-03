@@ -2633,17 +2633,22 @@ Account B → ₹5,000
 ## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
 ----------------------------------------------------------
 
-Normal / Local Database Transaction mein transaction ke saare required operations aur data ek hi Database Node / Shard par available hote hain. 
-Isliye transaction ke saare operations ek hi Database ke andar execute kiye ja sakte hain.
+Normal / Local Database Transaction mein transaction ke saare
+operations ek hi Database ke transactional scope ke andar 
+execute kiye jaate hain.
 
-Agar transaction ke kisi bhi operation mein failure ho jaata hai, to Database poori transaction ko automatically rollback kar sakta hai.
-Isse Atomicity ensure hoti hai, yaani transaction ke saare operations successfully complete honge, ya poori transaction completely abort/rollback ho jaayegi. 
-Isliye transaction ke partial changes permanently persist nahi hote aur Database consistent state maintain karne mein help milti hai.
+Agar transaction ke kisi bhi operation mein failure ho jaata hai,
+to Database poori transaction ko automatically rollback kar sakta hai.
+
+Isse Atomicity ensure hoti hai, yaani transaction ke saare operations
+successfully complete honge aur unke changes commit honge, ya transaction ke
+kisi bhi operation mein failure hone ki situation mein pehle successfully
+completed operations ke changes bhi rollback ho jaayenge.
 
 Cross-Shard databse Transaction woh transaction hoti hai jiske Operations ko 
 execute karne ke liye required data different Shards par stored hota hai.
 Yaani ek databse Transaction ko complete karne ke liye multiple 
-independent Shards par Operations execute karne pad sakte hain.
+Shards par Operations execute karne padta hai.
 
 
 ------------------------------------------------------------
@@ -2660,7 +2665,8 @@ complete ho jaaye, lekin doosre Shard par operation fail ho jaaye.
 ## EXAMPLE
 ------------
 
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain aur dono Accounts different Shards mein stored hain:
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain aur 
+dono Accounts different Shards mein stored hain:
 
 Account A → Shard 1
 Account B → Shard 2
@@ -2682,30 +2688,28 @@ Yaani ₹1,000 source account se successfully deduct ho gaye, lekin destination 
 ## ROOT CAUSE :
 ----------------
 
-Shard 2 par Local Transaction fail hone ki wajah se Account B mein ₹1,000 credit nahi ho paaye.
+Shard 2 par Local Transaction fail hone ki wajah se Account B mein
+₹1,000 credit nahi ho paaye.
 
-Lekin Shard 1 par ₹1,000 deduct karne wali Local Transaction already successfully commit ho chuki hai.
+Lekin Shard 1 par ₹1,000 deduct karne wali Local Transaction
+already successfully commit ho chuki hai.
 
-Shard 2 ki Local Transaction fail hone par Shard 1 ki already committed Local Transaction automatically rollback nahi hogi,
-kyunki Local Transactions apne respective Database / Shard ke scope ke andar independently manage hoti hain.
+Shard 2 ki Local Transaction fail hone par Shard 1 ki already
+committed Local Transaction automatically rollback nahi hogi,
+kyunki dono Local Transactions apne respective Shards ke
+transactional scope ke andar independently execute aur manage hoti hain.
 
-Isliye Shard 2 ke failure ki wajah se Shard 1 ka data bhi overall Distributed Transaction ke perspective se 
-inconsistent state mein aa sakta hai.
+Isliye ek Shard par Local Transaction ke failure ki wajah se doosre
+Shard par already committed Local Transaction automatically undo nahi hoti.
 
-
-Cross-Shard Transaction mein multiple Shards par execute hone wale operations / Local Transactions ko coordinated way mein manage karna padta hai, taaki:
-
-- All Operations Successful → Distributed Transaction Commit
-- Any Operation Failed → Distributed Transaction Abort
-
-Agar kisi Local Transaction ke fail hone se pehle kuch Local Transactions successfully execute aur commit ho chuki hain, 
-to un successfully completed operations ke effects ko rollback ya logically revert karna padta hai.
-
-Isse sabhi involved Shards ka data wapas consistent state mein laaya ja sake.
+Cross-Shard Transaction mein agar kisi Local Transaction ke fail hone se pehle
+kuch Local Transactions successfully execute aur commit ho chuki hain,
+to un already committed Local Transactions ke effects ko automatically
+normal database rollback ke through undo nahi kiya ja sakta.
 
 
 ----------------------------------------------------------------------------
-## QUESTION: CROSS-SHARD / DISTRIBUTED DATABASE TRANSACTION KA SOLUTION ?
+## QUESTION: CROSS-SHARD / DISTRIBUTED TRANSACTION KA SOLUTION ?
 ----------------------------------------------------------------------------
 
 1. TWO-PHASE COMMIT (2PC)
@@ -2865,29 +2869,33 @@ Abort Everywhere
 2. SAGA PATTERN
 -----------------
 
-Saga Pattern bhi Distributed / Cross-Shard Transactions 
-ko handle karne ka ek approach hai.
+Saga Pattern ek approach hai jiska use ek Distributed Business Transaction
+ko multiple smaller Local Transactions mein divide kiya jaata hai.
 
-Is approach mein ek large Distributed Transaction
-ko multiple smaller Local Transactions mein divide kar diya jaata hai.
+Har Local Transaction apni respective Service / Database / Shard ki
+transactional boundary ke andar independently execute aur commit hoti hai.
 
-Har Local Transaction apne respective Database / Shard 
-ke andar independently execute aur commit hoti hai.
+Agar Saga ki saari Local Transactions successfully complete ho jaati hain,
+to overall Distributed Business Transaction successfully complete maana jaata hai.
 
-Agar saari Local Transactions successfully complete ho jaati hain, 
-to overall Distributed Transaction successfully complete ho jaati hai.
+Lekin agar kisi later Local Transaction mein failure aa jaaye, to pehle successfully
+completed Local Transactions automatically rollback ya undo nahi hoti.
 
-Lekin agar kisi Local Transaction mein failure aa jaaye, to pehle 
-successfully completed Local Transactions ke business effects ko 
-reverse karne ke liye Compensating Transactions execute ki jaati hain.
+Iska reason ye hai ki har Local Transaction ka transactional scope sirf apni
+respective Service / Database / Shard ki transactional boundary tak limited hota hai aur
+previously successful Local Transactions already independently commit ho chuki hoti hain.
 
-Compensating Transaction normal Database Rollback nahi hoti.
+Isliye ek Local Transaction ka failure automatically kisi doosri Service / Database / Shard
+par already committed Local Transaction ko rollback nahi kar sakta.
 
-Ye ek new Local Transaction hoti hai jo previously successfully completed 
-operation ke business effect ko logically reverse karne ka kaam karti hai.
+Aisi situation mein previously successfully committed Local Transactions ke business effects ko
+logically reverse karne ke liye Compensating Transactions execute ki jaati hain.
 
-Ye Compensating Transaction usi Database / Shard par execute hoti hai jahan
-corresponding Local Transaction previously successfully commit hui thi.
+Compensating Transaction ek new Local Transaction hoti hai jo previously successfully
+committed Local Transaction ke business effect ko logically reverse karne ka kaam karti hai.
+
+Ye usi Service / Database / Shard ki transactional boundary ke andar execute hoti hai
+jahan corresponding Local Transaction previously execute aur commit hui thi.
 
 
 ## EXAMPLE:
@@ -3010,6 +3018,17 @@ Isliye Saga Pattern mein sirf original Local Transactions ki failure handling na
 Transactions ki failure handling bhi additional implementation complexity introduce karti hai.
 
 
+
+## QUESTION: SAGA PATTERN KO EXECUTE KAISE KIYA JAATA HAI?
+--------------------------------------------------------------
+
+Saga Pattern ko execute karne ke generally do common approaches hain:
+
+1. CHOREOGRAPHY-BASED SAGA
+----------------------------
+
+
+2: Orchestration-Based Saga
 
 
 
