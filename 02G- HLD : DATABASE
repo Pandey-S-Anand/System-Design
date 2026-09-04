@@ -2594,60 +2594,28 @@ Any Operation Failed
      ROLLBACK
 
 
-## EXAMPLE
-------------
-
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
-
-Initial State:
-
-Account A → ₹10,000
-Account B → ₹5,000
-
-Transaction ke andar:
-
-Account A se ₹1,000 deduct
-Account B mein ₹1,000 add
-
-Dono operations successful:
-
-→ COMMIT
-
-Final State:
-
-Account A → ₹9,000
-Account B → ₹6,000
-
-Agar koi operation fail ho jaaye:
-
-Maan lo second operation fail ho jaaye, to Transaction ROLLBACK ho jaayega
-i.e Account A se deduction ko ROLLBACK kar diya jaayega.
-
-Final State:
-
-Account A → ₹10,000
-Account B → ₹5,000
-
 
 ----------------------------------------------------------
 ## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
 ----------------------------------------------------------
 
-Normal / Local Database Transaction mein transaction ke saare
-operations ek hi Database ke transactional scope ke andar 
+Normal / Local Database Transaction mein Transaction ke saare required
+Database Write Operations ek hi Database ke transactional scope ke andar
 execute kiye jaate hain.
 
-Agar transaction ke kisi bhi operation mein failure ho jaata hai,
-to Database poori transaction ko automatically rollback kar sakta hai.
+Agar Transaction ke kisi bhi Write Operation mein failure ho jaata hai,
+to Database poori Transaction ko rollback kar sakta hai.
 
-Isse Atomicity ensure hoti hai, yaani transaction ke saare operations
-successfully complete honge aur unke changes commit honge, ya transaction ke
+Isse Atomicity ensure hoti hai, yaani Transaction ke saare Write Operations
+successfully complete honge aur unke changes commit honge, ya Transaction ke
 kisi bhi operation mein failure hone ki situation mein pehle successfully
-completed operations ke changes bhi rollback ho jaayenge.
+completed Write Operations ke changes bhi rollback ho jaayenge.
 
-Cross-Shard Database Transaction sharded Database ke context mein hoti hai, 
-jahan ek Transaction ke required operations multiple independent Shards par
-execute hote hain. Har Shard apne respective operation ko apni independent Local
+Cross-Shard Database Transaction sharded Database ke context mein hoti hai,
+jahan ek Transaction ke required Database Write Operations multiple independent
+Shards par execute hote hain.
+
+Har Shard apne respective Write Operation ko apni independent Local
 Database Transaction ke andar execute aur manage karta hai.
 
 
@@ -2655,8 +2623,8 @@ Database Transaction ke andar execute aur manage karta hai.
 ## PROBLEM ?
 --------------
 
-Problem tab aati hai jab ek Shard par operation successfully
-complete ho jaaye, lekin doosre Shard par operation fail ho jaaye.
+Problem tab aati hai jab ek Shard par write operation successfully
+complete ho jaaye, lekin doosre Shard par write operation fail ho jaaye.
 
 
 ## EXAMPLE :
@@ -2687,7 +2655,7 @@ account_id = 101 → Shard 1
 account_id = 501 → Shard 2
 
 
-Ab `Account Service` ko do operations perform karne hain:
+Ab `Account Service` ko do write operations perform karne hain:
 
 ### Operation 1
 ----------------
@@ -2702,12 +2670,12 @@ Debit ₹100 from Account 101
 Shard 2:
 Credit ₹100 to Account 501
 
-Ab maan lo `Shard 1` par Account A se ₹100 deduct karne wali Database Transaction successfully execute aur commit ho jaati hai:
+Ab maan lo `Shard 1` par Account A se ₹100 deduct karne wali database transaction successfully execute aur commit ho jaati hai:
 
 Shard 1 → Account A se ₹100 deduct → SUCCESS → COMMIT
 
 
-Lekin `Shard 2` par Account B mein ₹100 credit karne wali Database Transaction fail ho jaati hai:
+Lekin `Shard 2` par Account B mein ₹100 credit karne wali database transaction fail ho jaati hai:
 
 Shard 2 → Account B mein ₹100 add → FAIL
 
@@ -2727,37 +2695,39 @@ Account B → ₹500
 
 Yaani ₹100 source account se successfully deduct ho gaye, lekin destination account mein add nahi hue.
 
-Problem ye hai ki 'Shard 2' par Database Transaction fail hone ke baad bhi, 'Shard 1' par
-previously committed Database Transaction automatically rollback nahi hogi.
+Problem ye hai ki 'Shard 2' par database transaction fail hone ke baad bhi, 'Shard 1' par
+previously committed database transaction automatically rollback nahi hogi.
 
-Kyuki dono Database Transactions apne respective Shards ke transactional scope
+Kyuki dono database transactions apne respective Shards ke transactional scope
 ke andar independently execute aur manage hoti hain.
 
-Isliye ek Shard par Database Transaction fail hone ki wajah se doosre Shard par
-already committed Database Transaction automatically undo nahi hoti.
+Isliye ek Shard par database transaction fail hone ki wajah se doosre Shard par
+already committed database transaction automatically undo nahi hoti.
 
-Yahi Cross-Shard database Transaction ki main challenge hai.
+Yahi Cross-Shard database transaction ki main challenge hai.
+
 
 
 ## DISTRIBUTED TRANSACTION :
 ----------------------------
 
-Distributed Database Transaction mein ek single larger business operation ko
-complete karne ke liye uske required operations multiple independent transactional
-boundaries ke across execute kiye jaate hain.
+Distributed Transaction mein ek single larger Business Operation ko 
+complete karne ke liye required Write Operations multiple independent 
+transactional boundaries ke across execute kiye jaate hain.
 
-Ye independent boundaries different Services aur unke respective 
+Ye independent boundaries different Services aur unke respective
 Databases ho sakte hain.
 
-Har Service apne Database ke andar apni Local databse Transaction 
-independently execute aur manage karti hai.
+Har Service apne Database ke andar apni Local Database Transaction ke
+through respective Write Operation independently execute aur manage karti hai.
 
-Agar saare required operations successfully complete ho jaate hain, 
+Agar saare required Write Operations successfully complete ho jaate hain,
 to overall Business Operation successful maana jaata hai.
 
-Lekin agar kisi bhi Service ka operation fail ho jaata hai, to pehle 
-successfully completed operations ke business effects ko revert karna padta hai,
-taaki system eventually consistent state mein aa sake.
+Lekin agar kisi bhi Service ka Write Operation fail ho jaata hai, to pehle
+successfully completed Write Operations ke business effects ko revert
+karna pad sakta hai, taaki system eventually consistent state mein aa sake.
+
 
 ## EXMAPLE:
 ------------
@@ -2770,22 +2740,24 @@ Payment Service → Payment Database
 
 Customer ek Order place karta hai.
 
-Is single Business Operation ko complete karne ke liye multiple Services
-aur unke respective Databases par operations execute karne padte hai.
+Is Business Operation ko complete karne ke liye multiple Services
+ke across required write operations execute karne padte hai.
 
-Overall Business Operation ke steps:
 
 1. Order Service
-   → Order create
+   → Create Order
+   → Execute Local Database Transaction on Order Database
 
 2. Inventory Service
-   → Product inventory reduce
+   → Reduce Product Inventory
+   → Execute Local Database Transaction on Inventory Database
 
 3. Payment Service
-   → Payment process
+   → Process Payment
+   → Execute Local Database Transaction on Payment Database
 
 
-Agar saare operations successfully complete ho jaate hain:
+Agar saare write operations successfully complete ho jaate hain:
 
 Order Created        → SUCCESS
 Inventory Reduced    → SUCCESS
@@ -2808,14 +2780,14 @@ Lekin problem ye hai ki:
 - Order pehle hi successfully create ho chuka hai.
 - Inventory pehle hi reduce ho chuki hai.
 
-
-Ye operations apni respective Databases mein independently commit ho chuke hain.
+Ye respective write Operations apni respective Local database transactions
+ke through independently commit ho chuke hain.
 
 Isliye Payment failure ki wajah se Order aur Inventory ke already committed 
 local database transactions automatically rollback nahi honge.
 
-Overall system ko consistent state mein laane ke liye pehle successfully 
-completed operations ke business effects ko compensate/revert karna pad sakta hai:
+Overall system ko consistent state mein laane ke liye previously successfully 
+completed write operations ke business effects ko revert karna pad sakta hai:
 
 
 Payment Failed
@@ -2826,19 +2798,21 @@ Cancel Order
       ↓
 Overall Business Operation Failed
 
-Yahan Order Create, Inventory Reduce aur Payment Process independent Local Database Transactions hain.
+
+Yahan har Write Operation apni respective Service ke andar ek independent Local
+database transaction ke through execute hota hai.
 
 In sabko collectively manage karna, taaki ek failure ki situation mein overall business 
 consistency maintain ki ja sake, Distributed Transaction ka core challenge hai.
 
 
-## QUESTION: DISTRIBUTED DATABASE TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
+## QUESTION: DISTRIBUTED TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
 --------------------------------------------------------------------------------------
 
-Conceptually, Distributed Database Transaction aur Cross-Shard Database Transaction 
-dono mein ek common challenge hota hai i.e ek single business operation ko complete 
-karne ke liye multiple independent transactional boundaries par operations execute 
-karne padte hain aur in independently managed operations ko coordinated way mein 
+Conceptually, Distributed Transaction aur Cross-Shard Database Transaction 
+dono mein ek common challenge hota hai i.e ek business operation ko complete karne
+ke liye multiple independent transactional boundaries par write operations execute 
+karne padte hain aur in independently managed write operations ko coordinated way mein 
 manage karna padta hai, taaki kisi failure ki situation mein overall system consistency 
 maintain ki ja sake.
 
@@ -2856,18 +2830,18 @@ different Services aur unke respective Databases ho sakte hain.
 1: TWO-PHASE COMMIT (2PC)
 ----------------------------
 
-Distributed transaction ke operations multiple independent 
-database par execute hote hain.
+Distributed Transaction ke Write Operations multiple independent
+Databases par execute hote hai.
 
-Two-Phase Commit (2PC) approach mai in independently managed operations ko coordinated 
-way mein handle karne ke liye ek Transaction Coordinator use kiya ja sakta hai.
+Two-Phase Commit (2PC) approach mein in independently managed Write Operations ko
+coordinated way mein handle karne ke liye ek Transaction Coordinator use kiya jata hai.
 
-Transaction Coordinator ek component/service hota hai jo Distributed Transaction 
+Transaction Coordinator ek component/service hota hai jo Distributed Transaction
 ke participating Databases ko coordinate karta hai aur ensure karta hai ki
-participating  Databases collectively: COMMIT ya collectively ABORT karein.
+participants collectively COMMIT karein ya collectively ABORT karein.
 
-Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai jisme 
-Transaction Coordinator Transaction ko do phases mein manage karta hai:
+Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai jisme
+Transaction Coordinator Distributed Transaction ko do phases mein manage karta hai:
 
 - PREPARE PHASE
 - COMMIT / ABORT PHASE
@@ -2876,39 +2850,40 @@ Transaction Coordinator Transaction ko do phases mein manage karta hai:
 ## PHASE 1: PREPARE
 ---------------------
 
-Transaction Coordinator har participating Service/Database se poochta hai ki woh
-apna respective operation successfully perform karke transaction commit karne ke
+Transaction Coordinator har participating Database se poochta hai ki woh
+apna respective write operation successfully perform karke transaction commit karne ke
 liye ready hai ya nahi.
 
 Har participant response deta hai:
 
-READY → Operation commit karne ke liye prepared hai.
-FAIL / NOT READY → Operation complete ya commit karna possible nahi hai.
+READY → Write operation commit karne ke liye prepared hai.
+FAIL / NOT READY → Write operation complete ya commit karna possible nahi hai.
 
-Example: Order, Inventory aur Payment jaise participating services apne respective operations validate karke Transaction Coordinator ko READY ya FAIL response de sakti hain.
+Example: Order, Inventory aur Payment databases apne respective write operations 
+validate karke Transaction Coordinator ko READY ya FAIL response de sakti hain.
 
 
 ## PHASE 2: COMMIT / ABORT
 -----------------------------
 
 Prepare Phase complete hone ke baad Transaction Coordinator
-sabhi participating Service/Database ke responses receive karta hai.
+sabhi participating Services/Databases ke responses receive karta hai.
 
 
 ### AGAR SABHI PARTICIPANTS 'READY' STATE MEIN HAIN:
 ------------------------------------------------------
 
-Agar sabhi participating Services/Databases READY response dete hain,
+Agar sabhi participating Databases READY response dete hain,
 to Transaction Coordinator sabhi participants ko COMMIT command bhejta hai.
 
-Iske baad har participant apne respective operation ko final commit 
-kar deta hai aur distributed transaction successfully complete ho jaati hai.
+Iske baad har participant apni respective Local Transaction ko COMMIT kar 
+deta hai aur distributed transaction successfully complete ho jaati hai.
 
 
 ### AGAR KOI BHI PARTICIPANT 'FAIL' STATE MEIN HAI:
 ----------------------------------------------------
 
-Agar koi bhi participating Service/Database FAIL response deta hai,
+Agar koi bhi participating Database FAIL response deta hai,
 to Transaction Coordinator participating participants ko ABORT
 command bhejta hai.
 
@@ -2933,11 +2908,11 @@ Abort Everywhere
 ## LIMITATIONS :
 ------------------
 
-1. Multiple Service/Database ko coordinate karne ke liye Transaction Coordinator ko participants
+1. Multiple  Databases ko coordinate karne ke liye Transaction Coordinator ko participants
    ke saath multiple network communications karni padti hain. Is wajah se Distributed
    transaction ki overall latency increase ho sakti hai.
 
-2. Prepare Phase ke dauran participating Service/Database required resources ko reserve kar sakte hain.
+2. Prepare Phase ke dauran participating Databases required resources ko reserve kar sakte hain.
    Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye,
    to ye resources unnecessarily locked reh sakte hain aur doosri database transactions ko wait karna 
    padta hai. Isse Database throughput aur overall system performance impact ho sakti hai.
@@ -2947,14 +2922,14 @@ Abort Everywhere
 2. SAGA PATTERN
 -----------------
 
-Saga Pattern ek approach hai jisme use ek Distributed Business Transaction
-ko multiple smaller Local Transactions mein divide kiya jaata hai.
+Saga Pattern ek approach hai jisme ek Distributed Business Operation ko 
+multiple smaller Local Transactions mein divide kiya jaata hai.
 
 Har Local Transaction apni respective Service / Database ki transactional 
 boundary ke andar independently execute aur commit hoti hai.
 
 Agar Saga ki saari Local Transactions successfully complete ho jaati hain, to 
-overall Distributed Business Transaction ko successfully complete maana jaata hai.
+overall distributed Business Operation ko successfully complete maana jaata hai.
 
 Lekin agar kisi Local Transaction mein failure ho jaata hai, to previously successfully
 committed Local Transactions automatically rollback nahi hoti hain kyunki har Local Transaction apni 
@@ -2967,7 +2942,8 @@ Compensating Transaction ek new Local Transaction hoti hai jo previously success
 Transaction ke business effect ko logically reverse karne ka kaam karti hai.
 
 Ye Compensating Transaction usi Service / Database ki transactional boundary ke andar execute hoti hai
-jahan corresponding Local Transaction previously execute aur commit hui thi.
+jahan corresponding Local Transaction previously successfully execute aur commit hui thi.
+
 
 ## QUESTION: SAGA PATTERN KO EXECUTE KAISE KIYA JAATA HAI?
 --------------------------------------------------------------
@@ -2982,9 +2958,6 @@ do common approaches hain:
 Choreography-Based Saga mein generally koi central Coordinator nahi hota.
 
 Isme Participating Services Events ke through communicate karti hain.
-
-Maan lo ek Distributed Business Transaction ko complete karne ke liye
-multiple Local Transactions ko different Services ke across execute karna hai.
 
 Choreography-Based Saga mein har participating Service apne respective
 Local Transaction ko independently execute karti hai aur Events ke through
@@ -3103,6 +3076,28 @@ Is tarah Choreography-Based Saga mein participating Services Events ke
 through independently coordinate karti hain.
 
 
+### LIMITATIONS OF CHOREOGRAPHY-BASED SAGA 
+----------------------------------------------
+
+Choreography-Based Saga mein Services Events ke through directly coordinate karti hain.
+
+Agar koi required Event consume ya successfully process nahi hota, to Saga ka next step 
+execute nahi ho paayega aur Saga incomplete reh sakti hai.
+
+Isliye generally:
+
+- Reliable Message Broker → Reliable Event Delivery
+- Retries → Temporary Failures handle karne ke liye
+- Idempotent Consumers → Duplicate Event processing avoid karne ke liye
+- Dead Letter Topic  → Repeatedly failing Events ko handle karne ke liye
+
+use kiye jaate hain.
+
+Ye additional failure-handling aur operational complexity introduce karta hai.
+
+
+
+
 # 2. ORCHESTRATION-BASED SAGA
 --------------------------------
 
@@ -3117,8 +3112,8 @@ Saga Orchestrator decide karta hai ki:
 - Kis Service ko next operation perform karna hai.
 - Agar koi operation fail ho jaaye, to Compensation kaise execute karni hai.
 
-Choreography-Based Saga ke unlike, participating Services khud Events consume k
-arke Saga ka next step decide nahi karti hain.
+Choreography-Based Saga ke unlike, participating Services khud Events consume 
+karke Saga ka next step decide nahi karti hain.
 
 Instead, Saga Orchestrator participating Services ko required operations execute
 karne ke liye instruct karta hai aur overall Saga workflow manage karta hai.
@@ -3251,32 +3246,40 @@ Saga Failed
 
 
 
-## LIMITATIONS :
-------------------
+## SAGA PATTERN KI LIMITATIONS :
+-----------------------------------
 
 1:  TEMPORARY DATA INCONSISTENCY 
 ----------------------------------
+   Saga Pattern mein har Service apni Local Transaction independently commit karti hai. 
+   Isliye Saga execution ke beech kuch time ke liye participating Services ke Databases 
+   ka data temporarily inconsistent state mein ho sakta hai.
 
-   Saga Pattern mein har Local Transaction independently commit hoti hai.
-   Isliye transaction ke beech mein kuch time ke liye different participant 
-   databases ka state temporarily inconsistent ho sakta hai.
+   ## EXAMPLE:
+   ------------
 
-   Example:
+   Order Service
+    → Start Local Transaction on Order DB
+    → Create Order
+    → COMMIT
 
-   Maan lo Account A se Account B mein ₹1,000 transfer kiye ja rahe hain:
+   Inventory Service
+    → Start Local Transaction on Inventory DB
+    → Reserve Inventory
+    → COMMIT
 
-   Database 1 → Account A se ₹1,000 successfully deduct ho gaye.
-   Database 2 → Account B mein ₹1,000 credit karne ki operation abhi process ho rahi hai.
+   Payment Service
+    → Start Local Transaction on Payment DB
+    → Process Payment...
 
-   Is temporary state mein:
 
-   Account A → ₹1,000 deduct ho chuke hain
-   Account B → Abhi ₹1,000 receive nahi hue hain
+   Is temporary state mein Order aur Inventory ke databases successfully update
+   ho chuke hain, lekin Payment abhi complete nahi hui hai.
 
-   Agar Distributed Transaction ki saari Local database Transactions successfully complete ho jaati hain, 
-   to eventually sabhi participating Databases consistent state mein aa jaate hain.
+   Agar saare Local database Transactions successfully complete ho jaati hain, to eventually
+   sabhi participating  Servies ke Databases consistent state mein aa jaate hain.
 
-   Aur agar kisi bhi Local databases transaction mein failure ho jaata hai, to previously successfully 
+   Aur agar kisi bhi Local database transaction mein failure ho jaata hai, to previously successfully 
    completed Local database transactions ke effects ko reverse karne ke liye Compensating Transactions
    execute ki jaati hain. Compensating Transactions complete hone ke baad, sabhi participating Databases
    phir se eventually consistent state mein aa jaate hain.
@@ -3284,19 +3287,19 @@ Saga Failed
    Isliye Saga Pattern Immediate Consistency provide nahi karta, balki system ko eventually Consistent State mein laata hai.
 
 
-
 2:  COMPENSATING TRANSACTIONS KA OVERHEAD
 -------------------------------------------
 
-    Saga Pattern mein agar kisi later Local Transaction mein failure ho jaata hai, to pehle successfully completed Local Transactions
-    ke business effects ko logically reverse karne ke liye respective Databases par Compensating Transactions execute karni padti hain.
+    Saga Pattern mein agar kisi later Local Transaction mein failure ho jaata hai, to pehle successfully
+    completed Local Transactions ke business effects ko logically reverse karne ke liye respective Databases 
+    par Compensating Transactions execute karni padti hain.
 
-    Kyuki har participating Service/Database apni Local Transaction ko apni independent Transactional Boundary ke andar independently execute
-    aur commit karti hai, isliye ek Local Transaction ke fail hone ki wajah se doosre Databases par previously committed Local Transactions 
-    automatically rollback nahi hoti.
+    Kyuki har participating Service apni respective Database ke andar apni Local Database Transaction ko independently
+    execute aur commit karti hai, isliye ek Service ki Local Transaction fail hone ki wajah se doosri Services ki previously
+    committed Local Database Transactions automatically rollback nahi hoti hain.
 
-    Isliye failure ki situation mein previously successful operations ke business effects ko explicitly reverse karne ke liye Compensating
-    Transactions ko separately implement aur execute karna padta hai.
+    Isliye failure ki situation mein previously successful local Transaction ke business effects ko explicitly 
+    reverse karne ke liye Compensating transactions ko separately implement aur execute karna padta hai.
 
     Ye additional application logic, compensation handling aur implementation complexity introduce karta hai.
 
@@ -3305,36 +3308,62 @@ Saga Failed
 3: FAILURE HANDLING AND RETRY COMPLEXITY
 ------------------------------------------
 
-Distributed Environment mein Network Failure ya Timeout ki wajah se operation ka result uncertain ho sakta hai.
+  Distributed Environment mein Network Failure ya Timeout ki wajah 
+  se kisi write operation ka actual result uncertain ho sakta hai.
 
-Example: Shard 1 par ₹1,000 successfully deduct ho gaye, lekin Shard 2 par ₹1,000 credit request ke baad
-Network Timeout aa gaya. Ab system ko clear nahi hoga ki Credit operation successfully execute hui ya nahi.
+  ### EXAMPLE:
+  -------------
 
-Agar system Credit operation ko blindly retry kare aur operation pehle hi successfully execute
-ho chuki ho, to Account B mein duplicate ₹1,000 credit ho sakte hain.
+  Maan lo ek E-commerce Application mein Order Service, Inventory Service aur Payment Service Saga 
+  Orchestration Pattern ke through ek Order process kar rahi hain.
 
-Isliye Saga ke Local Transactions ko generally Idempotent design karna important hota hai, 
-taaki same operation multiple times retry hone ke baad bhi final business result incorrect na ho.
+  Saga Orchestrator Payment Service ko Payment process karne ke liye instruct karta hai.
 
-Isliye Saga Pattern mein failure handling aur retry logic additional implementation 
-complexity introduce kar sakte hain.
+  Payment Service Payment successfully process karke Payment Database mein persist kar deti hai, 
+  lekin uska response Saga Orchestrator tak pahunchne se pehle Network Timeout ho jaata hai.
+
+  Ab Saga Orchestrator ko clear nahi hoga ki Payment Successfully process hui thi, ya Actually fail hui thi.
+
+  Agar Saga Orchestrator Payment Process karne wali Write Operation ko blindly retry kare aur Payment pehle 
+  hi successfully process ho chuki ho, to Customer ko duplicate charge kiya ja sakta hai.
+
+  Isliye Saga ke Write Operations ko generally Idempotent design karna important hota hai. 
+  Yaani same Write Operation ko multiple times retry karne ke baad bhi final business result incorrect nahi hona chahiye.
+
+  ### EXAMPLE:
+  ------------ 
+  Agar paymentId = P123 ke liye Payment pehle hi successfully process ho chuki hai,
+  to same paymentId = P123 ke saath retry request aane par Payment Service ko Customer 
+  ko dobara charge nahi karna chahiye.
+
+  Isliye Saga Pattern mein Network Failures, Timeouts aur Retries ko correctly
+  handle karne ke liye additional logic implement karna padta hai, jisse overall 
+  implementation complexity increase ho sakti hai.
 
 
 4: COMPENSATING TRANSACTION KHUD BHI FAIL HO SAKTI HAI
 ---------------------------------------------------------
 
-Saga Pattern mein failure ke baad previously completed Local Transactions ke business 
-effects ko reverse karne ke liye Compensating Transactions execute ki jaati hain.
+  Saga Pattern mein agar kisi Local Transaction mein failure ho jaata hai, to previously successfully
+  completed Local Transactions ke business effects ko reverse karne ke liye Compensating Transactions 
+  execute ki jaati hain.
+  
+  Lekin Compensating Transaction khud bhi fail ho sakti hai.
 
-Lekin Compensating Transaction khud bhi fail ho sakti hai.
+  ## EXMAPLE:
+  ------------
+   Payment Process → FAIL   
+   ↓
+   Restore Inventory → FAIL
 
-Aisi situation mein system ko eventually consistent state mein laane ke liye additional 
-retry aur failure-handling mechanisms ki zarurat pad sakti hai.
+  Aisi situation mein Compensating Transaction ke failure aur retries ko properly handle karna padta hai.
 
-Isliye Saga Pattern mein sirf original Local Transactions ki failure handling nahi, balki Compensating
-Transactions ki failure handling bhi additional implementation complexity introduce karti hai.
-
-
+  Saath hi, jis Service mein Compensating Transaction execute hoti hai, us Service ko Compensation Write Operation
+  ko generally Idempotent design karna hota hai, taaki same Compensation Write Operation multiple times retry hone par 
+  bhi uska business effect sirf ek baar apply ho.
+ 
+  Ye additional failure-handling, retry aur idempotency logic implementation complexity introduce karte hain.
+ 
 
 
 
