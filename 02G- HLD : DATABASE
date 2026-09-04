@@ -3104,8 +3104,150 @@ through independently coordinate karti hain.
 
 
 # 2. ORCHESTRATION-BASED SAGA
--------------------------------
+--------------------------------
 
+Orchestration-Based Saga mein ek central component hota hai jo Saga ke multiple 
+Local Transactions ko coordinate aur manage karta hai.
+
+Is central component ko Saga Orchestrator kaha jaata hai.
+
+Saga Orchestrator decide karta hai ki:
+
+- Saga workflow ka next step kya hoga.
+- Kis Service ko next operation perform karna hai.
+- Agar koi operation fail ho jaaye, to Compensation kaise execute karni hai.
+
+Choreography-Based Saga ke unlike, participating Services khud Events consume k
+arke Saga ka next step decide nahi karti hain.
+
+Instead, Saga Orchestrator participating Services ko required operations execute
+karne ke liye instruct karta hai aur overall Saga workflow manage karta hai.
+
+
+## EXAMPLE
+------------
+
+Maan lo Customer ek Order place karta hai.
+
+### Participating Services:
+
+* Order Service
+* Inventory Service
+* Payment Service
+
+### Saga ke required steps:
+
+1. Create Order
+2. Reduce / Reserve Inventory
+3. Process Payment
+
+
+### SUCCESS FLOW
+------------------
+
+Client
+   |
+   | Place Order
+   v
+Saga Orchestrator
+   |
+   | Create Order
+   v
+Order Service
+   |
+   | Creates the Order and persists it in the Order Database
+   |
+   | SUCCESS
+   v
+Saga Orchestrator
+   |
+   | Reserve / Reduce Required Inventory
+   v
+Inventory Service
+   |
+   | Reduces the required Inventory and updates the Inventory Database 
+   |
+   | SUCCESS
+   v
+Saga Orchestrator
+   |
+   | Process Payment
+   v
+Payment Service
+   |
+   | Processes the Payment and persists the payment details in the Payment Database
+   |
+   | SUCCESS
+   v
+Saga Orchestrator
+   |
+   v
+Distributed Business Transaction
+Successfully Completed
+
+
+### FAILURE FLOW
+------------------
+
+Client
+   |
+   | Place Order
+   v
+Saga Orchestrator
+   |
+   | Create Order
+   v
+Order Service
+   |
+   | Creates the Order and saves it in the Order Database
+   |
+   | SUCCESS
+   v
+Saga Orchestrator
+   |
+   | Reserve / Reduce Required Inventory
+   v
+Inventory Service
+   |
+   | Reduces the required Inventory and saves the updated Inventory
+   | in the Inventory Database
+   |
+   | SUCCESS
+   v
+Saga Orchestrator
+   |
+   | Process Payment
+   v
+Payment Service
+   |
+   | Payment processing fails.
+   | The Local Database Transaction is rolled back automatically
+   | within the Payment Database.
+   |
+   | FAIL
+   v
+Saga Orchestrator
+   |
+   | Compensate Inventory - Restore the previously reserved/reduced Inventory
+   v
+Inventory Service
+   |
+   | Increases the Inventory by 1 and saves the updated Inventory
+   | in the Inventory Database
+   |
+   | COMPENSATION SUCCESS
+   v
+Saga Orchestrator
+   |
+   | Compensate Order - Cancel the previously created Order
+   v
+Order Service
+   |
+   | Marks the Order as CANCELLED / PAYMENT_FAILED in the Order Database
+   |
+   | COMPENSATION SUCCESS
+   v
+Saga Failed
 
 
 
@@ -3190,17 +3332,6 @@ Isliye Saga Pattern mein sirf original Local Transactions ki failure handling na
 Transactions ki failure handling bhi additional implementation complexity introduce karti hai.
 
 
-
-## QUESTION: SAGA PATTERN KO EXECUTE KAISE KIYA JAATA HAI?
---------------------------------------------------------------
-
-Saga Pattern ko execute karne ke generally do common approaches hain:
-
-1. CHOREOGRAPHY-BASED SAGA
-----------------------------
-
-
-2: Orchestration-Based Saga
 
 
 
