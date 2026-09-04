@@ -3258,29 +3258,28 @@ Saga Failed
 ----------------------------------
 
    Saga Pattern mein har Local Transaction independently commit hoti hai.
-   Isliye transaction ke beech mein kuch time ke liye different Shards ka
-   state temporarily inconsistent ho sakta hai.
+   Isliye transaction ke beech mein kuch time ke liye different participant 
+   databases ka state temporarily inconsistent ho sakta hai.
 
    Example:
 
    Maan lo Account A se Account B mein ₹1,000 transfer kiye ja rahe hain:
 
-   Shard 1 → Account A se ₹1,000 successfully deduct ho gaye.
-
-   Shard 2 → Account B mein ₹1,000 credit karne ki operation abhi process ho rahi hai.
+   Database 1 → Account A se ₹1,000 successfully deduct ho gaye.
+   Database 2 → Account B mein ₹1,000 credit karne ki operation abhi process ho rahi hai.
 
    Is temporary state mein:
 
    Account A → ₹1,000 deduct ho chuke hain
    Account B → Abhi ₹1,000 receive nahi hue hain
 
-   Agar Distributed Transaction ki saari Local Transactions successfully complete ho jaati hain, 
-   to eventually sabhi participating Shards/Databases consistent state mein aa jaate hain.
+   Agar Distributed Transaction ki saari Local database Transactions successfully complete ho jaati hain, 
+   to eventually sabhi participating Databases consistent state mein aa jaate hain.
 
-   Aur agar kisi bhi Local Transaction mein failure ho jaata hai, to previously successfully completed
-   Local Transactions ke effects ko reverse karne ke liye Compensating Transactions execute ki jaati hain.
-   Compensating Transactions complete hone ke baad, sabhi participating Shards/Databases phir
-   se eventually consistent state mein aa jaate hain.
+   Aur agar kisi bhi Local databases transaction mein failure ho jaata hai, to previously successfully 
+   completed Local database transactions ke effects ko reverse karne ke liye Compensating Transactions
+   execute ki jaati hain. Compensating Transactions complete hone ke baad, sabhi participating Databases
+   phir se eventually consistent state mein aa jaate hain.
 
    Isliye Saga Pattern Immediate Consistency provide nahi karta, balki system ko eventually Consistent State mein laata hai.
 
@@ -3289,14 +3288,18 @@ Saga Failed
 2:  COMPENSATING TRANSACTIONS KA OVERHEAD
 -------------------------------------------
 
-Saga Pattern mein agar koi later Local Transaction fail ho jaati hai, to previously successful Local Transactions
-ke business effects ko logically reverse karne ke liye respective Database / Shard par Compensating Transactions execute karni padti hain.
+    Saga Pattern mein agar kisi later Local Transaction mein failure ho jaata hai, to pehle successfully completed Local Transactions
+    ke business effects ko logically reverse karne ke liye respective Databases par Compensating Transactions execute karni padti hain.
 
-Kyuki Saga Pattern mein previously successful Local Transactions already independently commit ho chuki hoti hain, 
-unhe normal database rollback ke through automatically undo nahi kiya ja sakta.
+    Kyuki har participating Service/Database apni Local Transaction ko apni independent Transactional Boundary ke andar independently execute
+    aur commit karti hai, isliye ek Local Transaction ke fail hone ki wajah se doosre Databases par previously committed Local Transactions 
+    automatically rollback nahi hoti.
 
-Isliye failure ki situation mein unke business effects ko reverse karne ke liye explicitly Compensating Transactions
-implement aur execute karni padti hain, jisse additional application logic aur complexity introduce hoti hai.
+    Isliye failure ki situation mein previously successful operations ke business effects ko explicitly reverse karne ke liye Compensating
+    Transactions ko separately implement aur execute karna padta hai.
+
+    Ye additional application logic, compensation handling aur implementation complexity introduce karta hai.
+
 
 
 3: FAILURE HANDLING AND RETRY COMPLEXITY
