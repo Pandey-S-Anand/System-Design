@@ -3119,7 +3119,7 @@ karti hai aur Database ko expected consistent state mein maintain karne mein hel
 
 
 --------------------------------------------------------------
-## QUESTION: EXPLICIT AUR IMPLICIT TRANSACTION KYA HOTI HAI?
+## QUESTION: EXPLICIT AUR IMPLICIT TRANSACTION KYA HOTA HAI?
 --------------------------------------------------------------
 
 Database Transactions generally do tarah se execute ho sakti hain:
@@ -3188,8 +3188,8 @@ ROLLBACK
   - Isse Database ka state Transaction start hone se pehle wali consistent state mein wapas aa jaata hai.
 
 
-### QUESTION : COMMIT STATEMENT PEHLE SE KYUN LIKHA HOTA HAI?
----------------------------------------------------------------
+### CASE 1 : TRANSACTION KE SABHI OPERATIONS SUCCESSFULLY COMPLETE HO JAAYE
+------------------------------------------------------------------------------
 
 Script mein COMMIT statement pehle se likha hone ka matlab yeh nahi hai ki Database
 beech mein failure hone ke baad bhi blindly Transaction ko COMMIT kar dega.
@@ -3201,12 +3201,12 @@ COMMIT successfully execute hone ke baad Transaction ke andar kiye gaye uncommit
 permanently Database mein persist ho jaate hain.
 
 
-### QUESTION : AGAR TRANSACTION KE BEECH MEIN KOI OPERATION FAIL HO JAAYE TO ?
--------------------------------------------------------------------------------
+### CASE 1 : TRANSACTION KE BEECH MEIN KOI OPERATION FAIL HO JAAYE 
+--------------------------------------------------------------------
 
-Is situation mein pehle successfully execute hue Operations ke changes abhi 
-permanently persist nahi hue hote, Operation fail hone ke baad normal execution
-flow aage COMMIT statement tak proceed nahi karta, isliye COMMIT execute nahi hota.
+Operation fail hone ke baad normal execution flow aage COMMIT statement tak 
+proceed nahi karta, isliye COMMIT execute nahi hota. Is situation mein pehle 
+successfully execute hue Operations ke changes abhi permanently persist nahi hue hote, 
 
 Lekin Transaction automatically abort/rollback hogi ya abhi active rahegi,
 ye DBMS aur error ke type par depend karta hai.
@@ -3224,7 +3224,7 @@ execute karke Transaction ke uncommitted changes ko undo kar sakta hai.
 Spring Boot mein commonly @Transactional annotation use ki jaati hai.
 
 Spring mein @Transactional transaction management framework ko indicate karta hai
-ki annotated method ke execution ke around ek Database Transaction manage karni hai.
+ki annotated method ke execution ke around ek Database Transaction manage karna hai.
 
 Developer ko manually har method mein:
 
@@ -3250,30 +3250,6 @@ All Operations Successful?
     YES              NO
      ↓                ↓
    COMMIT          ROLLBACK
-
-
-
-## EXAMPLE
------------
-
-@Service
-public class AccountService {
-
-    @Transactional
-    public void transferMoney(
-            Long sourceAccountId,
-            Long destinationAccountId,
-            BigDecimal amount) {
-
-        // Operation 1
-        accountRepository.debit(sourceAccountId, amount);
-
-        // Operation 2
-        accountRepository.credit(destinationAccountId, amount);
-    }
-}
-
-
 
 
 
