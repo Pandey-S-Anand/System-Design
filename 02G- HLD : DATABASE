@@ -2952,9 +2952,8 @@ Any Operation Failed
 ## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
 ----------------------------------------------------------
 
-Normal / Local Database Transaction mein Transaction ke saare Database 
-Write Operations ek hi Database ke transactional scope ke andar
-execute kiye jaate hain.
+Local Database Transaction ke saare Write Operations
+ek hi Database ke transactional scope ke andar execute kiye jaate hain.
 
 Agar Transaction ke kisi bhi Write Operation mein failure ho jaata hai,
 to Database poori Transaction ko rollback kar sakta hai.
@@ -3158,18 +3157,16 @@ consistency maintain ki ja sake, Distributed Transaction ka core challenge hai.
 ## QUESTION: DISTRIBUTED TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
 --------------------------------------------------------------------------------------
 
-Conceptually, Distributed Transaction aur Cross-Shard Database Transaction 
-dono mein ek common challenge hota hai i.e ek business operation ko complete karne
-ke liye multiple independent transactional boundaries par write operations execute 
-karne padte hain aur in independently managed write operations ko coordinated way mein 
-manage karna padta hai, taaki kisi failure ki situation mein overall system consistency 
-maintain ki ja sake.
+Distributed Transaction aur Cross-Shard Transaction dono mein ek Business Operation ke Write Operations
+multiple independent transactional boundaries ke andar execute hote hain. In operations ko coordinate 
+karna zaroori hota hai taaki failure ki situation mein overall consistency maintain rahe.
 
-Cross-Shard Transaction mein ye independent transactional boundaries same logical 
-database system ke different Shards hote hain.
+1. Cross-Shard Transaction mein ye independent transactional boundaries same logical database system ke different Shards hote hain.
 
-Broader Distributed Database Transaction mein ye independent transactional boundaries
-different Services aur unke respective Databases ho sakte hain.
+2. Broader Distributed Database Transaction mein ye independent transactional boundaries different Services aur unke respective Databases ho sakte hain.
+
+
+Yaani Cross-Shard Transaction ko Distributed Transaction ka ek specific case maana ja sakta hai.
 
 
 ----------------------------------------------------------------------------------------------
@@ -3193,6 +3190,22 @@ Transaction Coordinator transaction ko do phases mein manage karta hai:
 
 - PREPARE PHASE
 - COMMIT / ABORT PHASE
+
+
+### IMPORTANT
+----------------
+
+2PC sirf same logical Database ke different Shards tak limited nahi hai.
+
+Ye multiple different Databases / Resource Managers ke across bhi use ho sakta hai,
+provided participating Databases / Resource Managers XA / Distributed Transaction support karte hon.
+
+Lekin modern Microservices architecture mein Services ke across 2PC/XA generally avoid kiya jaata hai because:
+
+1. Blocking / Resource Locking**
+2. Tight Coupling between Services**
+3. Network Latency and Failures**
+
 
 
 ## EXAMPLE
