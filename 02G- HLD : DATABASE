@@ -2964,6 +2964,14 @@ Any Shard Fails
 Abort Everywhere
 
 
+## MAIN BENIFIT - IMMEDIATE CONSISTENCY
+-------------------------------------------
+
+2PC mein Coordinator sabhi participating shards ke responses ke base par ek 
+saath COMMIT ya ABORT execute karta hai. Is atomic decision ki wajah se saare 
+shards par changes ek saath reflect ya rollback hote hain, jisse Immediate Consistency milti hai.
+
+
 ## LIMITATIONS :
 ------------------
 
@@ -2971,10 +2979,11 @@ Abort Everywhere
    ke saath multiple network communications karni padti hain. Is wajah se Distributed
    transaction ki overall latency increase ho sakti hai.
 
-2. Prepare Phase ke dauran participating shards required locks / resources ko reserve kar sakte hain.
-   Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye,
-   to ye locks / resources unnecessarily locked reh sakte hain aur doosri database transactions ko wait karna 
-   padta hai. Isse Database throughput aur overall system performance impact ho sakti hai.
+2. Prepare Phase ke dauran participating shards required locks / resources reserve karke rakhte hain.
+   Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye, to shards
+   akele decision lekar locks release nahi kar sakte. Is wajah se resources unnecessarily locked rehte hain,
+   baaki transactions forever wait karti reh jaati hain (Hanging / Stuck Transactions), aur overall database 
+   throughput drop ho jata hai.
 
 
 
@@ -3386,14 +3395,18 @@ Saga Failed
   Agar Saga Orchestrator Payment Process karne wali Write Operation ko blindly retry kare aur Payment pehle 
   hi successfully process ho chuki ho, to Customer ko duplicate charge kiya ja sakta hai.
 
-  Isliye Saga ke Write Operations ko generally Idempotent design karna important hota hai. 
-  Yaani same Write Operation ko multiple times retry karne ke baad bhi final business result incorrect nahi hona chahiye.
+  Isliye Saga mein involved Local Transactions ko generally Idempotent design karna important hota hai.
+
+  Yaani agar kisi Local Transaction ko Network Failure, Timeout ya temporary failure ki wajah se multiple
+  times retry kiya jaaye, to uska final business effect incorrect ya duplicate nahi hona chahiye.
 
   ### EXAMPLE:
   ------------ 
   Agar paymentId = P123 ke liye Payment pehle hi successfully process ho chuki hai,
-  to same paymentId = P123 ke saath retry request aane par Payment Service ko Customer 
-  ko dobara charge nahi karna chahiye.
+  aur Network Timeout ki wajah se Saga Orchestrator ko response receive nahi hua,
+  to same paymentId = P123 ke saath retry request aane par Payment Service ko
+  identify karna chahiye ki paymentId = P123 ka Payment pehle hi process ho chuka hai
+  and Customer ko dobara charge nahi karna chahiye.
 
   Isliye Saga Pattern mein Network Failures, Timeouts aur Retries ko correctly
   handle karne ke liye additional logic implement karna padta hai, jisse overall 
@@ -3417,13 +3430,10 @@ Saga Failed
 
   Aisi situation mein Compensating Transaction ke failure aur retries ko properly handle karna padta hai.
 
-  Saath hi, jis Service mein Compensating Transaction execute hoti hai, us Service ko Compensation Write Operation
-  ko generally Idempotent design karna hota hai, taaki same Compensation Write Operation multiple times retry hone par 
-  bhi uska business effect sirf ek baar apply ho.
+  Saath hi, Saga mein involved Compensating Transactions ko bhi generally Idempotent design karna important hota hai.
+
+  Yaani agar Network Failure, Timeout ya temporary failure ki wajah se same Compensating Transaction ko multiple times
+  retry kiya jaaye, to uska business effect duplicate ya incorrect nahi hona chahiye.
  
-  Ye additional failure-handling, retry aur idempotency logic implementation complexity introduce karte hain.
  
-
-
-
 
