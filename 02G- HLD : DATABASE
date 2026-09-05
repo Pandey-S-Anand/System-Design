@@ -131,7 +131,7 @@ Databases provide these capabilities, making them more suitable than plain files
 
 
 =======================================================
-2. EK SINGLE DATABASE BOTTLENECK KYUN BAN JAATA HAI?
+#2. EK SINGLE DATABASE BOTTLENECK KYUN BAN JAATA HAI?
 =======================================================
 
 Small applications ke liye ek single database sufficient hota hai.
@@ -306,7 +306,7 @@ resource pressure create ho sakta hai.
 
 
 ====================================
-3. DATABASE KO SCALE KAISE KAREIN ?
+#3. DATABASE KO SCALE KAISE KAREIN ?
 ====================================
 
 Database ki capacity increase karne ki Broadly do approaches hoti hain:
@@ -393,25 +393,21 @@ Conceptually:
 Horizontal Scaling ke common approaches:
 
 
-HORIZONTAL SCALING
+DATABASE SCALING
+│
+├── 1. READ-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
+│       │
+│       └── READ REPLICAS
+│
+├── 2. DATABASE PARTITIONING
+│       │
+│       ├── Vertical Partitioning
+│       │
+│       └── Horizontal Partitioning
+│
+└── 3. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
         │
-        ├── READ SCALING
-        │       │
-        │       └── READ REPLICAS
-        │
-        └── WRITE SCALING
-                │
-                └── PARTITIONING
-                        │
-                        ├── VERTICAL PARTITIONING
-                        │
-                        └── HORIZONTAL PARTITIONING
-                                │
-                                ├── Partitioning within a Single Database
-                                │
-                                └── Partitioning across Multiple Database Nodes
-                                    │
-                                    └── SHARDING
+        └── SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
 
 
 ============================================================================
@@ -1281,11 +1277,360 @@ nodes ki information manage nahi karni padti.
 
 
 
+============================
+#5. DATABASE PARTITIONING
+============================
+
+---------------------------------------------
+## QUESTION: DATABASE PARTITIONING KYA HAI? 
+---------------------------------------------
+
+Database Partitioning ek technique hai jisme ek Database ke large amount of Data
+ko multiple smaller logical parts, yaani Partitions, mein divide kiya jaata hai.
+
+Har Partition Database ke total Data ka ek subset store karta hai.
+
+Database Partitioning ke do common types hain:
+
+1. Vertical Partitioning
+2. Horizontal Partitioning
+
+
+1. VERTICAL PARTITIONING
+----------------------------
+
+Vertical Partitioning mein ek large / wide Table ke Columns ko logically
+divide karke multiple smaller Tables mein store kiya jaata hai.
+
+Generally Columns ko unke access pattern ke basis par split kiya jaata hai.
+
+For example, frequently accessed Columns ko ek Table mein aur less frequently
+accessed Columns ko doosre Table mein store kiya ja sakta hai.
+
+
+## EXAMPLE
+------------
+
+Maan lo initially ek USERS table hai:
+
+USERS
+
+user_id
+name
+email
+profile_picture
+bio
+address
+preferences
+
+Agar Application mein frequently sirf:
+
+user_id
+name
+email
+
+access hote hain, aur remaining Columns comparatively less frequently
+access hote hain, to Table ko vertically partition kiya ja sakta hai.
+
+
+### BEFORE PARTITIONING 
+-----------------------
+
+
+              USERS
+                │
+     ┌──────────┴──────────┐
+     │                     │
+Frequently Used       Less Frequently Used
+Columns                Columns
+
+
+### AFTER VERTICAL PARTITIONING
+----------------------------
+
+USERS_BASIC              USERS_PROFILE
+
+user_id                  user_id
+name                     profile_picture
+email                    bio
+                         address
+                         preferences
+
+Yaani original large USERS table ke Columns ko logically split karke multiple smaller Tables create ki gayi hain.
+
+
+### QUESTION: ORIGINAL USERS TABLE KA KYA HOTA HAI?
+---------------------------------------------------
+
+Original USERS table ko generally  deprecate/remove kar diya jaata hai.
+Application ke Read aur Write Operations ko newly partitioned Tables par route kar diya jaata hai.
+
+Is table ko generally remove/deprecate kar diya jaata hai.
+and applciation  mai data fetch aur write logic ka traffic ko newly parttioned 
+tables pai route kar diya jaata hai.
+
+Application phir:
+
+Basic User Data
+      ↓
+USERS_BASIC
+
+aur:
+
+Profile Data
+      ↓
+USERS_PROFILE
+
+se read karegi.
+
+
+
+### QUESTION : KYA HAMESHA NAYE TABLES BANAYE JAATE HAIN?
+--------------------------------------------------------
+
+Vertical Partitioning mein typical approach ek large/wide Table ko split
+karke multiple logically related Tables create karna hota hai.
+
+Columns ko kisi random existing unrelated Table mein add karna 
+generally Vertical Partitioning nahi maana jaata.
+
+
+### QUESTION: NEWLY PARTITIONED TABLES KO RELATE KAISE KARTE HAIN? ?
+------------------------------------------------------------------
+
+Newly partitioned Tables ko generally ek Common Key ke through relate kiya jaata hai.
+
+Is example mein:
+
+USERS_BASIC.user_id
+        │
+        │ Common Key
+        │
+USERS_PROFILE.user_id
+
+Kyuki dono Tables ka data same User se related hai, isliye user_id dono Tables mein present hai.
+
+Jab Application ko complete User information chahiye hoti hai, to Common Key ke through Tables ka data combine kiya ja sakta hai.
+
+
+
+## CORE IDEA
+--------------
+
+One Large / Wide Table
+          ↓
+     Split Columns
+          ↓
+Multiple Smaller Tables
+          ↓
+Related using a Common Key
+
+
+
+## BENIFIT ?
+-------------
+
+Agar Table mein bahut zyada Columns hon, aur kuch Columns frequently access hote hon jabki kuch rarely access hote hon, 
+to hum Vertical Partitioning ke through frequently accessed aur rarely accessed Columns ko separate Tables mein divide kar sakte hain.
+Isse agar kisi Query ko sirf frequently accessed Columns ki zarurat ho, to use unnecessary aur rarely accessed Columns load nahi karne padte.
+
+
+
+
+2. HORIZONTAL PARTITIONING
+----------------------------
+
+Horizontal Partitioning mein same logical Table ki rows ko multiple Partitions mein
+divide kiya jaata hai. Ye Partitions usi Database ke andar store aur manage kiye 
+jaate hain jahan original logical Table exist karta hai.
+
+Lekin Application ke perspective se data abhi bhi ek hi logical Table ka part hota hai.
+
+
+## QUESTION: PARTITIONING KEY KYA HAI?
+---------------------------------------
+
+Partitioning Key ek Column (ya kabhi multiple Columns) hota hai jiske
+basis par Database decide karta hai ki ek particular Row kis Partition 
+se belong karti hai.
+
+Generally, Partitioning Key ke liye stable aur rarely changing Column 
+choose kiya jaata hai, kyunki agar kisi Row par Update Operation perform 
+karte waqt Partitioning Key ki value change ho jaaye, to Row ko ek Partition
+se doosre Partition mein move karna padta hai.
+
+Partitioning Key auto-generated Column ho sakta hai, 
+lekin auto-generated hona mandatory nahi hai.
+
+Partitioning Key aur usse related Partitioning Rule 
+Table Definition mein configured hota hai.
+
+
+## QUESTION: PARTITIONING RULE KYA HAI?
+---------------------------------------
+
+Partitioning Rule woh rule/logic hota hai jo Partitioning Key ki value ke basis
+par decide karta hai ki ek particular Row kis Partition se belong karti hai.
+
+Partitioning Rule different ways se define kiya ja sakta hai.
+
+Common Partitioning Rules:
+
+1. Range-Based Partitioning
+2. List-Based Partitioning
+3. Hash-Based Partitioning
+
+
+## 1. RANGE-BASED PARTITIONING
+--------------------------------
+
+Partitioning Key ki value ke Range ke basis par Row ko
+different Partitions mein store kiya jaata hai.
+
+Example:
+
+Partitioning Key = created_at
+
+2024 ke Orders → Partition 1
+2025 ke Orders → Partition 2
+2026 ke Orders → Partition 3
+
+
+## 2. LIST-BASED PARTITIONING
+-------------------------------
+
+Partitioning Key ki predefined Value ya Values ke basis 
+par decide kiya jaata hai ki Row kis Partition mein store hogi.
+
+Example:
+
+Partitioning Key = country
+
+India, Nepal → Partition 1
+USA, Canada → Partition 2
+UK, Germany → Partition 3
+
+
+## 3. HASH-BASED PARTITIONING
+-------------------------------
+
+Partitioning Key ki value par Hash Function apply kiya jaata hai.
+Hash Function ke result ke basis par Database determine karta hai
+ki Row kis Partition mein store hogi.
+
+Example:
+
+Partitioning Key = user_id
+
+hash(user_id) % 4
+
+Result 0 → Partition 0
+Result 1 → Partition 1
+Result 2 → Partition 2
+Result 3 → Partition 3
+
+
+
+##1. QUESTION: NEW ROW CREATE / INSERT KAISE HOTA HAI?
+------------------------------------------------------
+
+      Application
+         |
+         | INSERT Query + New Row Data
+         v
+      Database
+         |
+         v
+    Partitioning Key Value Available?
+         |
+    +----+----+
+    |         |
+   YES        NO
+    |         |
+    v         v
+Apply        Database cannot determine
+Partitioning correct target Partition
+Rule             |
+   |             v
+   v          INSERT cannot be
+Identify      correctly routed
+Correct
+Partition
+   |
+   v
+Insert New Row
+   |
+   v
+SUCCESS
+
+
+## IMPROTANT:
+-------------
+New Row insert karte waqt Database ko Partitioning Key ki value available honi chahiye,
+taaki Partitioning Rule apply karke correct Partition identify kiya ja sake.
+
+
+
+##2. QUESTION: UPDATE AND READ ROW OPERATION KAISE KAAM KARTA HAI?
+-------------------------------------------------------------------
+
+
+           Application
+              |
+              | UPDATE / READ Query
+              v
+           Database
+              |
+              v
+    +----------------------------------+
+    | Partitioning Key Query mein      |
+    | Available hai?                   |
+    +----------------------------------+
+              |
+         +----+----+
+         |         |
+        YES        NO
+         |         |
+         v         v
+   Partitioning   Directly determine
+   Rule Apply     nahi kar sakta ki
+         |        Row kis Partition
+         v        mein located hai
+   Identify          |
+   Relevant          v
+  Partition       Search Multiple
+      |           Partitions
+      |              |
+      +---------+----+
+             |
+             v
+      Locate Required Row 
+             |
+             v
+      UPDATE / READ Required Data
+             |
+             v
+        Application
+
+
+
+
+##3. QUESTION: KYA HOGA AGAR UPDATE OPERATION MEIN PARTITIONING KEY KI VALUE HI CHANGE HO JAAYE?
+--------------------------------------------------------------------------------------------------
+
+Agar Update Operation Partitioning Key ki value change karta hai, to Row ka target Partition bhi change ho sakta hai. 
+Aisi situation mein Row ko ek Partition se doosre Partition mein move karna pad sakta hai.
+
+Isliye Partitioning Key ke liye generally stable aur rarely-changing Column choose karna preferable hota hai, 
+taaki frequent Row movement avoid kiya ja sake.
+
+
+
 
 
 
 ============================================================================================================
-#4. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
+#6. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
 ============================================================================================================
 
 Read Replicas se reads multiple nodes ke across distribute ho gaye.
@@ -1376,11 +1721,8 @@ Isi concept ko Sharding solve karta hai.
 ## QUESTION: SHARDING KYA HAI?
 --------------------------------
 
-Sharding ek database horizontal scaling technique hai jisme
-large dataset ko multiple independent database nodes
-(Shards) ke across divide kiya jaata hai.
-
-Har Shard total dataset ka sirf ek subset store aur manage karta hai.
+Sharding mein data ko Rows ke basis par horizontally divide karke independent database nodes (Shards)
+ke across store kiya jaata hai. Har Shard total dataset ka sirf ek subset store aur manage karta hai.
 
 Application ke andar ya Application ke saamne/saath koi routing mechanism,
 defined routing rule ke basis par decide karta hai ki particular data kis Shard mein store hoga.
@@ -3457,5 +3799,14 @@ decide karne, aur crash/restart ke baad Saga processing ko recover ya resume kar
  
  
 
-CONCURRENCY CONTROL
+-------------------------------------------------------------------------------------------
+## SHARDING vs PARTITIONING ?
+-------------------------------------------------------------------------------------------
 
+Database Partitioning mein data ko Rows ya Columns ke basis par multiple
+logical partitions mein divide kiya jaata hai aur ye partitions same 
+database node ke andar manage hote hain.
+
+Sharding mein data ko generally Rows ke basis par horizontally divide karke
+multiple independent Database Nodes/Shards ke across distribute kiya jaata hai.
+Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta hai.
