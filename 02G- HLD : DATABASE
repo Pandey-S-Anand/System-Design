@@ -2918,35 +2918,6 @@ karne ki zarurat nahi padti aur Cross-Shard Join ki additional complexity aur la
 
 
 
----------------------------------------------
-## QUESTION: DATABASE TRANSACTION KYA HAI?
---------------------------------------------
-
-Database Transaction ek ya multiple Database Operations ka
-aisa group hota hai jise Database ek single logical unit of work
-ki tarah treat karta hai.
-
-Transaction ke andar included Operations:
-
-* Ya to sabhi Operations successfully complete honge aur
-  unke changes permanently commit honge.
-
-* Ya agar koi Operation fail ho jaaye, to Transaction ke andar
-  pehle successfully execute hue Operations ke changes bhi
-  rollback kar diye jaayenge, taaki Database consistent state mein rahe.
-
-
-Yaani Transaction ensure karti hai:
-
-All Operations Successful
-        ↓
-      COMMIT
-
-Any Operation Failed
-        ↓
-     ROLLBACK
-
-
 
 ----------------------------------------------------------
 ## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
@@ -3055,9 +3026,263 @@ ke andar independently execute aur manage hoti hain.
 Yahi Cross-Shard database transaction ki main challenge hai.
 
 
+==================================================
+#7. DATABASE TRANSACTIONS & CONCURRENCY CONTROL
+==================================================
 
-## DISTRIBUTED TRANSACTION :
-----------------------------
+--------------------------------------------
+## QUESTION: DATABASE TRANSACTION KYA HAI?
+--------------------------------------------
+
+Database Transaction ek ya multiple Database Operations ka
+aisa group hota hai jise Database ek single logical unit of work
+ki tarah treat karta hai.
+
+Transaction ke andar included Operations:
+
+- Ya to sabhi Operations successfully complete honge aur
+  unke changes permanently commit honge.
+
+- Ya agar Transaction ke execution ke dauran koi Operation fail ho jaaye, 
+  to Transaction ke andar pehle successfully execute hue Operations ke 
+  changes bhi rollback kar diye jaayenge.
+
+
+Yaani Transaction ensure karti hai:
+
+All Operations Successful
+        ↓
+      COMMIT
+
+Any Operation Failed
+        ↓
+     ROLLBACK
+
+
+## EXAMPLE
+------------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
+
+Initial State
+
+- Account A → ₹10,000
+- Account B → ₹5,000
+
+Required Operations
+- Account A se ₹1,000 deduct karna.
+- Account B mein ₹1,000 add karna.
+
+
+## WITHOUT DATABASE TRANSACTION
+--------------------------------
+
+Agar dono Operations independently execute kiye jaayen aur pehla Operation successfully complete ho jaaye:
+
+Account A → ₹9,000
+
+Lekin agar doosra Operation fail ho jaaye, to state ho sakti hai:
+
+Account A → ₹9,000
+Account B → ₹5,000
+
+Yaani ₹1,000 source Account se deduct ho gaye, lekin destination Account mein add nahi hue.
+
+Is situation mein Business Operation partially complete hui hai, jiski wajah se Database
+ka data expected business-consistent state mein nahi hai.
+
+
+## WITH DATABASE TRANSACTION
+------------------------------
+
+Database Transaction dono related Operations ko ek single logical unit 
+of work ki tarah manage karti hai.
+
+Is example mein agar:
+
+Account A se ₹1,000 deduct → SUCCESS
+
+Lekin:
+
+Account B mein ₹1,000 add → FAIL
+
+To Transaction ROLLBACK ho sakti hai.
+
+Final State after ROLLBACK
+
+Account A → ₹10,000
+Account B → ₹5,000
+
+
+Is tarah Transaction partial changes ko permanently persist hone se prevent karne mein help 
+karti hai aur Database ko expected consistent state mein maintain karne mein help karti hai.
+
+
+--------------------------------------------------------------
+## QUESTION: EXPLICIT AUR IMPLICIT TRANSACTION KYA HOTI HAI?
+--------------------------------------------------------------
+
+Database Transactions generally do tarah se execute ho sakti hain:
+
+- Explicit Transaction
+- Implicit / Auto-Commit Transaction
+
+Dono mein main difference yeh hota hai ki transaction ki boundary (kab shuru hoga aur kab khatam)
+kaun decide kar raha hai—database system khud ya fir developer.
+
+
+1: EXPLICIT TRANSACTION
+-------------------------
+
+Explicit Transaction mein Developer khud Transaction ki boundary define karta hai.
+
+## QUESTION : RAW SQL / WORKBENCH MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
+---------------------------------------------------------------------------------
+
+Ek Transaction ke andar multiple related Database Operations ho sakte hain.
+
+In Operations mein:
+
+- READ Operations
+- WRITE Operations
+
+dono include ho sakte hain.
+
+
+## EXAMPLE
+------------
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain:
+
+Maan lo Account A se Account B mein ₹1,000 transfer karne hain:
+
+BEGIN TRANSACTION;   
+
+-- Operation 1
+UPDATE accounts
+SET balance = balance - 1000
+WHERE account_id = 101;
+
+-- Operation 2
+UPDATE accounts
+SET balance = balance + 1000
+WHERE account_id = 501;
+
+COMMIT;  
+
+
+## IMPORTANT COMMANDS :
+-------------------------
+
+1: BEGIN TRANSACTION; 
+  - Transaction start karta hai.
+  - Kuch Databases mein sirf BEGIN; bhi use kiya ja sakta hai. 
+
+
+2: COMMIT;
+  - Transaction ke andar successfully execute hue sabhi Operations ke changes 
+    ko permanently Database mein persist karta hai.
+
+ROLLBACK
+  - Current Transaction ke andar previously successful Operations ke uncommitted changes ko undo karta hai.
+  - Isse Database ka state Transaction start hone se pehle wali consistent state mein wapas aa jaata hai.
+
+
+### QUESTION : COMMIT STATEMENT PEHLE SE KYUN LIKHA HOTA HAI?
+---------------------------------------------------------------
+
+Script mein COMMIT statement pehle se likha hone ka matlab yeh nahi hai ki Database
+beech mein failure hone ke baad bhi blindly Transaction ko COMMIT kar dega.
+
+Agar Transaction ke previous Operations successfully execute ho jaate hain aur execution 
+COMMIT statement tak pahunch jaati hai, tab COMMIT execute hota hai.
+
+COMMIT successfully execute hone ke baad Transaction ke andar kiye gaye uncommitted changes
+permanently Database mein persist ho jaate hain.
+
+
+### QUESTION : AGAR TRANSACTION KE BEECH MEIN KOI OPERATION FAIL HO JAAYE TO ?
+-------------------------------------------------------------------------------
+
+Is situation mein pehle successfully execute hue Operations ke changes abhi 
+permanently persist nahi hue hote, Operation fail hone ke baad normal execution
+flow aage COMMIT statement tak proceed nahi karta, isliye COMMIT execute nahi hota.
+
+Lekin Transaction automatically abort/rollback hogi ya abhi active rahegi,
+ye DBMS aur error ke type par depend karta hai.
+
+Agar Transaction abhi active hai, to Developer explicitly:
+
+ROLLBACK;
+
+execute karke Transaction ke uncommitted changes ko undo kar sakta hai.
+
+
+## QUESTION : APPLICATION LEVEL MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
+--------------------------------------------------------------------------------
+
+Spring Boot mein commonly @Transactional annotation use ki jaati hai.
+
+Spring mein @Transactional transaction management framework ko indicate karta hai
+ki annotated method ke execution ke around ek Database Transaction manage karni hai.
+
+Developer ko manually har method mein:
+
+- BEGIN
+- COMMIT
+- ROLLBACK
+
+likhne ki zarurat nahi padti.
+
+
+Yahan:
+
+@Transactional Method Start
+        ↓
+Database Transaction Start
+        ↓
+Operation 1 → Debit Account A
+        ↓
+Operation 2 → Credit Account B
+        ↓
+All Operations Successful?
+      /             \
+    YES              NO
+     ↓                ↓
+   COMMIT          ROLLBACK
+
+
+
+## EXAMPLE
+-----------
+
+@Service
+public class AccountService {
+
+    @Transactional
+    public void transferMoney(
+            Long sourceAccountId,
+            Long destinationAccountId,
+            BigDecimal amount) {
+
+        // Operation 1
+        accountRepository.debit(sourceAccountId, amount);
+
+        // Operation 2
+        accountRepository.credit(destinationAccountId, amount);
+    }
+}
+
+
+
+
+
+
+
+
+==============================
+#8. DISTRIBUTED TRANSACTION
+==============================
 
 Distributed Transaction mein ek single larger Business Operation ko 
 complete karne ke liye required Write Operations multiple independent 
@@ -3153,9 +3378,9 @@ database transaction ke through execute hota hai.
 In sabko collectively manage karna, taaki ek failure ki situation mein overall business 
 consistency maintain ki ja sake, Distributed Transaction ka core challenge hai.
 
-
+-----------------------------------------------------------------------------
 ## QUESTION: DISTRIBUTED TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
---------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 
 Distributed Transaction aur Cross-Shard Transaction dono mein ek Business Operation ke Write Operations
 multiple independent transactional boundaries ke andar execute hote hain. In operations ko coordinate 
@@ -3812,9 +4037,9 @@ decide karne, aur crash/restart ke baad Saga processing ko recover ya resume kar
  
  
 
--------------------------------------------------------------------------------------------
+--------------------------------
 ## SHARDING vs PARTITIONING ?
--------------------------------------------------------------------------------------------
+--------------------------------
 
 Database Partitioning mein data ko Rows ya Columns ke basis par multiple
 logical partitions mein divide kiya jaata hai aur ye partitions same 
