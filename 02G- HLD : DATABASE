@@ -305,9 +305,6 @@ resource pressure create ho sakta hai.
 
 
 
-
-
-
 ====================================
 3. DATABASE KO SCALE KAISE KAREIN ?
 ====================================
@@ -393,14 +390,28 @@ Conceptually:
         DB-1    DB-2    DB-3
 
 
-Horizontal scaling ke different approaches ho sakte hain:
-
-1: Replication → Read Replicas
-2: Sharding / Partitioning
+Horizontal Scaling ke common approaches:
 
 
-
-
+HORIZONTAL SCALING
+        │
+        ├── READ SCALING
+        │       │
+        │       └── READ REPLICAS
+        │
+        |
+        └── WRITE SCALING
+                │
+                └── PARTITIONING
+                        │
+                        ├── VERTICAL PARTITIONING
+                        │           
+                        │
+                        └── HORIZONTAL PARTITIONING
+                        |
+                        │
+                        └── DISTRIBUTED HORIZONTAL PARTITIONING -  SHARDING
+                                           
 
 
 ============================================================================
@@ -1273,9 +1284,9 @@ nodes ki information manage nahi karni padti.
 
 
 
-=======================================================================
-#4. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING
-=======================================================================
+============================================================================================================
+#4. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
+============================================================================================================
 
 Read Replicas se reads multiple nodes ke across distribute ho gaye.
 Lekin writes abhi bhi Primary DB par hi ja rahi hain.
@@ -3313,6 +3324,15 @@ Order Service
 Saga Failed
 
 
+### IMPORTANT
+---------------
+
+Orchestration-Based Saga mein Saga State maintain/track ki jaati hai,
+taaki system ko pata rahe ki kaunse steps successfully complete ho chuke hain aur Saga currently kis step par hai.
+Saga State ka use normal execution mein next step decide karne, failure hone par required Compensating Transactions
+decide karne, aur crash/restart ke baad Saga processing ko recover ya resume karne ke liye kiya jaata hai.
+
+
 
 ## SAGA PATTERN KI LIMITATIONS :
 -----------------------------------
@@ -3436,4 +3456,6 @@ Saga Failed
   retry kiya jaaye, to uska business effect duplicate ya incorrect nahi hona chahiye.
  
  
+
+CONCURRENCY CONTROL
 
