@@ -399,19 +399,19 @@ HORIZONTAL SCALING
         │       │
         │       └── READ REPLICAS
         │
-        |
         └── WRITE SCALING
                 │
                 └── PARTITIONING
                         │
                         ├── VERTICAL PARTITIONING
-                        │           
                         │
                         └── HORIZONTAL PARTITIONING
-                        |
-                        │
-                        └── SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
-                                           
+                                │
+                                ├── Partitioning within a Single Database
+                                │
+                                └── Partitioning across Multiple Database Nodes
+                                    │
+                                    └── SHARDING
 
 
 ============================================================================
