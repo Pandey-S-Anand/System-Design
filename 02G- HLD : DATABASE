@@ -3118,6 +3118,7 @@ Is tarah Transaction partial changes ko permanently persist hone se prevent karn
 karti hai aur Database ko expected consistent state mein maintain karne mein help karti hai.
 
 
+
 --------------------------------------------------------------
 ## QUESTION: EXPLICIT AUR IMPLICIT TRANSACTION KYA HOTA HAI?
 --------------------------------------------------------------
@@ -3204,9 +3205,11 @@ permanently Database mein persist ho jaate hain.
 ### CASE 1 : TRANSACTION KE BEECH MEIN KOI OPERATION FAIL HO JAAYE 
 --------------------------------------------------------------------
 
-Operation fail hone ke baad normal execution flow aage COMMIT statement tak 
-proceed nahi karta, isliye COMMIT execute nahi hota. Is situation mein pehle 
-successfully execute hue Operations ke changes abhi permanently persist nahi hue hote, 
+Operation fail hone ke baad normal execution flow aage COMMIT statement 
+tak proceed nahi karta, isliye COMMIT execute nahi hota. 
+
+Is situation mein pehle successfully execute hue Operations ke changes
+abhi permanently persist nahi hue hote, 
 
 Lekin Transaction automatically abort/rollback hogi ya abhi active rahegi,
 ye DBMS aur error ke type par depend karta hai.
@@ -3314,6 +3317,612 @@ Query 2 → Fail → Abort / Rollback
 
 Query 2 fail hone par Query 1 automatically Rollback nahi hogi,
 kyunki Query 1 pehle hi independently COMMIT ho chuki hoti hai.
+
+
+
+----------------------------------------
+## QUESTION: ACID PROPERTIES KYA HAI?
+----------------------------------------
+
+ACID Properties Database Transaction ki 4 important properties hain jo ensure 
+karti hain ki Transaction correct aur reliable way mein execute ho.
+
+1. ATOMICITY
+-------------
+
+Transaction ke saare required Operations ya to successfully complete hokar 
+collectively COMMIT honge, ya agar kisi bhi Operation mein failure hota hai,
+to Transaction ke andar kiye gaye kisi bhi Operation ke changes permanently 
+Database mein persist nahi honge.
+
+All Operations Successful
+        ↓
+      COMMIT
+
+Any Required Operation Fails
+        ↓
+     ROLLBACK
+
+
+2. CONSISTENCY
+----------------
+
+Transaction Database ko ek valid and consistent state 
+se doosri valid and consistent state mein le jaaye.
+
+
+## EXAMPLE
+------------
+
+Maan lo:
+
+Account A → ₹10,000
+Account B → ₹5,000
+
+Account A se ₹1,000 deduct karke Account B mein ₹1,000 add karne hain.
+
+Initial Total Money = ₹15,000
+
+### CASE 1: SUCCESSFUL TRANSACTION
+------------------------------------
+
+Account A → ₹9,000
+Account B → ₹6,000
+
+Final Total Money = ₹15,000
+
+Yaani Transaction successfully complete hone ke baad bhi important business rule maintain raha:
+
+Money create ya destroy nahi hona chahiye.
+
+
+### CASE 2: TRANSACTION FAILS
+-------------------------------
+
+Maan lo Account A se ₹1,000 successfully deduct ho gaye:
+
+Account A → ₹9,000
+
+Lekin Account B mein ₹1,000 add karne wali operation fail ho gayi.
+
+Transaction Rollback:
+
+Account A → ₹10,000
+Account B → ₹5,000
+
+Final Total Money = ₹15,000
+
+Yaani failure ke baad bhi rollback, Database ko ek valid aur business-consistent state mein rakhta hai.
+
+
+3. ISOLATION
+---------------
+
+Isolation ka matlab hai ki jab multiple Database Transactions concurrently execute 
+ho rahi hote hai, to ek Transaction ke intermediate / uncommitted changes doosri 
+Transaction ko incorrect way mein affect nahi karna chahiye.
+
+
+4. DURABILITY
+---------------
+Ek baar Transaction successfully COMMIT ho jaaye, to uske changes permanently Database mein persist rehne chahiye.
+System crash, power failure ya Database restart hone ki situation mein bhi committed changes lost nahi hone chahiye.
+
+
+
+----------------------------------------------------
+## QUESTION: CONCURRENCY CONTROL KI NEED KYA HAI?
+-----------------------------------------------------
+
+Concurrency Control ki zarurat tab padti hai jab multiple Transactions ek hi
+time par same data ko access ya modify kar rahi hoti hain.
+
+Concurrency Control ensure karta hai ki multiple concurrent transactions ek doosre ke 
+execution ke saath interfere na karein aur final Database consistent state mai rahe.
+
+
+-----------------------------------------------------
+## QUESTION: CONCURRENCY SE KYA PROBLEMS AATI HAI ?
+-----------------------------------------------------
+
+1: LOST UPDATE
+----------------
+
+Lost Update problem tab hoti hai jab do concurrent Transactions same data ko read karke update karti hain,
+aur ek Transaction ka update doosri Transaction ke update ki wajah se overwrite ho jaata hai.
+
+
+### EXAMPLE: 
+-------------
+
+Maan lo Account A ka current balance hai:
+
+Balance = ₹1,000
+
+Ek hi time par do Transactions execute hoti hain:
+
+Transaction T1: ₹100 deduct karna
+Transaction T2: ₹200 deduct karna
+
+Dono Transactions same time par current balance read karti hain:
+
+T1 reads Balance = ₹1,000
+T2 reads Balance = ₹1,000
+
+Ab:
+
+T1 calculates: 1000 - 100 = 900
+T2 calculates: 1000 - 200 = 800
+
+Agar T1 pehle update kare:
+
+Balance = ₹900
+
+Aur uske baad T2 apni previously calculated value write kar de:
+
+Balance = ₹800
+
+
+Final Balance:
+
+₹800
+
+Lekin correct Balance hona chahiye tha:
+
+₹1,000 - ₹100 - ₹200 = ₹700
+
+T1 ka ₹100 deduction lost / overwrite ho gaya, kyunki T2 ne old value ₹1,000 ke basis par
+calculate karke apni value later write kar di.
+
+
+2. DIRTY READ
+---------------
+
+Dirty Read tab hota hai jab ek Transaction kisi doosri Transaction ke 
+uncommitted changes ko read kar leti hai.
+
+Problem isliye hoti hai kyunki jis Transaction ne ye changes kiye hain, 
+woh baad mein ROLLBACK ho sakti hai jisse us transaction ke changes 
+Database mein permanently persist nahi hote.
+
+Lekin doosri Transaction un temporary changes ko pehle hi read kar 
+chuki hoti hai. Yaani doosri Transaction ne aisa data read kar liya 
+jo eventually Database mein permanently exist hi nahi hua.
+
+
+### EXAMPLE: 
+-------------
+
+Initial Balance = ₹1,000
+
+
+T1 → UPDATE Balance = ₹1,500
+     (Changes abhi COMMIT nahi hue)
+
+
+T2 → READ Balance = ₹1,500
+     (T1 ke uncommitted changes read kar liye)
+
+
+T1 → Something fails
+     ↓
+     ROLLBACK
+
+
+Final Balance = ₹1,000
+
+Lekin T2 ne ₹1,500 read kar liya tha, jabki ye value kabhi permanently commit hi nahi hui.
+
+Isliye T2 ne Dirty Data read kiya.
+
+
+
+3. NON-REPEATABLE READ
+------------------------
+
+Non-Repeatable Read tab hota hai jab same Transaction ek hi row ko do baar read karti hai, 
+lekin dono reads ke beech kisi doosri Transaction ne us row ka data update karke COMMIT kar diya ho.
+Is wajah se same Transaction ko same row ki different values milti hain.
+
+### EXAMPLE: 
+-------------
+
+T1 → Read Account Balance = ₹1,000
+
+T2 → Update Balance = ₹1,500
+     COMMIT
+
+T1 → Read Same Account Again = ₹1,500
+
+
+T1 ne same Transaction ke andar same row ko do baar read kiya, lekin dono baar different value mili.
+
+First Read  → ₹1,000
+Second Read → ₹1,500
+
+Yahi Non-Repeatable Read hai.
+
+
+
+4. PHANTOM READ
+-----------------
+
+Phantom Read tab hota hai jab same Transaction same query ko do baar execute karti hai, 
+lekin dono executions ke beech kisi doosri Transaction ne new rows INSERT ya existing rows
+DELETE karke COMMIT kar diya ho.
+
+Yaani same Transaction ne same query do baar execute ki, lekin dono baar alag-alag result mila.
+
+### EXAMPLE: 
+-------------
+
+Maan lo T1 query execute karti hai:
+
+SELECT * FROM orders
+WHERE customer_id = 101;
+
+T1 ko initially milti hain:
+
+Order 1
+Order 2
+
+Ab doosri Transaction T2 ek naya Order insert karti hai:
+
+INSERT New Order for customer_id = 101
+COMMIT
+
+Ab T1 same query dobara execute karti hai:
+
+SELECT * FROM orders
+WHERE customer_id = 101;
+
+Ab result:
+
+Order 1
+Order 2
+Order 3
+
+Yaani same Transaction ne same query do baar execute ki, lekin second time ek additional row appear ho gayi.
+
+Ye additional row Phantom Row kehlati hai.
+
+
+
+
+---------------------------------------------------------
+## QUESTION: TRANSACTION ISOLATION LEVELS KYA HOTE HAIN?
+---------------------------------------------------------
+
+Jab multiple Transactions concurrently execute hoti hain, to ek Transaction ki
+operations doosri Transaction ki operations ko affect kar sakti hain, jisse:
+
+- Lost Update
+- Dirty Read
+- Non-Repeatable Read
+- Phantom Read
+
+jaise problems ho sakti hain.
+
+
+Transaction Isolation Levels Database ke rules hote hain jo define karte hain ki ek Transaction
+ko doosri concurrently executing Transactions ke changes kitne level tak visible honge.
+Different Isolation Levels concurrency ke problems ko different extent tak prevent karte hain.
+
+Generally,
+
+Higher Isolation -> Fewer Concurrency Problems → More Data Consistency →  Lower Performance
+
+Lower Isolation -> More Concurrency Problems → Less Data Consistency →  Better Performance
+
+
+Database commonly 4 standard Transaction Isolation Levels provide karta hai:
+
+
+1. READ UNCOMMITTED
+--------------------
+
+Read Uncommitted sabse lowest Transaction Isolation Level hota hai.
+Is Isolation Level mein ek Transaction, doosri concurrent Transaction
+ke uncommitted changes bhi read kar sakti hai.
+
+Read Uncommitted isolation level Dirty Read ko allow karta hai.
+
+
+2. READ COMMITTED
+-------------------
+
+Multiple concurrent transations agar execute ho rahe ho to ek
+txn dusre txn ka sirf committed data ko read kar sakti hai.
+Yaani ek Transaction doosri Transaction ke uncommitted changes read nahi kar sakti.
+
+Isliye Read Committed isolation level Dirty Read ko Prevent karta hai.
+
+
+3. REPEATABLE READ
+---------------------
+
+Repeatable Read Isolation Level ensure karta hai ki ek Transaction agar kisi row ko read kare, 
+to us Transaction ke andar usi row ko dobara read karne par same value mile, 
+even if kisi doosri Transaction ne us row ko update karke commit kar diya ho.
+
+Isliye Repeatable Read isolation level Non-Repeatable Read ko prevent karta hai.
+
+Is level par Dirty Read bhi prevent hota hai, kyunki ek Transaction doosri 
+concurrent Transaction ke uncommitted changes ko read nahi kar sakti.
+Yaani Transaction ko sirf committed data visible hota hai.
+
+
+4. SERIALIZABLE
+-----------------
+
+Serializable sabse highest Transaction Isolation Level hota hai.
+
+Is level mein concurrent Transactions ko aise execute kiya jaata hai ki 
+final behavior aisa lage jaise Transactions ek-ek karke serially execute hui hain.
+
+Serializable generally prevent karta hai:
+
+- Dirty Read
+- Non-Repeatable Read
+- Phantom Read
+- Lost Update
+
+
+------------------------------------
+## QUESTION: LOCKS KYA HOTE HAIN?
+------------------------------------
+
+Database Locks ek Concurrency Control mechanism hain jo multiple concurrent Transactions
+ko same data par conflicting operations karne se control karta hai.
+
+## EXAMPLE:
+------------
+
+Maan lo Transaction T1 Account A ka Balance update kar rahi hai.
+
+T1 → Acquire Lock on Account A 
+↓ 
+Update Balance 
+↓ 
+Release Lock 
+
+
+Isi time T2 bhi Account A ko update karna chahti hai:
+
+T2 → Wants to Update Account A 
+          ↓ 
+        WAIT 
+          ↓ 
+  T1 Releases Lock 
+          ↓ 
+  T2 Can Proceed
+
+Is tarah Locks concurrent Transactions ke conflicting operations ko control karte hain
+aur problems jaise Lost Update ko prevent karne mein help kar sakte hain.
+
+
+-------------------------------
+## QUESTION: TYPE OF LOCKS ?
+-------------------------------
+
+1: SHARED LOCK (S LOCK)
+------------------------
+
+Shared Lock Read Operation ke liye use hota hai.
+
+Multiple Concurrent Transactions ek hi data ko simultaneously 
+Shared Lock ke saath read kar sakti hain.
+
+Lekin jab Shared Lock active hota hai, to kisi doosri Transaction
+ko usi data par conflicting Write Operation perform karne ke liye 
+wait karna pad sakta hai, jab tak existing Shared Lock release nahi ho jaata.
+
+
+### EXAMPLE
+-------------
+
+Maan lo:
+
+Account A → Balance = ₹10,000
+
+Transaction T1 Account A ka balance read karti hai:
+
+T1 → Acquire Shared Lock
+↓
+Read Balance = ₹10,000
+
+Isi time Transaction T2 bhi Account A ka balance read karna chahti hai:
+
+T2 → Acquire Shared Lock
+↓
+Read Balance = ₹10,000
+
+Dono Transactions ek saath read kar sakti hain:
+
+T1 → READ ✅
+T2 → READ ✅
+
+Lekin ab Transaction T3 Account A ka balance update karna chahti hai:
+
+T3 → UPDATE Account A
+↓
+Exclusive Lock Required
+↓
+WAIT
+
+T3 ko generally tab tak wait karna padega jab tak existing Shared Locks release nahi ho jaate.
+
+
+### CORE IDEA:
+---------------
+
+Multiple Reads Allowed, but conflicting Write has to wait.
+
+
+
+2. EXCLUSIVE LOCK (X LOCK)
+----------------------------
+
+Exclusive Lock Write Operations ke liye use hota hai.
+
+Agar kisi Data par kisi Transaction ne Exclusive Lock acquire kar rakha hai, 
+to koi doosri Transaction usi Data par:
+
+- Exclusive Lock acquire nahi kar sakti.
+- Shared Lock bhi acquire nahi kar sakti.
+
+Yaani Exclusive Lock ke dauran doosri Transactions ko conflicting Read 
+ya Write Operations ke liye generally wait karna padta hai.
+
+
+### IMPORTANT
+---------------
+
+However, agar kisi Data par kisi Transaction ne Shared Lock acquire kar rakha hai,
+to doosri Transactions usi Data par aur Shared Locks acquire karke simultaneously
+Read Operations perform kar sakti hain. Lekin koi Transaction us Data par Exclusive Lock
+acquire nahi kar sakti jab tak existing Shared Locks release nahi ho jaate.
+
+
+### EXAMPLE
+-------------
+
+Maan lo:
+
+Account A → Balance = ₹10,000
+
+
+Transaction T1 Account A ka balance update karna chahti hai:
+
+T1 → Acquire Exclusive Lock
+        ↓
+     Update Balance
+        ↓
+     Lock Active
+
+
+Isi time Transaction T2 Account A ko read karna chahti hai:
+
+T2 → READ
+        ↓
+Shared Lock Required
+        ↓
+       WAIT
+
+
+Isi time Transaction T3 bhi Account A ko update karna chahti hai:
+
+T3 → UPDATE
+        ↓
+Exclusive Lock Required
+        ↓
+       WAIT
+
+
+Jab T1 apna Transaction complete karke Lock release karegi:
+
+
+Jab T1 apna Transaction complete karke Exclusive Lock release karti hai:
+
+T1 → COMMIT / ROLLBACK
+↓
+Release Exclusive Lock
+↓
+Lock Manager waiting Transactions mein se
+kisi eligible Transaction ko Lock grant karta hai.
+
+T2 aur T3 ek saath proceed nahi kar sakte, kyunki:
+
+T2 → Shared Lock Required
+
+T3 → Exclusive Lock Required
+
+aur Shared Lock aur Exclusive Lock ek hi Data par
+simultaneously coexist nahi kar sakte.
+
+
+
+---------------------------------------------------
+## QUESTION: QUESTION: LOCK GRANULARITY KYA HAI ?
+---------------------------------------------------
+
+Lock Granularity batati hai ki Lock Data ke kitne bade portion par apply hua hai.
+
+### EXAMPLE
+-------------
+
+Maan lo Transaction T1 Account A ka Balance update kar rahi hai.
+
+Iske liye T1 ko Exclusive Lock acquire karna hoga.
+
+Lekin Exclusive Lock exactly kis Data Unit par lagega?
+
+- Sirf Account A ki Row par
+- Ek Database Page par
+- Puri Accounts Table par
+
+Lock kis level ke Data Unit par apply hoga, isi ko Lock Granularity kehte hain.
+
+
+## COMMON LOCK GRANULARITY LEVELS :
+------------------------------------
+
+Commonly Locks different levels par apply kiye ja sakte hain:
+
+1. ROW-LEVEL LOCK
+-------------------
+
+Row-Level Lock mein Lock Table ki sirf ek specific Row par apply hota hai.
+
+### EXAMPLE
+-----------
+
+Accounts Table:
+
+Account A → ₹10,000
+Account B → ₹5,000
+Account C → ₹8,000
+
+Transaction T1 Account A ko update karna chahti hai:
+
+T1 → Acquires Exclusive Lock on Account A Row
+
+Jab tak T1 ka Exclusive Lock active hai, doosri Transactions ko
+Account A ki usi Row par conflicting Read/Write Operation perform
+karne ke liye wait karna pad sakta hai.
+
+Lekin Accounts Table ki doosri Rows, jaise Account B aur Account C,
+is specific Row-Level Lock ki wajah se directly locked nahi hoti hain.
+
+
+## BENEFIT
+-----------
+
+Sirf required Row ko lock karne ki wajah se, Table ki baaki Rows
+unnecessarily block nahi hoti hain.
+
+Isse generally higher Concurrency achieve ki ja sakti hai.
+
+
+### LIMITATION
+-----------------
+
+Agar ek Transaction bahut zyada Rows par Locks acquire kare,
+to Database ko large number of individual Locks manage karne pad sakte hain.
+
+Isse Lock Management ka overhead increase ho sakta hai.
+
+
+
+
+2. TABLE-LEVEL LOCK
+---------------------
+
+
+
+2: Database Page-Level Lock - Database ke ek Page par lock lagta hai.
+3: Table-Level Lock - Entire Table par lock lagta hai.
+4: Database-Level Lock  - Entire Database par lock lagta hai.
 
 
 
