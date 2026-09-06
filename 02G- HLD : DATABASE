@@ -4039,12 +4039,117 @@ Fewer Individual Locks to Manage
 Lower Lock Management Overhead
 
 
+----------------------------------------------
+## QUESTION: PESSIMISTIC LOCKING KYA HAI ?
+----------------------------------------------
+
+
 
 ----------------------------------------------
 ## QUESTION: OPTIMISTIC LOCKING KYA HAI ?
 ----------------------------------------------
 
+Optimistic Locking mein kisi Row ko Update karne ke liye pehle se Exclusive Lock
+acquire karke doosri concurrent Transactions ko block nahi kiya jaata.
 
+Is wajah se possibility hoti hai ki Transaction ke Data read karne ke baad 
+koi doosri concurrent Transaction usi Row ko modify kar de.
+
+Optimistic Locking generally assume karta hai ki Data Conflicts frequently nahi honge.
+
+
+### QUESTION : VERSION KYA HOTA HAI ?
+---------------------------------------
+
+Optimistic Locking approach mein hum generally har Row ke corresponding Database mein 
+ek Version Number maintain karte hain, jo track karta hai ki Row kitni baar successfully
+update hui hai. Har successful Update ke baad Row ka Version Number generally increment 
+kar diya jaata hai.
+
+
+### QUESTION : HOW OPTIMISTIC LOCKING WORKS ?
+----------------------------------------------
+
+Transaction Row ko read karta hai and aur Row ka Version Number bhi 
+read aur remember karta hai.
+
+Iske baad Transaction required changes prepare karta hai aur apne changes
+Database mein commit karne ka attempt karta hai.
+
+Update attempt ke time Database check karta hai ki Row ka current Version
+abhi bhi wahi hai ya nahi jo Transaction ne initially read kiya tha.
+
+
+### QUESTION : DATABASE VERSION KAISE VERIFY KARTA HAI ?
+---------------------------------------------------------
+
+Transaction Row ko read karte waqt uska current version bhi read karti hai.
+
+Update ke time wahi initially read kiya gaya version condition mein pass hota hai:
+
+UPDATE accounts
+SET balance = ?,
+    version = version + 1
+WHERE account_id = ?
+  AND version = ?;
+
+Last version = ? = Transaction ne initially jo version read kiya tha.
+
+Affected Rows = 1 → Version same tha → Update successful.
+Affected Rows = 0 → Version change ho chuka hai → Conflict detected → Retry/Fail.
+
+
+### AGAR VERSION SAME HAI
+----------------------------
+
+Iska matlab hai ki Transaction ke Data read karne ke baad kisi doosri
+concurrent Transaction ne us Row ko successfully modify nahi kiya.
+
+Yaani Conflict nahi hua.
+
+Is situation mein Transaction ke changes successfully update kiye jaate hain
+aur Row ka Version Number generally increment kar diya jaata hai.
+
+
+### AGAR VERSION CHANGE HO GAYA HAI
+--------------------------------------
+
+Iska matlab hai ki Transaction ke Data read karne ke baad kisi doosri
+concurrent Transaction ne us Row ko successfully modify kar diya.
+
+Yaani Concurrency Conflict detect ho gaya.
+
+Is situation mein Transaction ka Update reject / fail kiya ja sakta hai
+aur Application required action, jaise Transaction ko retry, kar sakti hai.
+
+
+
+### OPTIMISTIC LOCKING KA BENEFIT
+------------------------------------
+
+Transaction ko row modify karne ke liye pehle se Exclusive Lock acquire karke
+doosri concurrent Transactions ko block nahi karna padta.
+Isse higher concurrency achieve ho sakti hai.
+
+
+### OPTIMISTIC LOCKING KA LIMITATION
+--------------------------------------
+
+Agar same Row par frequently concurrent Updates ho rahe hain,
+to Version Mismatch ki wajah se Conflicts frequently occur ho sakte hain.
+
+Aise cases mein Transactions ke Updates repeatedly fail ho sakte hain
+aur Transaction ko retry karna pad sakta hai.
+
+Isse repeated retries ki wajah se unnecessary overhead aur performance
+issues ho sakte hain.
+
+
+### COMMON USE CASE
+----------------------
+
+Optimistic Locking generally un scenarios mein useful hoti hai
+jahan same Row par concurrent Updates relatively rare hote hain.
 
 
 
