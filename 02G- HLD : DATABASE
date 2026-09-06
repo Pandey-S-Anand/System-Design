@@ -3363,6 +3363,7 @@ Account A se ₹1,000 deduct karke Account B mein ₹1,000 add karne hain.
 
 Initial Total Money = ₹15,000
 
+
 ### CASE 1: SUCCESSFUL TRANSACTION
 ------------------------------------
 
@@ -4026,6 +4027,8 @@ More Transactions simultaneously / concurrently execute kar sakti hain
 More Individual Locks to Manage
 ↓
 Higher Lock Management Overhead
+
+
 Jaise-jaise Lock Granularity larger hoti hai:
 
 Larger Lock Granularity
@@ -4077,7 +4080,7 @@ Isse:
 ### COMMON USE CASE
 ---------------------
 
-Optimistic Locking generally un scenarios mein useful hoti hai
+Pessimistic Locking generally un scenarios mein useful hoti hai
 jahan same Row par frequently concurrent Updates hone ki possibility ho.
 
 
@@ -4288,6 +4291,7 @@ database transaction ke through execute hota hai.
 
 In sabko collectively manage karna, taaki ek failure ki situation mein overall business 
 consistency maintain ki ja sake, Distributed Transaction ka core challenge hai.
+
 
 -----------------------------------------------------------------------------
 ## QUESTION: DISTRIBUTED TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
