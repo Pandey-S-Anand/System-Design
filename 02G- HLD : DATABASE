@@ -4043,6 +4043,44 @@ Lower Lock Management Overhead
 ## QUESTION: PESSIMISTIC LOCKING KYA HAI ?
 ----------------------------------------------
 
+Pessimistic Locking approach mein jab kisi Transaction ko kisi Row ko
+modify karna hota hai, to Transaction us Row par Exclusive Lock acquire karti hai.
+
+Iske baad Transaction Row ko read karti hai, required changes karti hai
+aur COMMIT / ROLLBACK karti hai.
+
+Jab tak Exclusive Lock active hota hai, doosri concurrent Transactions ko
+usi Row par conflicting operations perform karne ke liye wait karna padta hai,
+jab tak Lock release nahi ho jaata.
+
+Pessimistic Locking mein Transaction assume karti hai ki same Data par
+concurrent conflict ho sakta hai.
+
+### PESSIMISTIC LOCKING KA BENEFIT
+------------------------------------
+
+Conflicting Transactions ko pehle hi block karne ki wajah se
+concurrency problems, jaise Lost Update, prevent kiye ja sakte hain.
+
+
+### PESSIMISTIC LOCKING KA LIMITATION
+---------------------------------------
+
+Agar Lock long time tak hold rahe, to doosri Transactions ko wait karna padta hai.
+
+Isse:
+
+- Concurrency reduce ho sakti hai
+- Request ka response time increase ho sakta hai
+
+
+### COMMON USE CASE
+---------------------
+
+Optimistic Locking generally un scenarios mein useful hoti hai
+jahan same Row par frequently concurrent Updates hone ki possibility ho.
+
+
 
 
 ----------------------------------------------
