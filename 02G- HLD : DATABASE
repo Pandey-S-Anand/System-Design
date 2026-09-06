@@ -3125,7 +3125,7 @@ karti hai aur Database ko expected consistent state mein maintain karne mein hel
 Database Transactions generally do tarah se execute ho sakti hain:
 
 - Explicit Transaction
-- Implicit / Auto-Commit Transaction
+- Auto-Commit Transaction
 
 Dono mein main difference yeh hota hai ki transaction ki boundary (kab shuru hoga aur kab khatam)
 kaun decide kar raha hai—database system khud ya fir developer.
@@ -3226,14 +3226,6 @@ Spring Boot mein commonly @Transactional annotation use ki jaati hai.
 Spring mein @Transactional transaction management framework ko indicate karta hai
 ki annotated method ke execution ke around ek Database Transaction manage karna hai.
 
-Developer ko manually har method mein:
-
-- BEGIN
-- COMMIT
-- ROLLBACK
-
-likhne ki zarurat nahi padti.
-
 
 Yahan:
 
@@ -3250,6 +3242,78 @@ All Operations Successful?
     YES              NO
      ↓                ↓
    COMMIT          ROLLBACK
+
+
+
+
+2: AUTO-COMMIT TRANSACTION
+---------------------------
+
+Auto-Commit enabled hone par generally har individual SQL statement apni separate
+Transaction ki tarah execute hoti hai.
+
+- Statement successful → Automatically COMMIT
+- Statement fail → Us Statement ke uncommitted changes Abort / Rollback
+
+
+## EXAMPLE
+------------
+
+Maan lo Auto-Commit enabled hai aur Developer ye query execute karta hai:
+
+UPDATE accounts
+SET balance = balance - 1000
+WHERE account_id = 101;
+
+Database internally is statement ko ek Transaction ke andar execute karta hai.
+
+
+                SQL Statement
+                      │
+                      v
+        Database executes Statement
+                      │
+              ┌───────┴───────┐
+              │               │
+          SUCCESS            FAIL
+              │               │
+              v               v
+        Auto COMMIT      Abort / Rollback
+              │               │
+              v               v
+     Changes Permanently   Statement ke changes
+        Persisted          Persist nahi honge
+
+
+
+## IMPORTANT: AUTO-COMMIT MULTIPLE QUERIES KO EK TRANSACTION NAHI BANATA
+--------------------------------------------------------------------------
+
+Ye sabse important point hai.
+
+Maan lo Auto-Commit enabled hai:
+
+-- Query 1
+UPDATE accounts
+SET balance = balance - 1000
+WHERE account_id = 101;
+
+-- Query 2
+UPDATE accounts
+SET balance = balance + 1000
+WHERE account_id = 501;
+
+
+In dono Queries ko Database ek single DB Transaction ka part nahi maanta.
+Balki, har Query apni separate Database Transaction mein independently execute
+hoti hai aur successful hone par independently Auto-COMMIT ho jaati hai.
+
+Query 1 → Success → Auto-COMMIT
+
+Query 2 → Fail → Abort / Rollback
+
+Query 2 fail hone par Query 1 automatically Rollback nahi hogi,
+kyunki Query 1 pehle hi independently COMMIT ho chuki hoti hai.
 
 
 
