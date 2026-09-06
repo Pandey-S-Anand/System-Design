@@ -3842,9 +3842,9 @@ simultaneously coexist nahi kar sakte.
 
 
 
----------------------------------------------------
-## QUESTION: QUESTION: LOCK GRANULARITY KYA HAI ?
----------------------------------------------------
+-----------------------------------------
+## QUESTION: LOCK GRANULARITY KYA HAI ?
+-----------------------------------------
 
 Lock Granularity batati hai ki Lock Data ke kitne bade portion par apply hua hai.
 
@@ -3913,17 +3913,136 @@ to Database ko large number of individual Locks manage karne pad sakte hain.
 Isse Lock Management ka overhead increase ho sakta hai.
 
 
-
-
 2. TABLE-LEVEL LOCK
 ---------------------
 
+Table-Level Lock mein Lock complete Table par apply hota hai.
+
+Ye generally tab useful hota hai jab Transaction ko Table ke bahut large
+number of Rows par operation perform karna ho.
+
+Aise case mein har Row par individually Lock acquire aur manage karna
+expensive ho sakta hai, isliye Table-Level Lock use kiya ja sakta hai.
 
 
-2: Database Page-Level Lock - Database ke ek Page par lock lagta hai.
-3: Table-Level Lock - Entire Table par lock lagta hai.
-4: Database-Level Lock  - Entire Database par lock lagta hai.
+### EXAMPLE
+------------
 
+Maan lo `Accounts` Table mein millions of Rows hain:
+
+Accounts Table:
+
+Account A
+Account B
+Account C
+...
+Millions of Accounts
+
+Ab Database ko `Accounts` Table par ek large-scale administrative operation,
+jaise Table restructuring ya migration, perform karna hai.
+
+Is operation ke dauran Transaction ko ensure karna ho sakta hai ki Table ka
+data kisi doosri concurrent Transaction ke conflicting Read ya Write Operation ki wajah se
+simultaneously modify na ho.
+
+Iske liye:
+
+T1:
+
+Acquire Table-Level Lock
+↓
+Perform Required Table-Wide Operation
+↓
+Complete Operation
+↓
+Release Table-Level Lock
+
+Jab Table-Level Lock active hota hai, to doosri Transactions ko Table par
+conflicting Read ya Write Operations perform karne ke liye wait karna padta hai,
+jab tak Lock release nahi ho jaata.
+
+
+3. PAGE-LEVEL LOCK
+--------------------
+
+Database Data ko internally fixed-size storage blocks, yaani Pages, mein organize kar sakta hai.
+
+Page-Level Lock mein Lock ek complete Page par apply hota hai.
+
+Agar ek Page mein multiple Rows stored hain aur us Page par Lock acquire ho gaya,
+to doosri Transactions ko us Page mein stored Rows par conflicting operations
+perform karne ke liye wait karna pad sakta hai.
+
+Page-Level Lock ki Granularity:
+
+Row-Level Lock se larger
+Table-Level Lock se smaller
+
+
+4: DATABASE-LEVEL LOCK  
+-------------------------
+
+Database-Level Lock mein Lock poore Database par apply hota hai.
+
+Yaani agar ek Transaction ke paas Database-Level Lock hai,
+to doosri Transactions ko us Database ke data par conflicting operations
+perform karne ke liye wait karna pad sakta hai.
+
+### BENEFIT
+-------------
+Database ko bahut kam Locks manage karne padte hain.
+
+### LIMITATION
+----------------
+Concurrency bahut significantly reduce ho jaati hai.
+
+Isliye normal database Transactions ke liye Database-Level Lock
+generally avoid kiya jaata hai aur ye relatively uncommon hai.
+
+
+
+## GRANULARITY ORDER & CORE TRADE-OFF
+---------------------------------------
+
+Lock Granularity smallest se largest order mein:
+
+Row-Level Lock
+↓
+Page-Level Lock
+↓
+Table-Level Lock
+↓
+Database-Level Lock
+
+
+Jaise-jaise Lock Granularity smaller hoti hai:
+
+Smaller Lock Granularity
+↓
+More Concurrency
+↓
+More Transactions simultaneously / concurrently execute kar sakti hain
+↓
+More Individual Locks to Manage
+↓
+Higher Lock Management Overhead
+Jaise-jaise Lock Granularity larger hoti hai:
+
+Larger Lock Granularity
+↓
+Less Concurrency
+↓
+More Transactions ko wait karna pad sakta hai
+↓
+Fewer Individual Locks to Manage
+↓
+Lower Lock Management Overhead
+
+
+
+----------------------------------------------
+## QUESTION: OPTIMISTIC LOCKING KYA HAI ?
+----------------------------------------------
 
 
 
