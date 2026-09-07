@@ -4194,6 +4194,220 @@ jahan same Row par concurrent Updates relatively rare hote hain.
 
 
 
+---------------------------------------------
+## QUESTION: TWO-PHASE LOCKING (2PL) KYA HAI?
+---------------------------------------------
+
+Two-Phase Locking (2PL) ek Concurrency Control Protocol hai jo define karta hai
+ki ek Database Transaction Locks ko kis order mein Acquire aur Release karegi.
+
+Ye concurrent Transactions ko safely coordinate karne mein help karta hai.
+
+2PL ke according Transaction ka Locking behavior do phases mein divided hota hai:
+
+1. Growing Phase
+2. Shrinking Phase
+
+
+1. GROWING PHASE
+-----------------
+
+Growing Phase mein Transaction required Locks acquire kar sakti hai.
+Lekin is Phase mein Transaction koi acquired Lock release nahi kar sakti.
+
+
+2. SHRINKING PHASE
+-------------------
+
+Transaction jaise hi Growing Phase mein acquired Locks mein se pehla Lock
+release karti hai, woh Shrinking Phase mein enter kar jaati hai.
+
+Lekin ek baar Transaction Shrinking Phase mein enter kar jaaye, uske baad
+woh koi naya Lock acquire nahi kar sakti.
+
+Shrinking Phase enter karte hi Transaction ko apne saare Locks ek saath
+release karna zaroori nahi hai. Woh acquired Locks ko gradually release
+kar sakti hai.
+
+Eventually, Transaction complete hone par uske acquired Locks release ho
+jaate hain.
+
+
+
+## EXAMPLE
+----------
+
+Maan lo Transaction T1 ko Account A aur Account B update karne hain:
+
+Acquire X Lock → Account A
+↓
+Acquire X Lock → Account B
+↓
+Update A and B
+↓
+Release Lock → Account A
+↓
+Release Lock → Account B
+
+Ye 2PL follow karta hai kyunki Transaction ne pehle required Locks acquire kiye aur uske baad Locks release kiye.
+
+Lock release karna start karne ke baad Transaction ne koi naya Lock acquire nahi kiya.
+
+
+
+## LIMITATIONS
+-----------------
+
+Basic 2PL mein Transaction required Locks acquire karke Operations perform
+karne ke baad, COMMIT / ROLLBACK se pehle bhi Locks release kar sakti hai.
+
+Locks release karne ke baad Transaction eventually COMMIT ya ROLLBACK kar sakti hai.
+
+
+Maan lo:
+
+Initial State:
+
+Account A = ₹1,000
+
+T1:
+
+Acquire X Lock on A
+↓
+Update A: ₹1,000 → ₹900
+↓
+Release X Lock on A
+↓
+T1 abhi COMMIT nahi hui
+
+
+Ab agar Isolation Level Read Uncommitted ho, to T2 T1 ke
+uncommitted changes ko read kar sakti hai:
+
+
+T2:
+
+Read A = ₹900
+↓
+Is value ke basis par apna operation perform karti hai
+
+Ab T1 mein failure hota hai:
+
+T1 → ROLLBACK
+
+Account A:
+
+₹900 → ₹1,000
+
+
+## PROBLEM
+------------
+
+T2 ne ₹900 wali uncommitted value use ki, lekin baad mein T1 ka
+Transaction rollback ho gaya.
+
+Yaani T2 ne aisa Data read kiya jo eventually permanently commit hi nahi hua.
+
+Ye Dirty Read problem hai.
+
+
+
+------------------------------------------------
+## QUESTION: STRICT TWO-PHASE LOCKING KYA HAI?
+------------------------------------------------
+
+Basic 2PL mein Transaction Locks ko COMMIT / ROLLBACK se pehle
+release kar sakti hai.
+
+Strict 2PL mein Transaction apne Exclusive Locks ko
+COMMIT ya ROLLBACK hone tak hold karti hai.
+
+Yaani:
+
+Acquire Exclusive Lock
+↓
+Perform Operations
+↓
+COMMIT / ROLLBACK
+↓
+Release Exclusive Lock
+
+Is duration mein doosri Transactions ko usi Data par conflicting
+Read ya Write Operation ke liye wait karna padta hai.
+
+
+
+---------------------------------
+## QUESTION: DEADLOCK KYA HAI?
+---------------------------------
+
+Deadlock tab hota hai jab multiple Transactions ek doosre ke held Locks
+ka wait kar rahi hoti hain aur Circular Wait create ho jaata hai.
+
+Is situation mein koi bhi Transaction aage proceed nahi kar paati.
+
+
+### EXAMPLE
+------------
+
+Maan lo 3 Account Rows hain:
+
+Account A
+Account B
+Account C
+
+
+Maan lo:
+
+T1 ko Account A aur B update karne hain.
+T2 ko Account B aur C update karne hain.
+T3 ko Account C aur A update karne hain.
+
+
+T1:
+
+Acquire X Lock A
+↓
+Wait for Lock B
+
+T2:
+
+Acquire X Lock B
+↓
+Wait for Lock C
+
+T3:
+
+Acquire X Lock C
+↓
+Wait for Lock A
+
+
+Final Situation:
+
+T1 holds A → waits for B
+T2 holds B → waits for C
+T3 holds C → waits for A
+
+Yaani:
+
+T1 → T2 → T3 → T1
+
+Ek Circular Wait create ho gaya.
+
+Har Transaction kisi doosri Transaction ka Lock wait kar rahi hai, isliye koi bhi Transaction proceed nahi kar paati.
+
+Is situation ko Deadlock kehte hain.
+
+
+----------------------------------------------------
+## QUESTION: DEADLOCK KO HANDLE KAISE KARTE HAIN?
+----------------------------------------------------
+
+Deadlock hone ke baad Database ko kisi tarah circular wait break karna hota hai.
+
+
+
 ==============================
 #8. DISTRIBUTED TRANSACTION
 ==============================
