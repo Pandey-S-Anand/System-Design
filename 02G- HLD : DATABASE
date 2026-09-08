@@ -4194,6 +4194,7 @@ jahan same Row par concurrent Updates relatively rare hote hain.
 
 
 
+
 ---------------------------------------------
 ## QUESTION: TWO-PHASE LOCKING (2PL) KYA HAI?
 ---------------------------------------------
@@ -5374,3 +5375,13 @@ database node ke andar manage hote hain.
 Sharding mein data ko generally Rows ke basis par horizontally divide karke
 multiple independent Database Nodes/Shards ke across distribute kiya jaata hai.
 Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta hai.
+
+
+
+
+
+
+==============================================
+#9. DATABASE INTERNALS / QUERY PERFORMANCE
+==============================================
+
