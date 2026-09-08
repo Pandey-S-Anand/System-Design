@@ -4400,12 +4400,209 @@ Har Transaction kisi doosri Transaction ka Lock wait kar rahi hai, isliye koi bh
 Is situation ko Deadlock kehte hain.
 
 
+
+------------------------------------------------
+## QUESTION: DEADLOCK DETECT KAISE HOTA HAI?
+------------------------------------------------
+
+Deadlock detect karne ke liye Database Wait-for Graph (WFG) use kar sakta hai.
+
+Database internally track karta hai:
+
+Kaunsi Transaction kaunsa Lock hold kar rahi hai.
+Kaunsi Transaction kis Lock ke liye wait kar rahi hai.
+
+Is information ke basis par Database Wait-for Graph banata hai.
+
+
+## EXAMPLE
+------------
+
+T1:
+
+- Lock A hold kar rahi hai.
+- Lock B ke liye wait kar rahi hai, jo T2 ke paas hai.
+
+Isliye:
+
+T1 → T2
+
+T2:
+
+- Lock B hold kar rahi hai.
+- Lock A ke liye wait kar rahi hai, jo T1 ke paas hai.
+
+Isliye:
+
+T2 → T1
+
+Final:
+
+T1 → T2
+↑      ↓
+└──────┘
+CORE IDEA
+
+
+Agar Wait-for Graph mein circular dependency / cycle detect hoti hai
+to Database samajh jaata hai ki Deadlock occur ho gaya hai.
+
+
+
 ----------------------------------------------------
 ## QUESTION: DEADLOCK KO HANDLE KAISE KARTE HAIN?
 ----------------------------------------------------
 
-Deadlock hone ke baad Database ko kisi tarah circular wait break karna hota hai.
+Deadlock Handling ka matlab hai Deadlock detect hone ke baad
+Database us situation ko resolve kaise karta hai.
 
+Deadlock hone ke baad Database ko kisi tarah Circular Wait break karna hota hai.
+
+Generally Database Deadlock mein involved Transactions mein se
+ek Transaction ko Victim choose karta hai aur us Transaction ko
+Rollback kar deta hai.
+
+Victim Transaction Rollback
+↓
+Uske held Locks Release
+↓
+Waiting Transaction ko required Lock mil sakta hai
+↓
+Transaction aage Proceed kar sakti hai
+
+
+
+--------------------------------------------
+## QUESTION: DEADLOCK PREVENTION KYA HAI?
+-------------------------------------------
+
+Deadlock Prevention ka matlab hai Transactions ko aise rules follow karwana
+jisse Circular Wait create hi na ho aur Deadlock occur na kar sake.
+
+
+## COMMON APPROACH: CONSISTENT LOCK ORDER
+-------------------------------------------
+
+Consistent Lock Order mein multiple Resources / Rows ke liye ek predefined Lock 
+Acquisition Order define kiya jaata hai, jise sabhi Transactions follow karti hain.
+
+Maan lo do Account Rows hain:
+
+- Account A
+- Account B
+
+T1 ko Account A aur B dono update karne hain.
+T2 ko bhi Account A aur B dono update karne hain.
+
+
+Ab rule define kar diya jaata hai ki agar Transaction ko Account A aur Account B 
+dono ke Locks chahiye, to hamesha pehle Account A ka Lock acquire kiya jaayega 
+aur uske baad Account B ka Lock.
+
+
+CASE 1: WITHOUT CONSISTENT LOCK ORDER
+---------------------------------------
+
+T1 aur T2 dono ko Account A aur B update karne hain.
+
+### T1
+-------
+
+Acquire X Lock on A
+↓
+Waits for X Lock on B
+
+### T2
+-------
+
+Acquire X Lock on B
+↓
+Waits for X Lock on A
+
+
+### FINAL SITUATION
+---------------------
+
+T1 holds A → waits for B
+
+T2 holds B → waits for A
+
+T1 → T2
+↑      ↓
+└──────┘
+
+Circular Wait create ho gaya.
+
+T1 aur T2 dono ek doosre ke held Lock ka wait kar rahi hain.
+
+Is wajah se koi bhi Transaction aage proceed nahi kar sakti,
+aur Deadlock occur ho jaata hai.**
+
+
+CASE 2: WITH CONSISTENT LOCK ORDER
+-------------------------------------
+
+T1 aur T2 dono ko Account A aur B update karne hain.
+
+
+## T1:
+--------
+
+Acquire X Lock on A
+↓
+Account A Locked by T1
+
+Isi time T2 ko bhi Account A aur Account B update karne hain.
+
+Rule ke according T2 ko bhi pehle Lock A acquire karna hoga.
+
+## T2:
+-------
+
+Tries to acquire X Lock on A
+↓
+A already locked by T1
+↓
+WAIT
+
+Account B available hone ke baad bhi T2 uska Lock pehle acquire nahi kar sakti,
+kyunki predefined Lock Order follow karna hai:
+
+A → B
+
+
+### Meanwhile T1:
+------------------
+
+Already holds Lock A
+↓
+Acquire X Lock on B
+↓
+Perform Operations
+↓
+COMMIT / ROLLBACK
+↓
+Release Locks A and B
+
+
+Ab:
+
+T2 gets Lock A
+↓
+Acquire Lock B
+↓
+Perform Operations
+↓
+COMMIT / ROLLBACK
+↓
+Release Locks A and B
+
+
+Is example mein T1 aur T2 dono ne same predefined Lock Order follow kiya:
+
+Pehle Account A ka Lock → Phir Account B ka Lock
+
+Isliye Circular Wait create nahi hua aur Deadlock prevent ho gaya.
 
 
 ==============================
