@@ -44,10 +44,8 @@ Database helps with:
 
 * Efficient data searching/querying
 * Efficient data insertion, updation and deletion
-* Concurrent access — multiple requests accessing the same data ko properly
-  handle karna
-* Data relationships manage karna — different entities jaise User, Wallet,
-  Payment, Order ke beech relationships maintain karna
+* Concurrent access — multiple requests accessing the same data ko properly handle karna
+* Data relationships manage karna — different entities jaise User, Wallet, Payment, Order ke beech relationships maintain karna
 * Transactions support karna, which helps maintain data consistency
 
 We can use files for simple applications, but as data and concurrent users grow, we need efficient querying, updates, concurrency control, transactions and consistency.
@@ -5385,3 +5383,6 @@ Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta
 #9. DATABASE INTERNALS / QUERY PERFORMANCE
 ==============================================
 
+-------------------------------------------------------
+## QUESTION: DATABASE DATA KO STORE KAISE KARTA HAI?
+-------------------------------------------------------
