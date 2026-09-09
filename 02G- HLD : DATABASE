@@ -5509,10 +5509,10 @@ Order 3 → maximum 3 children and 2 keys
 B+ Tree construct karne ke liye jin input values ka use kiya jata hai, 
 woh eventually leaf nodes mein zaroor present hoti hain.
 
-Internal nodes mein un input values (jinhe keys kehte hain) ki copies exist kar sakti hain,
-lekin actual input values leaf nodes mein hi maintained hoti hain.
+Internal nodes mein un input values (jinhe keys kehte hain) ki copies exist kar sakti 
+hain, lekin actual input values leaf nodes mein hi maintained hoti hain.
 
-Internal/non-leaf nodes ki keys mainly navigation/separator keys ke roop mein kaam karti hain,
+Internal/non-leaf nodes ki keys mainly separator keys ke roop mein kaam karti hain,
 jisse database appropriate child aur eventually relevant leaf node tak pahunch sake.
 
 B+ Tree mein keys sorted order mein maintained hoti hain.
@@ -5526,10 +5526,18 @@ interconnected hoti hain via linked list.
 
 DBMS indexed column ki values ke basis par B+ Tree construct karta hai.
 
-B+ Tree mein indexed column ki entries leaf nodes mein sorted order mein maintained hoti hain.
-Lookup ke time internal/non-leaf nodes ki keys navigation purpose ke liye use hoti hain, 
-jisse database appropriate leaf node tak pahunch sake. Uske baad database indexed key ke 
-corresponding row/row reference ko use karke required row ko locate karta hai.
+B+ Tree mein indexed column ki values leaf nodes mein (as a key) sorted order mein stored hoti hain, 
+aur us key ke corresponding row ko locate karne wala reference bhi maintained hota hai.
+
+Lookup ke time internal/non-leaf nodes ki keys navigation purpose ke liye use hoti hain,
+jisse database appropriate leaf node tak pahunch sake.
+
+Exactly kya reference stored hota hai — jaise database page ka reference, row ka reference, ya actual row —
+ye DBMS, storage engine aur index type (clustered vs non-clustered) par depend karta hai.
+
+Since B+ tree mai leaf nodes sequentially interconnected hoti hain via linked list. is wajah se database ko
+range scans (jaise SELECT * FROM table WHERE id BETWEEN 10 AND 50) ko efficiently perform karne deti hai
+Ek baar leaf par pahunch gaye, toh bas next pointer follow karte raho.
 
 
 
