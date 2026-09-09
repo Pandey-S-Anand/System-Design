@@ -5376,9 +5376,6 @@ Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta
 
 
 
-
-
-
 ==============================================
 #9. DATABASE INTERNALS / QUERY PERFORMANCE
 ==============================================
@@ -5386,3 +5383,178 @@ Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta
 -------------------------------------------------------
 ## QUESTION: DATABASE DATA KO STORE KAISE KARTA HAI?
 -------------------------------------------------------
+Database data ko individual rows ke form mein directly disk par 
+store nahi karta hai.Instead, database table ke rows ko fixed-size
+chunks, called Pages (ya Blocks), mein organize aur store karta hai.
+
+Database Pages eventually physical disk ke data blocks mein store hote hain.
+Physical disk par bahut saare data blocks hote hain, aur har block ka fixed size hota hai.
+
+Ek physical data block mein ek ya ek se zyada database pages store ho sakte hain, 
+depending on their respective sizes.
+
+Database ke perspective se DBMS database pages ko manage karta hai, jabki physical disk 
+level par actual storage blocks ko OS/filesystem/storage layer manage karti hai.
+
+DBMS internally database pages aur physical disk blocks ke beech mapping maintain karta hai,
+taaki required database page ko **locate kiya ja sake**.
+
+Ek data page generally ek specific table ke subset of rows contain krta hai, 
+Ek table ke saare rows ko store karne ke liye multiple database pages
+required ho sakte hain.
+
+Database page ka size DBMS/storage engine ke according different ho sakta hai,
+jaise 4 KB, 8 KB, ya 16 KB.
+
+DBMS in database pages ko create aur manage karta hai.
+
+
+## STRUCTURE OF DATA PAGE
+---------------------------
+
+┌──────────────────────────────────┐
+│         HEADER                   │
+│  Page No. | Free Space | Checksum│ 
+├──────────────────────────────────┤
+│      DATA RECORDS                │
+│                                  │
+│  Row 1 → (1, Anand, 25)          │ ← Table ki actual Row 1
+│  Row 2 → (2, Rahul, 26)          │ ← Table ki actual Row 2
+│  Row 3 → (3, Amit, 24)           │ ← Table ki actual Row 3
+│                                  │
+├──────────────────────────────────┤
+│         OFFSET ARRAY             │
+│                                  │
+│  offset[0] → Pointer to Row 1    │
+│  offset[1] → Pointer to Row 2    │
+│  offset[2] → Pointer to Row 3    │
+└──────────────────────────────────┘
+
+
+Jab bhi kisi particular row ya rows par READ / INSERT / UPDATE operation perform karna hota hai, 
+database ko operation perform karne ke liye relevant page/pages ko RAM mein access karna hota hai.
+
+Agar required page already RAM ke Buffer Pool mein available hai, 
+to database directly usi page par operation perform karta hai.
+
+Agar required page Buffer Pool mein available nahi hai, to database use disk
+se RAM mein load karta hai aur phir required operation perform karta hai.
+
+RAM ka woh area jahan database pages temporarily store hote hain, Buffer Pool kehlata hai.
+
+
+Database
+│
+├── Page 1
+│   ├── users table row 1
+│   ├── users table row 2
+│   └── users table row 3
+│
+├── Page 2
+│   ├── users table row 4
+│   ├── users table row 5
+│   └── users table row 6
+│
+└── Page 3
+│   ├── orders table row 1
+│   ├── orders table row 2
+│   └── orders table row 3
+│
+└── Page 4
+    ├── orders table row 4
+    ├── orders table row 5
+    └── orders table row 6
+
+
+-----------------------------------------------------------------
+## QUESTION: DATABASE INDEXING KYA HAI AND KYUN REQUIRED HAI ?
+-----------------------------------------------------------------
+
+Indexing ek technique hai jisse database queries ko faster banaya jata hai.
+
+Generally, jis column ka use queries mein frequently hota hai, hum us column par index define kar dete hain.
+Index ki help se database easily identify kar sakta hai ki required row/rows kis database page mein stored hai, 
+jisse un rows ko quickly locate kiya ja sakta hai.
+
+Without Indexing, database ke paas generally directly yeh information nahi hoti ki required row/rows
+kis data page mein stored hain. Isliye unhe dhoondhne ke liye database ko table se associated  multiple 
+data pages ko scan karna pad sakta hai. Large table ke case mein database ko bahut saare database pages 
+check karne pad sakte hain. Is process ko broadly Full Table Scan kaha jata hai.
+
+Index implement karne ke liye databases commonly B+ Tree use karte hain.
+
+
+## QUESTION : B+ TREE KYA HOTA HAI ?
+---------------------------------------
+
+B+ Tree ek self-balancing, tree-based data structure hai.
+
+M-order B+ Tree mein ek node mein maximum M child pointers aur M−1 keys ho sakti hain.
+
+For example:
+
+Order 3 → maximum 3 children and 2 keys
+
+3-order B+ Tree ke ek internal node ka structure:
+
+              ┌──────────┬──────────┬──────────┬──────────┬──────────┐
+              │ Pointer 1│   Key 1  │ Pointer 2│   Key 2  │ Pointer 3│
+              └────┬─────┴──────────┴────┬─────┴──────────┴────┬─────┘
+                   │                     │                     │
+                   ▼                     ▼                     ▼
+             Child Node 1          Child Node 2          Child Node 3
+             Values < Key 1      Key 1 <= Values < Key 2    Values >= Key 2
+
+
+B+ Tree construct karne ke liye jin input values ka use kiya jata hai, 
+woh eventually leaf nodes mein zaroor present hoti hain.
+
+Internal nodes mein un input values (jinhe keys kehte hain) ki copies exist kar sakti hain,
+lekin actual input values leaf nodes mein hi maintained hoti hain.
+
+Internal/non-leaf nodes ki keys mainly navigation/separator keys ke roop mein kaam karti hain,
+jisse database appropriate child aur eventually relevant leaf node tak pahunch sake.
+
+B+ Tree mein keys sorted order mein maintained hoti hain.
+
+B+ Tree mein sabhi leaf nodes same level par hoti hain, aur leaf nodes generally sequentially
+interconnected hoti hain via linked list.
+
+
+## QUESTION : DBMS INDEXES KAISE MAINTAIN KARTA HAI ?
+------------------------------------------------------
+
+DBMS indexed column ki values ke basis par B+ Tree construct karta hai.
+
+B+ Tree mein indexed column ki entries leaf nodes mein sorted order mein maintained hoti hain.
+Lookup ke time internal/non-leaf nodes ki keys navigation purpose ke liye use hoti hain, 
+jisse database appropriate leaf node tak pahunch sake. Uske baad database indexed key ke 
+corresponding row/row reference ko use karke required row ko locate karta hai.
+
+
+
+QUESTION: AGAR HUMEIN KOI PARTICULAR ROW RETRIEVE KARNI HO, TO DATABASE KO KAISE PATA CHALTA HAI KI WO ROW KIS PAGE MEIN STORED HAI?
+---------------------------------------------------------------------------------------------------------------------------------------
+
+Example:
+
+SELECT * FROM users WHERE id = 5;
+
+### WITHOUT INDEX
+-------------------
+
+Agar id column par koi index nahi hai, to database ke paas directly yeh 
+information nahi hoti ki id = 5 wali row kis data page mein stored hai.
+
+Isliye database ko required row dhoondhne ke liye us table se associated
+data pages ko potentially scan karna pad sakta hai.
+
+Large table ke case mein database ko bahut saare pages check karne pad sakte hain. 
+Is process ko broadly Full Table Scan kaha jata hai.
+
+
+### WITH INDEX
+-----------------
+Relational databases commonly B-Tree/B+ Tree type data structure ko index ke implementation ke liye use karte hain.
+
+
