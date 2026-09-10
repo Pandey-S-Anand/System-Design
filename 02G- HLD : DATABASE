@@ -5636,14 +5636,216 @@ Isliye write-heavy columns par index banana mehenga padta hai.
 
 3: DELETE SLOW HOGA
 ----------------------
- Jab kisi indexed column mein value delete hoti hai, toh DBMS ko B+ Tree mein se bhi corresponding entry delete karni hoti hai.
- Is case mein relevant value ko locate karne ke liye root se leaf tak traversal karna pad sakta hai, jiska cost O(log n) hota hai.
- Us leaf node se key aur row reference delete kar diya jata hai.
- Agar leaf node mein underflow ho jaye, toh B+ Tree structure ko maintain karne ke liye additional work ho sakta hai, 
- jaise borrow/redistribution ya node merge, jiski wajah se additional write overhead badhta hai.
+Jab kisi indexed column mein value delete hoti hai, toh DBMS ko B+ Tree mein se bhi corresponding entry delete karni hoti hai.
+Is case mein relevant value ko locate karne ke liye root se leaf tak traversal karna pad sakta hai, jiska cost O(log n) hota hai.
+Us leaf node se key aur row reference delete kar diya jata hai. Agar leaf node mein underflow ho jaye, toh B+ Tree structure ko
+maintain karne ke liye additional work ho sakta hai, jaise key borrow/redistribution (sibling node se) ya node merge (sibling node ke saath).
+Iske baad parent node ko update karna padta hai, aur agar parent node mein bhi underflow ho jaye, toh wahi process cascade hota hai — 
+all the way up to root node. Is wajah se additional write overhead badh jaata hai.
 
 
 4: UPDATE SLOW HOGA
 ---------------------- 
  Agar indexed column ki value update hoti hai, toh B+ Tree ke perspective se ye DELETE + INSERT jaisa hota hai, 
  jis wajah se UPDATE mein bhi additional overhead hota hai.
+
+
+
+
+## QUESTION: COMPOSITE INDEX KYA HOTA HAI?
+---------------------------------------------
+
+Jab 2 ya usse zyada columns ko combine karke ek single index banate hain, usse Composite Index kehte hain.
+
+## Example:
+-------------
+
+CREATE INDEX idx_user_city_age
+ON users(city, age);
+
+Yahan index:
+
+(city, age)
+   ↑     ↑
+  1st   2nd
+
+par bana hai.
+
+Yahan index ka order bahut important hai.
+
+Conceptually B+ Tree mein values sorted order mein hongi:
+
+city       age
+----------------
+Bangalore  20
+Bangalore  25
+Bangalore  30
+Delhi      22
+Delhi      28
+Mumbai     24
+Mumbai     35
+
+
+## QUESTION: LEFTMOST PREFIX RULE KYA HOTA HAI?
+-------------------------------------------------
+
+Composite index (A,B,C) tabhi efficiently use hota hai jab query left se continuous columns use kare. 
+Beech ka column skip nahi kar sakte.  Isliye (A), (A,B) aur (A,B,C) efficiently use ho sakte hain,
+lekin sirf B ya C se query karne par ye index same tarike se efficiently use nahi hota.
+
+
+Suppose:
+
+CREATE INDEX idx ON users(city, age, gender);
+
+Order:
+
+city → age → gender
+
+
+## IS COMPOSITE INDEX KO EFFICIENTLY USE KARNE WALI QUERIES :
+----------------------------------------------------------------
+
+-- city
+WHERE city = 'Bangalore';
+
+-- city + age
+WHERE city = 'Bangalore'
+AND age = 25;
+
+-- city + age + gender
+WHERE city = 'Bangalore'
+AND age = 25
+AND gender = 'M';
+
+
+Following ORDER BY queries fast hongi kyunki B+ Tree mein data city → age → gender ke order mein sorted hai, 
+toh database ko alag se sort nahi karna padega.
+
+-- city
+ORDER BY city;         
+
+-- city + age 
+ORDER BY city, age;     
+
+-- city + age + gender
+ORDER BY city, age, gender; 
+
+-- city + age (Descending order)
+ORDER BY city DESC, age DESC;    
+
+
+In LIKE queries mein index use hoga aur ye fast hongi kyunki B+ Tree sorted hai city → age → gender 
+ke fashion mein, so 'Bang%' wali saari values ek contiguous range mein milti hain. 
+Database seedha us range par jump kar sakta hai.
+
+WHERE city LIKE 'Bang%';          -- 'Bangalore', 'Bangkok' — chalega
+WHERE city LIKE 'B%';             -- 'B' se start hone wali saari cities
+WHERE city LIKE 'Bangalore';      -- exact match, obviously chalega
+
+
+
+## IMPORTANT: Composite Index mein column order important hai, lekin WHERE conditions ka order important nahi hai.
+------------------------------------------------------------------------------------------------------------------------
+
+Ye queries bhi same composite index ko efficiently use kar sakti hain, kyunki logically teeno mein city + age + gender 
+available hain, aur query optimizer khud hi conditions ko index ke order mein rearrange kar leta hai.
+
+
+WHERE age = 25
+AND city = 'Bangalore'
+AND gender = 'M';
+
+WHERE gender = 'M'
+AND city = 'Bangalore'
+AND age = 25;
+
+WHERE gender = 'M'
+AND age = 25
+AND city = 'Bangalore';
+
+
+
+## IS COMPOSITE INDEX KO EFFICIENTLY NA USE KARNE WALI QUERIES :
+----------------------------------------------------------------
+
+
+-- 4. Only age
+WHERE age = 25;
+
+city missing hai → leftmost column missing.
+
+
+-- 5. Only gender
+WHERE gender = 'M';
+
+city aur age dono missing hain.
+
+
+-- 6. age + gender
+WHERE age = 25
+AND gender = 'M';
+
+city missing hai.
+
+
+-- 7. city + gender
+WHERE city = 'Bangalore'
+AND gender = 'M';
+
+Yahan:
+
+city  → used
+age   → missing
+gender → cannot be used in the same straightforward contiguous way
+
+Is query mein city index use hoga, lekin gender contiguous index navigation 
+mein use nahi ho payega kyunki age beech mein missing hai.
+
+Ye partially efficient query hai — perfect composite-index match nahi.
+
+
+-- 8. Range ke baad wale columns bhi index use nahi karte.
+WHERE city='B' AND age > 25 AND gender='M';
+
+Is query mein city aur age column (range) index use karenge, 
+lekin gender index navigation mein use nahi hoga kyunki range ke baad 
+sorted order lose ho jaata hai. gender filter alag se apply hoga.
+
+Golden rule: Composite index mein equality columns pehle aur range column sabse last rakhna chahiye.
+
+
+-- 9. Since B+ Tree mein data city → age → gender ke order mein sorted hai, in sab mein 
+ database ko alag se sort karna padega, kyunki composite index in orders mein sorted nahi hai.
+
+
+ORDER BY age;                     -- city missing
+
+ORDER BY gender;                  -- city, age missing
+
+ORDER BY age, gender;             -- city missing
+
+ORDER BY city, gender;            -- age beech mein missing
+
+ORDER BY city, age DESC;          -- mixed ASC/DESC (kabhi kabhi chalega, but usually nahi)
+
+
+-- 10. In LIKE queries mein index use nahi hoga aur ye slow hongi kyuki B+ Tree city ko 
+       starting characters ke basis par sorted rakhta hai, ending characters ke basis par nahi.
+       % ka matlab hai "kuch bhi ho, end mein ore aaye."
+
+WHERE city LIKE '%ore';           -- 'Bangalore', 'Singapore' — nahi chalega
+WHERE city LIKE '%gal%';          -- kahin bhi 'gal' ho — nahi chalega
+
+
+-- 11. Is LIKE query mein index use nahi hoga aur ye slow hogi kyuki composite Index: (city, age, gender) 
+       mai city column index ka leftmost part hai, aur yahan city column missing hai.
+
+WHERE age LIKE '2%';
+
+
+
+
+## QUESTION: CARDINALITY KYA HOTA HAI?
+-----------------------------------------
+
