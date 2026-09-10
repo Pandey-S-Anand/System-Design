@@ -5397,7 +5397,7 @@ Database ke perspective se DBMS database pages ko manage karta hai, jabki physic
 level par actual storage blocks ko OS/filesystem/storage layer manage karti hai.
 
 DBMS internally database pages aur physical disk blocks ke beech mapping maintain karta hai,
-taaki required database page ko **locate kiya ja sake**.
+taaki required database page ko locate kiya ja sake.
 
 Ek data page generally ek specific table ke subset of rows contain krta hai, 
 Ek table ke saare rows ko store karne ke liye multiple database pages
@@ -5472,16 +5472,16 @@ Database
 
 Indexing ek technique hai jisse database queries ko faster banaya jata hai.
 
-Generally, jis column ka use queries mein frequently hota hai, hum us column par index define kar dete hain.
-Index ki help se database easily identify kar sakta hai ki required row/rows kis database page mein stored hai, 
-jisse un rows ko quickly locate kiya ja sakta hai.
+Generally, jis column ka use queries mein frequently hota hai, hum us column par index define kar dete hain. 
+Index ki help se database required row/rows ko quickly locate kar sakta hai, instead of table se associated 
+multiple database pages ko scan karke row/rows ko dhoondhne ke.
 
-Without Indexing, database ke paas generally directly yeh information nahi hoti ki required row/rows
-kis data page mein stored hain. Isliye unhe dhoondhne ke liye database ko table se associated  multiple 
-data pages ko scan karna pad sakta hai. Large table ke case mein database ko bahut saare database pages 
-check karne pad sakte hain. Is process ko broadly Full Table Scan kaha jata hai.
+Without Indexing, database ke paas generally directly yeh information nahi hoti ki required row/rows kis data
+page mein stored hain. Isliye unhe dhoondhne ke liye database ko table se associated multiple data pages ko
+scan karna pad sakta hai. Large table ke case mein database ko bahut saare data pages check karne pad sakte hain.
+Is process ko broadly Full Table Scan kaha jata hai.
 
-Index implement karne ke liye databases commonly B+ Tree use karte hain.
+Index implement karne ke liye traditional RDBMS commonly B+ Tree use karte hain.
 
 
 ## QUESTION : B+ TREE KYA HOTA HAI ?
@@ -5517,8 +5517,9 @@ jisse database appropriate child aur eventually relevant leaf node tak pahunch s
 
 B+ Tree mein keys sorted order mein maintained hoti hain.
 
-B+ Tree mein sabhi leaf nodes same level par hoti hain, aur leaf nodes generally sequentially
-interconnected hoti hain via linked list.
+B+ Tree mein sabhi leaf nodes same level par hoti hain, aur leaf nodes generally 
+sequentially interconnected hoti hain via linked list.
+
 
 
 ## QUESTION : DBMS INDEXES KAISE MAINTAIN KARTA HAI ?
@@ -5526,43 +5527,123 @@ interconnected hoti hain via linked list.
 
 DBMS indexed column ki values ke basis par B+ Tree construct karta hai.
 
-B+ Tree mein indexed column ki values leaf nodes mein (as a key) sorted order mein stored hoti hain, 
-aur us key ke corresponding row ko locate karne wala reference bhi maintained hota hai.
+B+ Tree ke leaf nodes mein indexed column ki values (as a key) sorted order mein stored hoti hain. 
+Har key ke corresponding ya toh row ka reference (pointer) hota hai ya actual row itself present hoti hai.
 
 Lookup ke time internal/non-leaf nodes ki keys navigation purpose ke liye use hoti hain,
 jisse database appropriate leaf node tak pahunch sake.
 
-Exactly kya reference stored hota hai — jaise database page ka reference, row ka reference, ya actual row —
-ye DBMS, storage engine aur index type (clustered vs non-clustered) par depend karta hai.
+Since B+ Tree mein leaf nodes sequentially linked list ke through interconnected hoti hain aur 
+leaf nodes ki keys (indexed column ki values) sorted order mein maintained hoti hain, 
+database range scans efficiently perform kar sakta hai.
 
-Since B+ tree mai leaf nodes sequentially interconnected hoti hain via linked list. is wajah se database ko
-range scans (jaise SELECT * FROM table WHERE id BETWEEN 10 AND 50) ko efficiently perform karne deti hai
-Ek baar leaf par pahunch gaye, toh bas next pointer follow karte raho.
+Jaise:
+
+SELECT * FROM table WHERE id BETWEEN 10 AND 50;
+
+Database pehle B+ Tree ke through 10 wali key ke corresponding leaf node tak pahunchta hai,
+aur uske baad next pointers follow karke sequentially aage ki keys read karta rehta hai, 
+jab tak range `50` tak complete nahi ho jaati.
+
+
+QUESTION: B+ TREE SE ROW KA LOOKUP FAST KYUN HOTA HAI?
+-----------------------------------------------------------
+
+B+ Tree ke fast hone ka main reason ye hai ki uski height bahut kam hoti hai,
+because ek B+ Tree node mein bahut saari keys aur child pointers ho sakte hain.
+Is wajah se ek hi node mein hundreds of children ho sakte hain.
+
+Isliye database ko relevant record wale leaf node tak pahunchne ke liye bahut
+kam levels traverse karne padte hain.
+
+Lookup complexity approximately O(log N) hoti hai, compared to O(N) for a full table scan.
+
+
+## QUESTION: CLUSTERED VS NON-CLUSTERED INDEX ?
+-------------------------------------------------
+
+B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store hoga — actual row ya row ka reference — ye index type par depend karta hai.
+
+- Clustered: B+ Tree ke leaf level par key ke corresponding actual table row/data stored hota hai.
+- Non-Clustered: B+ Tree ke leaf level par key ke corresponding actual row ko locate karne wala reference/row locator stored hota hai.
 
 
 
-QUESTION: AGAR HUMEIN KOI PARTICULAR ROW RETRIEVE KARNI HO, TO DATABASE KO KAISE PATA CHALTA HAI KI WO ROW KIS PAGE MEIN STORED HAI?
----------------------------------------------------------------------------------------------------------------------------------------
+## QUESTION: INDEX BANTE WAQT KAISE PATA CHALEGA CLUSTERED HAI YA NON-CLUSTERED?
+------------------------------------------------------------------------------------
+
+MySQL InnoDB mein jab hum primary key define karte hain, toh wo automatically clustered index
+ban jaati hai — yaani primary key wala column hi clustered index ban jaata hai.Tum apni marzi 
+se kisi doosre column par clustered index nahi bana sakte.
+
+Lekin har DBMS same rule follow nahi karta. Kuch DBMS mein primary key column by 
+default clustered index ho sakta hai, kuch mein nahi.
+
+Agar table definition mein primary key exist nahi karti, toh MySQL InnoDB us table ki kisi
+UNIQUE NOT NULL constraint ko follow karne wale column ko clustered index bana deta hai.
+Jab hum table creation ke waqt kisi column par NOT NULL UNIQUE constraint define karte hain, 
+toh MySQL InnoDB is constraint ko enforce karne ke liye internally ek unique index bana deta hai.
+So agar table definition mein primary key missing hai, toh isi unique index ko InnoDB clustered 
+index bana deta hai.
+
+Agar table definition mein primary key exist nahi karti aur UNIQUE NOT NULL constraint ko follow karne wala koi 
+column bhi nahi hai, toh InnoDB ek hidden row ID (6-byte) banata hai aur usse clustered index banata hai.
+
+MySQL InnoDB mein jo indexes hum normally kisi column par explicitly create karte hain,
+woh secondary indexes hote hain, jo conceptually non-clustered indexes hote hain.
 
 Example:
 
-SELECT * FROM users WHERE id = 5;
+CREATE INDEX idx_users_email
+ON users(email);
 
-### WITHOUT INDEX
--------------------
+Generally, jahan clustered-index concept supported hai (jaise MySQL InnoDB), ek table mein sirf ek 
+clustered index ho sakta hai. Halaanki, multiple secondary/non-clustered indexes ho sakte hain.
 
-Agar id column par koi index nahi hai, to database ke paas directly yeh 
-information nahi hoti ki id = 5 wali row kis data page mein stored hai.
-
-Isliye database ko required row dhoondhne ke liye us table se associated
-data pages ko potentially scan karna pad sakta hai.
-
-Large table ke case mein database ko bahut saare pages check karne pad sakte hain. 
-Is process ko broadly Full Table Scan kaha jata hai.
+PostgreSQL mein traditional clustered index ka concept nahi hai.
 
 
-### WITH INDEX
------------------
-Relational databases commonly B-Tree/B+ Tree type data structure ko index ke implementation ke liye use karte hain.
+
+## QUESTION: AGAR INDEXING ITNA FAST HAI, TOH HAR COLUMN PAR INDEX KYUN NAHI?
+--------------------------------------------------------------------------------
+
+1: STORAGE SPACE BADHEGA
+---------------------------
+   Har index ke liye additional B+ Tree structure maintain karna padega.
+
+2: INSERT SLOW HOGA
+----------------------
+
+  Jab kisi indexed column mein new value add hoti hai, toh DBMS ko us indexed column ke corresponding B+
+  Tree index mein bhi new entry add karni hoti hai.
+
+  **STEP 1: DBMS ko nayi value ke liye B+ Tree mein sorted position dhoondhni padti hai.
+            Iske liye root se leaf tak traverse karna padta hai, jiska Cost: O(log n) hota hai.
+            Yahan tak DBMS relevant leaf node tak pahunch gaya.
+
+  **STEP 2: Agar leaf node mein space hai, toh simply usme new entry insert kar di jati hai.
+            Agar leaf node full ho gaya hai, toh Node Split karna padta hai.
+            i.e Leaf node ko do nodes mein todna padta hai. Beech ki key upar parent node mein promote hoti hai.
+            Iske baad Agar parent node bhi bhar jaye, toh wo bhi split hoga — 
+            Ye process multiple levels tak cascade kar sakta hai, potentially root tak.
+            Isi process ko broadly rebalancing kaha ja sakta hai.
+
+  **STEP 3: B+ Tree mein leaf nodes linked list se connected hoti hain.
+            Isliye node split ke baad relevant next pointers/links bhi update karne pad sakte hain.
+
+Isliye write-heavy columns par index banana mehenga padta hai. 
 
 
+3: DELETE SLOW HOGA
+----------------------
+ Jab kisi indexed column mein value delete hoti hai, toh DBMS ko B+ Tree mein se bhi corresponding entry delete karni hoti hai.
+ Is case mein relevant value ko locate karne ke liye root se leaf tak traversal karna pad sakta hai, jiska cost O(log n) hota hai.
+ Us leaf node se key aur row reference delete kar diya jata hai.
+ Agar leaf node mein underflow ho jaye, toh B+ Tree structure ko maintain karne ke liye additional work ho sakta hai, 
+ jaise borrow/redistribution ya node merge, jiski wajah se additional write overhead badhta hai.
+
+
+4: UPDATE SLOW HOGA
+---------------------- 
+ Agar indexed column ki value update hoti hai, toh B+ Tree ke perspective se ye DELETE + INSERT jaisa hota hai, 
+ jis wajah se UPDATE mein bhi additional overhead hota hai.
