@@ -5955,13 +5955,23 @@ Low selectivity wale column par index inefficient ho jaata hai kyunki query bahu
 jo disk par bikhri hoti hain — jisse bahut zyada random disk I/O hoti hai 
 (matlab dher saare random pages ko disk se RAM mein laana padta hai, agar wo page pehle se RAM mein nahi hai).
 Isliye DB optimizer index use karke random pages ko disk par locate karne ke bajay full table scan karta hai,
-jo ki sequential order mein hota hai, aur ye random page locations se kaafi faster hota hai. 
-Although full table scan mein zyada rows scan karni padti hain, but still sequential disk I/O random disk I/O 
-se zyada efficient hota hai.
+jo ki sequential order mein hota hai, aur ye random page lookup se kaafi faster hota hai. 
+Although full table scan mein zyada rows scan karni padti hain, but still sequential disk I/O 
+random disk I/O  se zyada efficient hota hai.
 
 High selectivity = kam rows = kam random I/O = index efficient.
 Low selectivity = zyada rows = zyada random I/O = full scan (sequential) better.
 
+
+## QUESTION: CHHOTI TABLE PAR INDEX HONE KE BAWAJOOD DB OPTIMIZER FULL TABLE SCAN KYUN PREFER KARTA HAI?
+---------------------------------------------------------------------------------------------------------
+
+Agar table chhoti hai (few rows → few pages), toh chahe query kisi indexed column par ho, DB optimizer phir bhi full table scan
+prefer kar sakta hai (us table ke saare pages ko sequential scan karna) — kyunki B+ Tree traversal + random disk I/O ka overhead 
+(yaani B+ Tree traverse karke har row/row ka reference use karke disk se relevant pages 
+— jo disk par randomly distributed hain — ko RAM mein load karna, agar RAM mein nahi hai toh), chhoti table ke sequential full scan 
+se zyada expensive ho sakta hai. Chhoti table mein saare pages sequential padh lena fast hota hai, aur B+ Tree ke random I/O ka faayda 
+hi nahi milta. Random I/O disk operation tab fayde mand hai jab records zyada hon aur column ki selectivity high ho.
 
 
 ## QUESTION: COVERING INDEX KYA HOTA HAI?
