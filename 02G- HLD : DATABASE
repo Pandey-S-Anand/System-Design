@@ -6107,6 +6107,40 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 -  Examples: MongoDB, Redis, Cassandra, Neo4j, DynamoDB
 
 
---------------------------------------------------
-## QUESTION: SQL KAB USE KAREIN, NoSQL KAB?
---------------------------------------------------
+----------------------------------------------------
+## QUESTION: RELATIONAL DATABASE KAB USE KAREIN ?
+----------------------------------------------------
+
+1: Structured data ho aur schema fixed ho
+   - Banking, finance, e-commerce orders, inventory
+
+2: Strong consistency chahiye (ACID)
+   - Paisa transfer, payment, booking — jahan galti allowed nahi
+
+3: Complex queries chahiye
+  - Multiple tables ko jod ke report banana ho i.e JOIN, GROUP BY, HAVING — ye SQL ki taakat hai
+
+4: Relation enforcement chahiye (Referential Integrity)
+   User → Orders → Products — sab connected
+   Foreign key constraints DBMS khud enforce kare
+
+5: Examples: Banking system, E-commerce application.
+
+
+-------------------------------------------------------
+## QUESTION: NON RELATIONAL DATABASE KAB USE KAREIN ?
+-------------------------------------------------------
+
+1: Unstructured / semi-structured data ho aur Schema flexible ho
+   - Har record ka structure alag ho sakta hai
+   - Logs, JSON documents
+
+2: High write throughput chahiye
+   - SQL database high writes ke liye struggle karta hai kyunki ACID transactions, joins, indexes etc. overhead dete hain.
+   - NoSQL high writes handle kar leta hai kyunki wo denormalized form mai data store karta hai.
+   - Example: clickstream, analytics
+
+3: Examples: Chat apps, real-time analytics, caching, Logs, Social media feed
+
+
+
