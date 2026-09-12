@@ -5565,6 +5565,27 @@ Lookup complexity approximately O(log N) hoti hai, compared to O(N) for a full t
 B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store hoga — actual row ya row ka reference — ye index type par depend karta hai.
 
 - Clustered: B+ Tree ke leaf level par key ke corresponding actual table row stored hota hai.
+             yani leaf node khud data page hota hai, aur us page ke andar multiple rows (including tumhari query wali key ki row)
+             apni keys ke sorted order mein stored hoti hain.
+
+                                 Root Node
+        ┌──────────────┬──────────────┬──────────────┐────────────┬────────────┬
+        │  Pointer1    │   Key=15     │  Pointer2    │   Key=25   │  Pointer3  │
+        └──────┬───────┴──────────────┴──────┬───────┴────────────┴─────┬──────┘
+               │                            │                          │
+               ▼                            ▼                          ▼
+        Leaf Node 1                  Leaf Node 2                 Leaf Node 3
+        (id < 15)              (15 <= id < 25)                 (id >= 25)
+                                ┌─────────────────┐
+                                │ id=15 → Row     │
+                                │ id=16 → Row     │
+                                │ id=17 → Row     │
+                                │ id=18 → Row     │
+                                │ id=19 → Row     │
+                                │ id=20 → Row     │
+                                └─────────────────┘
+                                (Ye ek data page hai)
+
 
 - Non-Clustered: B+ Tree ke leaf level par key ke corresponding actual row ko locate karne wala reference stored hota hai.
 
@@ -5771,7 +5792,7 @@ WHERE city LIKE 'Bangalore';      -- exact match, obviously chalega
 
 
 ## IMPORTANT: Composite Index mein column order important hai, lekin WHERE conditions ka order important nahi hai.
-------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
 
 Ye queries bhi same composite index ko efficiently use kar sakti hain, kyunki logically teeno mein city + age + gender 
 available hain, aur query optimizer khud hi conditions ko index ke order mein rearrange kar leta hai.
@@ -5920,4 +5941,29 @@ Rule:
   Selectivity 1 ke paas → High (index useful)
   Selectivity 0 ke paas → Low (index useless)
 
+
+
+## QUESTION: HIGH SELECTIVITY PAR INDEX EFFICIENT KYUN, AUR LOW SELECTIVITY PAR INEFFICIENT KYUN? (INDEX SCAN vs FULL TABLE SCAN)
+------------------------------------------------------------------------------------------------------------------------------------
+
+High selectivity wale column par index useful hota hai kyunki query kam rows return karti hai —
+chahe wo rows alag-alag pages mein hon, un pages ki count kam hoti hai, isliye random disk I/O kam hoti hai —
+matlab kam random pages ko disk se fetch karke RAM mein laana padta hai (agar wo page pehle se RAM mein nahi hai),
+aur operation perform karna phir bhi efficient hota hai. 
+
+Low selectivity wale column par index inefficient ho jaata hai kyunki query bahut rows return karti hai,
+jo disk par bikhri hoti hain — jisse bahut zyada random disk I/O hoti hai 
+(matlab dher saare random pages ko disk se RAM mein laana padta hai, agar wo page pehle se RAM mein nahi hai).
+Isliye DB optimizer index use karke random pages ko disk par locate karne ke bajay full table scan karta hai,
+jo ki sequential order mein hota hai, aur ye random page locations se kaafi faster hota hai. 
+Although full table scan mein zyada rows scan karni padti hain, but still sequential disk I/O random disk I/O 
+se zyada efficient hota hai.
+
+High selectivity = kam rows = kam random I/O = index efficient.
+Low selectivity = zyada rows = zyada random I/O = full scan (sequential) better.
+
+
+
+## QUESTION: COVERING INDEX KYA HOTA HAI?
+--------------------------------------------
 
