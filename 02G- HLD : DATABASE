@@ -6073,7 +6073,7 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
   lekin generally avoid karte hain kyunki relational databases mein normalization follow karte hain.
 - Data ko query karne ke liye generally SQL use hoti hai
 
-- ACID properties follow karte hain (Atomicity, Consistency, Isolation, Durability).
+- Generally ACID properties follow karte hain (Atomicity, Consistency, Isolation, Durability).
 
 - Transactions support karte hai.
 
@@ -6108,5 +6108,5 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 
 
 --------------------------------------------------
-## QUESTION: SQL vs NoSQL — BASIC FARAK KYA HAI?
+## QUESTION: SQL KAB USE KAREIN, NoSQL KAB?
 --------------------------------------------------
