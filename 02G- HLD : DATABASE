@@ -5573,16 +5573,25 @@ B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store 
   1: Agar table mein clustered index hai (jaise MySQL InnoDB mein primary key hi clustered index hoti hai):
      * Leaf node par clustered key (jaise primary key MySQL ke case mein) store hota hai.
      * Phir DBMS clustered index mein jaake us key se poori row dhoondhta hai.
-     * Clustered index present hone se, table ki rows disk par clustered indexed column ke sorted order mein padi hoti hain.
      * Example: MySQL InnoDB.
 
   2: Bina clustered index ke table mein :
-     * Rows disk par jahan jagah mili, wahan padi hain — koi order nahi. Aise tables ko heap table bhi bolte hain.
      * Non-clustered index ke B+ Tree leaf node par physical row locator store hota hai.
      * Ye locator do parts mein hota hai:
        - Page Number: Us page ka number jisme row stored hai.
        - Slot/Offset: Us page ke andar offset array ka index, jahan us row ki location stored hoti hai — jisse us page ke andar row ki exact position mil jaati hai.
      * Example: PostgreSQL (default), SQL Server heap, MyISAM.
+
+
+
+### NOTE :
+-----------
+
+* Agar table mein Clustered Index present hai, toh table ki rows disk par clustered index column ke sorted order mein stored hoti hain.
+* Agar table mein Clustered Index present nahi hai, toh table ki rows disk par jahan jagah mili, wahan padi hoti hain — koi order nahi. 
+  Aise tables ko heap table bhi bolte hain.
+
+
 
 
 ## QUESTION: INDEX BANTE WAQT KAISE PATA CHALEGA CLUSTERED HAI YA NON-CLUSTERED?
