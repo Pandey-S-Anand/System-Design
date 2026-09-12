@@ -6137,8 +6137,12 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 
 2: High write throughput chahiye
    - SQL database high writes ke liye struggle karta hai kyunki ACID transactions, joins, indexes etc. overhead dete hain.
-   - NoSQL high writes handle kar leta hai kyunki wo denormalized form mai data store karta hai.
+   - NoSQL high writes handle kar leta hai kyunki wo denormalized form mein data store karta hai
    - Example: clickstream, analytics
+
+3: Simple queries hain (mostly key-based lookup) 
+   - GET user:123 — bas itna hi kaam
+   - Example: Redis (caching, session store) 
 
 3: Examples: Chat apps, real-time analytics, caching, Logs, Social media feed
 
