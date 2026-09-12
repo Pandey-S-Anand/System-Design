@@ -6055,32 +6055,58 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 #10. RELATIONAL (SQL) VS NON REALTIONAL (NoSQL) DATABASES
 ===========================================================
 
+--------------------------------------------------
+## QUESTION: SQL vs NoSQL — BASIC FARAK KYA HAI?
+--------------------------------------------------
+
 1: RELATIONAL DATABASE :
 --------------------------
 
 - Data tables mein rows and coloumns ke form mai store hota hai 
+
 - Table ka schema fixed hota hai i.e pehle hi define kar diya jaata hai 
+
 - Structured data ke liye best.
+
 - 2 tables ke beech relation foreign key se handle hota hai. DBMS khud ye constraint enforce karta hai. 
   Embed (denormalization) possible hai (table ke ek column mein related records ko JSON ke form mein store kar do),
   lekin generally avoid karte hain kyunki relational databases mein normalization follow karte hain.
 - Data ko query karne ke liye generally SQL use hoti hai
+
 - ACID properties follow karte hain (Atomicity, Consistency, Isolation, Durability).
+
 - Transactions support karte hai.
+
 - Examples: MySQL, PostgreSQL, Oracle, SQL Server
 
 
+
 2: NON - RELATIONAL DATABASE :
----------------------------------
-- Data flexible format mein store hota hai — documents, key-value, graph, etc. 
-- Schema fixed nahi hota — schema-less ya flexible schema hota hai. Har record ka apna structure ho sakta hai.
-- Unstructured / semi-structured data ke liye best.
-- Non-relational databases mein relations handle karne ke do tarike hain — embed (document ke andar doosra document) 
-  ya reference (ek document mein doosre related document ka ID store karo). Lekin referential integrity DBMS enforce nahi karta
-  i.e reference valid hai ya nahi, ye check karna application ka kaam hai.
-- Query karne ke liye koi single standard language nahi — har DB ka apna API ya query language hota hai (jaise MongoDB ka MQL, Cassandra ka CQL).
-- BASE properties follow karte hain (Basically Available, Soft state, Eventually consistent).
-- Atomicity single-document ya key-value pair level par guaranteed hai, multi-document level par nahi. 
-  matlab us ek document/pair ke andar ke saare updates ya toh poore successfully apply hote hain ya poore fail, 
-  koi partial save nahi hota.
-- Examples: MongoDB, Redis, Cassandra, Neo4j, DynamoDB
+-------------------------------
+
+-  Data flexible format mein store hota hai — documents, key-value, graph, etc. 
+
+-  Schema fixed nahi hota — schema-less ya flexible schema hota hai. Har record ka apna structure ho sakta hai.
+
+-  Unstructured / semi-structured data ke liye best.
+
+-  Document databases (jaise MongoDB) mein relations handle karne ke do tarike hain 
+   i.e embed (document ke andar doosra document)  ya reference (ek document mein doosre related document ka ID store karo). 
+   Lekin referential integrity DBMS enforce nahi karta i.e reference valid hai ya nahi, ye check karna application ka kaam hai.
+   Baaki NoSQL types (key-value, column, graph) mein relations ka concept alag hota hai.
+
+-  Query karne ke liye koi single standard language nahi — 
+   har DB ka apna API ya query language hota hai (jaise MongoDB ka MQL, Cassandra ka CQL).
+
+-  BASE properties follow karte hain (Basically Available, Soft state, Eventually consistent).
+
+-  Atomicity single-document ya key-value pair level par guaranteed hai, multi-document level par nahi. 
+   matlab us ek document/pair ke andar ke saare updates ya toh poore successfully apply hote hain ya poore fail, 
+   koi partial save nahi hota.
+
+-  Examples: MongoDB, Redis, Cassandra, Neo4j, DynamoDB
+
+
+--------------------------------------------------
+## QUESTION: SQL vs NoSQL — BASIC FARAK KYA HAI?
+--------------------------------------------------
