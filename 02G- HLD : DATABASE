@@ -1722,8 +1722,10 @@ Isi concept ko Sharding solve karta hai.
 Sharding mein data ko Rows ke basis par horizontally divide karke independent database nodes (Shards)
 ke across store kiya jaata hai. Har Shard total dataset ka sirf ek subset store aur manage karta hai.
 
-Application ke andar ya Application ke saamne/saath koi routing mechanism,
-defined routing rule ke basis par decide karta hai ki particular data kis Shard mein store hoga.
+Application ke andar ya Application ke saamne ek Shard Routing Mechanism 
+defined hota hai (subject to application architecture).
+Ye mechanism Shard Key ko identify karta hai aur defined Shard Routing Rule ke basis
+par decide karta hai ki particular data kis Shard mein store ya retrieve kiya jayega.
 
 
 ## EXMAPLE:
@@ -1733,7 +1735,7 @@ defined routing rule ke basis par decide karta hai ki particular data kis Shard 
                 Application
                      |
                      v
-              Shard Routing Logic
+              Shard Routing 
                      |
          +-----------+-----------+
          |           |           |
@@ -1769,65 +1771,61 @@ kis Shard mein store hoga aur kis Shard se retrieve kiya jayega.
 - Write/Update: Request correct Shard par route hoti hai.
 - Read: System correct Shard identify karke data retrieve karta hai.
 
+Application design ke time developers aur architects decide karte hain ki kaunsi Entity/Table ke liye kya Shard Key hogi.
+Is decided Shard Key aur associated Sharding Rule ko architecture ke according mainly do jagahon par configure kiya ja sakta hai:
 
-Shard Key request ke time automatically discover nahi hoti.
+1. APPLICATION CONFIGURATION / PROPERTIES FILE
+------------------------------------------------
 
-Application design ke time pehle se define kiya jaata hai ki
-particular Entity/Table ke liye kaunsi field Shard Key hogi.
+   Example: YAML configuration file
+
+   Is case mein application apni configuration file se particular Entity/Table
+   ke liye configured Shard Key aur Sharding Rule retrieve karti hai.
+   Phir application khud Sharding Rule apply karke determine karti hai ki request
+   ko kis shard par route karna hai, aur request ko directly appropriate shard par forward kar deti hai.
+
+
+2. SHARD ROUTING MIDDLEWARE / DATABASE PROXY 
+----------------------------------------------
+
+   Agar application Vitess, ShardingSphere, ya ProxySQL jaise shard-routing middleware ka use karti hai,
+   toh Shard Key aur associated Sharding Rules ki configuration middleware ke routing configuration / metadata 
+   mein define ki ja sakti hai.
+
+   Is case mein application request ko Shard Routing Layer ko forward karti hai.
+   Shard Routing Middleware ki configuration (jaise XML / JSON / YAML) mein Entity/Table ke liye
+   Shard Key aur associated Sharding Rule ki mapping defined hoti hai.
+   Shard Routing Layer is mapping ke basis par Shard Key identify karti hai, defined Sharding Rule 
+   apply karti hai, aur request ko appropriate shard par route kar deti hai.
+
 
 
 ## REQUEST FLOW
 -----------------
 
 Client Request
-      |
-      v
-  Controller
-      |
-      v
+↓
+Controller
+↓
 Service Layer
-      |
-      | User Entity ke liye
-      | Shard Key = user_id
-      v
-Extract user_id
-      |
-      v
-Apply Shard Routing Rule
-      |
-      v
+↓
+Shard Routing
+│
+├── **Application-based:** Application extracts `user_id` (Shard Key)
+│                        ↓
+│                    Apply Sharding Rule
+│
+└── **Middleware-based:** Shard Routing Middleware extracts `user_id` (Shard Key)
+│                        ↓
+│                    Apply Sharding Rule
+↓
 Correct Shard
-
-
-
-## EXAMPLE
--------------
-
-Maan lo:
-
-User Table → Shard Key = user_id
-
-User:
-
-user_id = 101
-name = Anurag
-email = anurag@example.com
-
-
-## WRITE
-----------
-
-New User create karte time, Application user_id ko Shard Key ke roop mein use karke 
-Shard Routing Rule apply karegi aur User ko corresponding Shard mein store karegi.
-
-
-## FUTURE UPDATE
--------------------
-
-Future mein same User ke liye Update request aane par, Application dobara 
-user_id ko Shard Key ke roop mein use karke same Shard Routing Rule apply karegi.
-
-Isliye particular user_id ke related writes consistently same Shard par route hote hain.
+│
+├── **READ** → Retrieve data from correct Shard
+│
+├── **WRITE** → Store data in correct Shard
+│
+└── **UPDATE** → Update data in correct Shard
 
 
 
@@ -1856,30 +1854,31 @@ User Table → Shard Key = user_id
 
 choose kar sakte hain.
 
-Ab Application user_id ke basis par Shard Routing Rule apply karke
+Ab Application / Shard Routing Layer user_id ke basis par Shard Routing Rule apply karke
 correct Shard identify kar sakti hai.
 
 
 ## LEKIN AGAR REQUEST MEIN SHARD KEY AVAILABLE NA HO TO?
------------------------------------------------------------
+----------------------------------------------------------
 
-Maan lo occasionally ek request aati hai:
+Agar user_id Shard Key hai User Table ke liye,
+
+maan lo occasionally ek request aati hai:
 
 GET /users?email=anurag@example.com
 
-Is request mein Application ke paas email hai,
-lekin directly user_id available nahi hai.
+Is request mein email hai, lekin directly user_id available nahi hai.
 
-Agar user_id Shard Key hai, to Application directly
-correct Shard identify nahi kar sakta.
+Toh Application / Shard Routing Middleware directly correct Shard identify nahi kar sakta.
 
 Aise case mein commonly kuch approaches use ki ja sakti hain.
+
 
 1. SCATTER-GATHER QUERY : 
 --------------------------- 
 
-   Application request ko multiple, ya zarurat padne par
-   all Shards par bhej sakti hai.
+   Application / Shard Routing Middleware request ko multiple, 
+   ya zarurat padne par all Shards par bhej sakti hai.
 
    Har Shard par query execute ho sakti hai:
 
@@ -1907,8 +1906,8 @@ Aise case mein commonly kuch approaches use ki ja sakti hain.
    --------------------------------------
    anurag@example.com          101        
 
-   Is approach mein Application pehle email ke basis par corresponding user_id
-   retrieve karti hai.
+   Is approach mein Application/ Shard Routing Middleware pehle email ke basis 
+   par corresponding user_id retrieve karti hai.
 
    Uske baad user_id ko Shard Key ke roop mein use karke
    Shard Routing Rule apply kiya jaata hai aur correct Shard
@@ -2762,9 +2761,10 @@ Architecture conceptually kuch aisi hogi:
 ## WRITE REQUEST FLOW
 ------------------------
 
-Jab bhi Write Request aati hai, Application request se Shard Key ki value identify karti hai.
-Us Shard Key par Shard Routing Logic apply karke pehle correct Shard identify kiya jaata hai.
-Uske baad Write Request directly us Shard ke Primary Database par execute hoti hai.
+Jab bhi Write Request aati hai, Application / Shard Routing Middleware request se Shard Key ki
+value identify karti hai. Us Shard Key par Shard Routing Logic apply karke pehle correct Shard 
+identify kiya jaata hai. Uske baad Write Request directly us Shard ke Primary Database par 
+execute hoti hai.
 
 Write successfully execute hone ke baad, Shard 2 ka Primary Database
 apne corresponding Read Replicas ko data replicate karta hai.
@@ -2773,9 +2773,11 @@ apne corresponding Read Replicas ko data replicate karta hai.
 ## READ REQUEST FLOW
 ----------------------
 
-Jab bhi Read Request aati hai, Application request se Shard Key ki value identify karti hai.
-Us Shard Key par Shard Routing Logic apply karke pehle correct Shard identify kiya jaata hai.
-Uske baad Application us particular Shard ke available Read Replicas mein se
+Jab bhi Read Request aati hai, Application / Shard Routing Middleware request se Shard Key ki
+value identify karti hai.Us Shard Key par Shard Routing Logic apply karke pehle correct Shard
+identify kiya jaata hai.
+
+Uske baad Read Router us particular Shard ke available Read Replicas mein se
 kisi ek Replica ko select karti hai.
 
 Selected Read Replica se data fetch karke Application response return kar deti hai.
@@ -2784,39 +2786,51 @@ Selected Read Replica se data fetch karke Application response return kar deti h
 ## COMPLETE FLOW:
 --------------------
 
-                    REQUEST
-                       |
-                       v
-                 Application
-                       |
-                       v
-              Extract Shard Key
-                       |
-                       v
-              SHARD ROUTING LOGIC
-                       |
-                       v
-                CORRECT SHARD
-                       |
-                       v
-                REQUEST TYPE?
-                 /          \
-                /            \
-            WRITE             READ
-              |                 |
-              v                 v
-         Shard Primary      Replica Selection
-              |                 |
-              v                 v
-         Execute Write      Read Replica
-              |
-              v
-       Replicate Changes
-              |
-       +------+------+
-       |             |
-       v             v
-   Replica 1      Replica N
+                     REQUEST
+                        |
+                        v
+                  Application
+                        |
+                        v
+              +-------------------+
+              |   SHARD ROUTING   |
+              +-------------------+
+                        |
+             +----------+----------+
+             |                     |
+             v                     v
+    Application-based      Middleware-based
+         Routing                Routing
+             |                     |
+      Extract Shard Key     Extract Shard Key
+      Apply Routing Rule    Apply Routing Rule
+             |                     |
+             +----------+----------+
+                        |
+                        v
+                  CORRECT SHARD
+                        |
+                        v
+                 REQUEST TYPE?
+                   /       \
+                  /         \
+               WRITE        READ
+                 |            |
+                 v            v
+           Shard Primary   Replica Selection
+                 |            |
+                 v            v
+           Execute Write   Read Replica
+                 |
+                 v
+          Replicate Changes
+                 |
+            +----+----+
+            |         |
+            v         v
+         Replica 1  Replica N
+```
+
 
 
 
@@ -6104,7 +6118,32 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
    matlab us ek document/pair ke andar ke saare updates ya toh poore successfully apply hote hain ya poore fail, 
    koi partial save nahi hota.
 
--  Examples: MongoDB, Redis, Cassandra, Neo4j, DynamoDB
+-  NoSQL Databases ke 4 Types:
+
+   1. DOCUMENT DB
+    * Data JSON/BSON documents mein store hota hai.
+    * Use case: E-commerce catalog, user profiles
+    * Example: MongoDB, CouchDB
+
+   2. Key-Value DB
+    * Data key-value pair ke form mein store hota hai (key → value). Value kuch bhi ho sakti hai (string, JSON, etc.).
+    * Use case: Caching, session store, shopping cart
+    * Example: Redis, DynamoDB, Memcached
+
+   3. Column-Family DB
+    * Data column-wise store hota hai (rows ke bajay):
+
+      id:    1,     2,     3
+    name:  Alice, Bob,   Carol
+     age:   25,    30,    28
+
+    * Use case: Time-series data, analytics, IoT
+    * Example: Cassandra, HBase
+
+4. Graph DB
+   * Data nodes par stored hota hai, aur edges (relationships) se wo nodes connected/related hoti hain. Relationships important hote hain.
+   * Use case: Social networks, recommendation engines, fraud detection
+   * Example: Neo4j, Amazon Neptune
 
 
 ----------------------------------------------------
@@ -6127,6 +6166,7 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 5: Examples: Banking system, E-commerce application.
 
 
+
 -------------------------------------------------------
 ## QUESTION: NON RELATIONAL DATABASE KAB USE KAREIN ?
 -------------------------------------------------------
@@ -6136,8 +6176,8 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
    - Logs, JSON documents
 
 2: High write throughput chahiye
-   - SQL database high writes ke liye struggle karta hai kyunki ACID transactions, joins, indexes etc. overhead dete hain.
-   - NoSQL high writes handle kar leta hai kyunki wo denormalized form mein data store karta hai
+   - Relational databases high writes ke liye struggle karta hai kyunki ACID transactions, joins, indexes etc. ka overhead hota hai.
+   - Non Relational databases high writes handle kar leta hai kyunki wo denormalized form mein data store karta hai
    - Example: clickstream, analytics
 
 3: Simple queries hain (mostly key-based lookup) 
@@ -6146,5 +6186,31 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 
 3: Examples: Chat apps, real-time analytics, caching, Logs, Social media feed
 
+
+
+===================
+#11. CAP THEOREM 
+===================
+
+Maan lo humare paas ek distributed e-commerce application hai.
+
+Traffic bahut zyada badh gaya:
+
+                          Application
+                               │
+                               ↓  
+                        Shard Routing Layer
+                               ↓  
+             ┌─────────────────┼────────────────────┐
+             ↓                 ↓                    ↓
+          Shard 1           Shard 2              Shard 3
+             │                 │                    │
+          Primary          Primary              Primary
+          /     \           /     \              /     \
+    Replica1 Replica2   Replica1 Replica2   Replica1 Replica2
+
+
+* Sharding → write workload ko distribute karti hai (alag shards, alag primaries)
+* Read Replicas → read traffic scale karte hain (primary se data copy karke reads serve karte hain)
 
 
