@@ -6193,25 +6193,95 @@ Extra: Using where       -  DBMS ne WHERE clause ko use karke rows ko filter kiy
 #11. CAP THEOREM 
 ===================
 
-Maan lo humare paas ek distributed e-commerce application hai.
+-------------------------------------------
+## QUESTION: NETWORK PARTITION KYA HAI ?
+-------------------------------------------
 
-Traffic bahut zyada badh gaya:
+Network partition = System Architecture ke kisi bhi do components ke beech communication toot jaana due to network issue, chahe wo components alive hon.
 
-                          Application
-                               │
-                               ↓  
-                        Shard Routing Layer
-                               ↓  
-             ┌─────────────────┼────────────────────┐
-             ↓                 ↓                    ↓
-          Shard 1           Shard 2              Shard 3
-             │                 │                    │
-          Primary          Primary              Primary
-          /     \           /     \              /     \
-    Replica1 Replica2   Replica1 Replica2   Replica1 Replica2
+- Application ↔ Database / Primary Database / Primary Shard
+- Primary Database / Shard ↔ Read Replicas
+- Service ↔ Service (REST API, gRPC, Async communication etc.)
+- Application ↔ Shard (In cross-shard query)
+- Txn Coordinator ↔ Shard (In cross-shard transaction — 2PC)
 
 
-* Sharding → write workload ko distribute karti hai (alag shards, alag primaries)
-* Read Replicas → read traffic scale karte hain (primary se data copy karke reads serve karte hain)
+------------------------------------
+## QUESTION: CAP THEOREM KYA HAI ?
+------------------------------------
+
+CAP theorem kehta hai distributed system mein Consistency, Availability, Partition Tolerance — teeno nahi mil sakte.
+Distributed systems mein network partition ho sakta hai. Network partition ek "choice" nahi hai — wo real world mein hamesha ho sakta hai.
+Ab choice CP ya AP mein se karni padti hai.
+
+
+### QUESTION: CP KYA HAI ?
+----------------------------
+
+- CP = Consistency + Partition Tolerance.
+- Matlab: Network partition ho jaye toh system available rehne ke bajay consistency choose karta hai — 
+  yaani galat/stale data dene se better hai ki request fail kar do (error de do).
+- Example — Critical Account Balance Read
+
+Maan lo user ne ₹10,000 ka payment kiya aur ye write request Primary DB par gayi. Primary DB mein account balance successfully update ho gaya.
+
+Uske baad Primary DB aur Read Replica ke beech network partition ho gaya, isliye latest balance Replica par replicate nahi ho paya.
+
+Primary DB          X X X          Read Replica
+Latest Balance                     Old Balance
+
+
+## IMPORTANT
+---------------
+
+Typical Primary-Replica setup mein, Primary DB regularly Replica ko heartbeat bhejta hai.
+Agar Replica ko configured timeout tak heartbeat nahi milta, toh monitoring/failover system detect kar sakta hai 
+ki Primary aur Replica ke beech network communication fail ho gaya hai.
+
+Ab agar next read request Replica par jaati hai aur System ko detect ho chuka hai ki Primary aur Replica ke beech 
+communication nahi ho raha, to.
+
+CP approach:
+
+"Mere paas latest account balance nahi hai, isliye main potentially stale balance return nahi karunga. Request fail karwa dunga."
+
+➡️ Consistency maintained
+➡️ Availability sacrificed
+
+
+## NOTE 
+---------
+Real systems mein critical reads, jaise account balance/payment status, often Primary DB se read kiye ja sakte hain.
+Replica-read example ka purpose sirf CAP ke partition ke time Consistency vs Availability trade-off ko samjhana hai.
+
+
+
+### QUESTION: AP KYA HAI ?
+----------------------------
+
+- AP = Availability + Partition Tolerance.
+- Matlab: Network partition ho jaye toh system consistency chhod ke available rehta hai — 
+  yaani har request ka jawab deta hai, chahe data thoda stale ho.
+- Example — Product Catalog Read
+  
+  Maan lo product stock update ki write request Primary DB par gai and Primary DB mein product stock successfully update ho gaya.
+
+  Uske baad Primary DB aur Read Replica ke beech network partition ho gaya, isliye latest stock Replica par replicate nahi ho paya.
+
+  Primary DB          X X X          Read Replica
+  Latest stock                       Old Stock
+
+  Ab agar next read/view request Replica par jaati hai aur System ko detect ho chuka hai ki Primary aur Replica ke beech 
+  communication nahi ho raha, toh.
+
+  AP approach:
+
+  "Primary se communication nahi ho raha, lekin user ko response dena hai. Mere paas jo data available hai, main wahi return karunga, chahe woh thoda stale ho."
+
+Replica 10 units return kar dega, even though Primary par actual latest value 5 units ho chuki ho.
+
+➡️ Availability maintained
+➡️ Consistency temporarily sacrificed
+
 
 
