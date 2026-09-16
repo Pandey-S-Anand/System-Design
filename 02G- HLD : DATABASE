@@ -6375,7 +6375,7 @@ corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
 - Example: Monday 10:00 AM full backup → uske baad changes hue, 
   data loss hua → restore kiya → database Monday 10:00 AM wali state mein aa gaya.
 - Slow and zyada storage space on disk (agar database bada ho); 
-- restore fast (ek hi backup se).
+- Restore fast (ek hi backup se).
 
 
 2: INCREMENTAL BACKUP
@@ -6409,12 +6409,12 @@ corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
   Monday  	Full	        Poora database
   Tuesday	Differential	Monday full ke baad ke saare changes (Tuesday tak ke)
   Wednesday	Differential	Monday full ke baad ke saare changes (Wednesday tak ke — Tuesday + Wednesday ke changes)
-  Thursday	Incremental	    Monday full ke baad ke saare changes (Thursday tak ke — Tuesday + Wednesday + Thursday ke changes)
+  Thursday	Differential	Monday full ke baad ke saare changes (Thursday tak ke — Tuesday + Wednesday + Thursday ke changes)
   Friday	Differential	Monday full ke baad ke saare changes (Friday tak ke — Tuesday + Wednesday + Thursday + Friday ke changes)
   Saturday	Full	        Naya full backup (Monday to Saturday) → ab differential cycle reset
   Sunday	Differential	Saturday full backup ke baad ke saare changes (Sunday tak) 
 
-- Restore On Friday: Full + last differential chahiye (Monday full + Friday differential). Beech ke backups ki zaroorat nahi.
+- Restore On Friday: Monday full backup + Friday differential backup chahiye. Beech ke backups ki zaroorat nahi.
 - Incremental se thoda slow, but Full se fast.
 - Incremental se zyada space leta hai but Full se kam.
 
@@ -6460,4 +6460,29 @@ through dirty pages ko disk par flush kar deta hai — is tarah database eventua
 ## QUESTION: POINT-IN-TIME RECOVERY (PITR) KYA HAI?
 -------------------------------------------------------
 
+PITR (Point-in-Time Recovery) ka matlab hai database ko kisi specific past moment (date + time) ki state tak restore karna.
+Iske liye last full backup restore karte hain, phir WAL/redo log ko us target time tak replay karte hain, aur wahan rok dete hain.
+
+
+### EXAMPLE:
+-------------
+
+02:00 AM  → Full Backup
+10:30 AM  → Galti se DELETE ho gaya
+
+Recovery:
+
+02:00 AM Full Backup restore karo
+        ↓
+02:00 AM se 10:29 AM tak WAL / Redo Logs replay karo
+        ↓
+10:29 AM par recovery stop karo
+        ↓
+Database 10:29 AM wali state mein recover ho jayega
+
+
+### IMPORTANT
+--------------
+PITR ke liye recovery logs available hone chahiye. Agar required logs available nahi hain ya delete/lost ho gaye hain,
+toh us point-in-time tak recovery possible nahi hogi.
 
