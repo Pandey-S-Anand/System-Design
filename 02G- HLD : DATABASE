@@ -6363,21 +6363,92 @@ corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
 - Accidental Deletion: Galti se DROP TABLE ya DELETE bina WHERE ke.
 - Disaster: Fire, flood, earthquake.
 
+
 ---------------------------------------
 ## QUESTION: BACKUP KE TYPES KYA HAIN?
 ---------------------------------------
 
-- Full backup ka matlab hai database ke complete data ka backup ek specific point in time par lena.
+1: FULL BACKUP
+----------------
+
+- Poora database ka copy ek specific point-in-time par.
+- Example: Monday 10:00 AM full backup → uske baad changes hue, 
+  data loss hua → restore kiya → database Monday 10:00 AM wali state mein aa gaya.
+- Slow and zyada storage space on disk (agar database bada ho); 
+- restore fast (ek hi backup se).
+
+
+2: INCREMENTAL BACKUP
+-----------------------
+
+- Sirf last backup ke baad ke changes copy hote hain (chahe last backup full ho ya incremental).
+
+- Example: 
+
+  Monday    → Full Backup (100 GB)
+  Tuesday   → Incremental (5 GB changes) (Monday ke baad ke changes)
+  Wednesday → Incremental (3 GB changes) (Tuesday ke baad ke changes)
+  Thursday  → Incremental (4 GB changes) (Wednesday ke baad ke changes)
+
+- Incremental mein har backup pichle par depend karta hai.Agar beech ka koi incremental backup corrupt ho gaya,
+  toh uske baad wale sabhi backups restore nahi ho sakte.
+- Restore: Full + saare incremental backups chahiye (Monday full + Tuesday + Wednesday + Thursday).
+- Fast hota hai aur storage kam leta hai.
+
+
+3: DIFFERENTIAL BACKUP
+-----------------------
+
+- Differential backup mein wo saare changes copy hote hain jo last full backup ke baad hue hain.
+- Beech mein kitne bhi differential ya incremental backups ho jayein, har naya differential backup 
+  last full backup se ab tak ke saare changes copy karta hai.
 - Example:
 
-   Monday 10:00 AM
-      ↓
-   Full Backup
-      ↓
-  Database ka complete data
+  Din	   Backup Type	    Kya copy hua
 
-Agar Monday 10:00 AM ke baad database mein changes hue aur baad mein data loss ho gaya, toh sirf Full Backup restore karne par
-database Monday 10:00 AM wali state mein aa jayega.
+  Monday  	Full	        Poora database
+  Tuesday	Differential	Monday full ke baad ke saare changes (Tuesday tak ke)
+  Wednesday	Differential	Monday full ke baad ke saare changes (Wednesday tak ke — Tuesday + Wednesday ke changes)
+  Thursday	Incremental	    Wednesday ke baad ke changes (sirf Thursday ke changes)
+  Friday	Differential	Monday full ke baad ke saare changes (Friday tak ke — Tuesday + Wednesday + Thursday ke bhi + Friday ke changes)
+  Saturday	Full	        Naya full backup (Monday to Saturday) → ab differential cycle reset
+  Sunday	Differential	Naya full backup ke baad ke saare changes (Sunday tak ke)
 
-- Slow aur storage zyada.
-- Restore fast (ek hi backup se).
+- Restore On Friday: Full + last differential chahiye (Monday full + Friday differential). Beech ke backups ki zaroorat nahi.
+- Incremental se thoda slow, but Full se fast.
+- Incremental se zyada space leta hai but Full se kam.
+
+
+--------------------------------------
+## QUESTION: WAL / REDO LOG KYA HAI?
+--------------------------------------
+
+Jab kisi table mein row insert/update karne ki request aati hai, toh DBMS pehle us operation ki entry log mein record
+karta hai — PostgreSQL mein WAL (Write-Ahead Log) aur MySQL InnoDB mein Redo Log. Uske baad DBMS locate karta hai ki row 
+kis data page mein insert/update karni hai. Agar page Buffer Pool mein nahi hai, toh use disk se RAM mein load karta hai.
+Phir page mein change karta hai aur page ko dirty mark kar deta hai. Baad mein dirty page disk par flush hota hai.
+
+
+### QUESTION: DBMS DIRTY PAGE KO TURANT DISK PAR KYUN NAHI LIKHTA HAI ?
+--------------------------------------------------------------------------
+
+Disk I/O RAM se bahut slow hota hai. Ek page ke Buffer Pool (RAM) mein load hone ke baad, multiple operations / DB transactions
+usi page par apne changes apply karte hain, page modify hota rehta hai aur dirty mark ho jaata hai. In sab changes ko batch mein 
+disk par flush karna efficient hota hai. Har change ko individually disk par write karne se random I/O badh jaati hai, jo costly hai.
+
+Ye batch flush generally checkpoint ke through hota hai — ek aisa point jahan DBMS saare accumulated 
+dirty pages (jo us point tak dirty hue hain) ko disk par persist kar deta hai.
+
+WAL/redo log bhi hamesha turant disk par store nahi hota — wo pehle log buffer (RAM) mein accumulate hota hai, aur jab bhi koi DB 
+transaction commit hota hai, tab mandatory flush hota hai. Isse guarantee milti hai ki committed data crash ke baad bhi recover ho sakega.
+
+Since WAL/redo log already durability guarantee kar raha hai, data page ko turant disk par likhne ki zaroorat nahi hoti.
+
+
+### QUESTION: CRASH RECOVERY KAISE HOTA HAI ?
+-----------------------------------------------
+
+Agar dirty page disk par write hone se pehle system crash ho jaye, to volatile RAM ka data lost ho jata hai. Recovery ke waqt
+DBMS log file padhta hai, us operation se juda data page(s) disk se RAM mein laata hai (agar pehle se nahi hai), log se committed 
+changes (jinke log entries disk par already persist ho chuke hain) ko page mein apply karta hai (Redo), aur phir checkpoint ke 
+through dirty pages ko disk par flush kar deta hai — is tarah database eventually consistent state mein aa jaata hai aur data recover ho jaata hai.
