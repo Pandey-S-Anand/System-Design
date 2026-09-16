@@ -6409,10 +6409,10 @@ corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
   Monday  	Full	        Poora database
   Tuesday	Differential	Monday full ke baad ke saare changes (Tuesday tak ke)
   Wednesday	Differential	Monday full ke baad ke saare changes (Wednesday tak ke — Tuesday + Wednesday ke changes)
-  Thursday	Incremental	    Wednesday ke baad ke changes (sirf Thursday ke changes)
-  Friday	Differential	Monday full ke baad ke saare changes (Friday tak ke — Tuesday + Wednesday + Thursday ke bhi + Friday ke changes)
+  Thursday	Incremental	    Monday full ke baad ke saare changes (Thursday tak ke — Tuesday + Wednesday + Thursday ke changes)
+  Friday	Differential	Monday full ke baad ke saare changes (Friday tak ke — Tuesday + Wednesday + Thursday + Friday ke changes)
   Saturday	Full	        Naya full backup (Monday to Saturday) → ab differential cycle reset
-  Sunday	Differential	Naya full backup ke baad ke saare changes (Sunday tak ke)
+  Sunday	Differential	Saturday full backup ke baad ke saare changes (Sunday tak) 
 
 - Restore On Friday: Full + last differential chahiye (Monday full + Friday differential). Beech ke backups ki zaroorat nahi.
 - Incremental se thoda slow, but Full se fast.
@@ -6452,3 +6452,12 @@ Agar dirty page disk par write hone se pehle system crash ho jaye, to volatile R
 DBMS log file padhta hai, us operation se juda data page(s) disk se RAM mein laata hai (agar pehle se nahi hai), log se committed 
 changes (jinke log entries disk par already persist ho chuke hain) ko page mein apply karta hai (Redo), aur phir checkpoint ke 
 through dirty pages ko disk par flush kar deta hai — is tarah database eventually consistent state mein aa jaata hai aur data recover ho jaata hai.
+
+
+
+
+-------------------------------------------------------
+## QUESTION: POINT-IN-TIME RECOVERY (PITR) KYA HAI?
+-------------------------------------------------------
+
+
