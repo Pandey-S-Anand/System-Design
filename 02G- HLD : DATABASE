@@ -5400,11 +5400,10 @@ Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta
 -------------------------------------------------------
 Database data ko individual rows ke form mein directly disk par 
 store nahi karta hai.Instead, database table ke rows ko fixed-size
-chunks, called Pages (ya Blocks), mein organize aur store karta hai.
+chunks, called Pages , mein organize aur store karta hai.
 
 Database Pages eventually physical disk ke data blocks mein store hote hain.
 Physical disk par bahut saare data blocks hote hain, aur har block ka fixed size hota hai.
-
 Ek physical data block mein ek ya ek se zyada database pages store ho sakte hain, 
 depending on their respective sizes.
 
@@ -5449,13 +5448,16 @@ DBMS in database pages ko create aur manage karta hai.
 Jab bhi kisi particular row ya rows par READ / INSERT / UPDATE operation perform karna hota hai, 
 database ko operation perform karne ke liye relevant page/pages ko RAM mein access karna hota hai.
 
+RAM ka woh area jahan database pages temporarily store hote hain, Buffer Pool kehlata hai.
+
 Agar required page already RAM ke Buffer Pool mein available hai, 
 to database directly usi page par operation perform karta hai.
 
 Agar required page Buffer Pool mein available nahi hai, to database use disk
 se RAM mein load karta hai aur phir required operation perform karta hai.
 
-RAM ka woh area jahan database pages temporarily store hote hain, Buffer Pool kehlata hai.
+Operation ke baad, agar page mein changes hue hain (INSERT/UPDATE), toh woh dirty page ban jaata hai.
+Database eventually is modified page ko disk par flush karke persist kar deta hai.
 
 
 Database
@@ -5587,19 +5589,19 @@ B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store 
         ┌──────────────┬──────────────┬──────────────┐────────────┬────────────┬
         │  Pointer1    │   Key=15     │  Pointer2    │   Key=25   │  Pointer3  │
         └──────┬───────┴──────────────┴──────┬───────┴────────────┴─────┬──────┘
-               │                            │                          │
-               ▼                            ▼                          ▼
-        Leaf Node 1                  Leaf Node 2                 Leaf Node 3
-        (id < 15)              (15 <= id < 25)                 (id >= 25)
-                                ┌─────────────────┐
-                                │ id=15 → Row     │
-                                │ id=16 → Row     │
-                                │ id=17 → Row     │
-                                │ id=18 → Row     │
-                                │ id=19 → Row     │
-                                │ id=20 → Row     │
-                                └─────────────────┘
-                                (Ye ek data page hai)
+               │                             │                          │
+               ▼                             ▼                          ▼
+        Leaf Node 1                  Leaf Node 2                   Leaf Node 3
+        (id < 15)                  (15 <= id < 25)                 (id >= 25)
+                                 ┌─────────────────┐
+                                 │ id=15 → Row     │
+                                 │ id=16 → Row     │
+                                 │ id=17 → Row     │
+                                 │ id=18 → Row     │
+                                 │ id=19 → Row     │
+                                 │ id=20 → Row     │
+                                 └─────────────────┘
+                                 (Ye ek data page hai)
 
 
 - Non-Clustered: B+ Tree ke leaf level par key ke corresponding actual row ko locate karne wala reference stored hota hai.
@@ -5607,8 +5609,9 @@ B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store 
   Ye reference do tarah ka ho sakta hai:
 
   1: Agar table mein clustered index hai (jaise MySQL InnoDB mein primary key hi clustered index hoti hai):
-     * Leaf node par clustered key (jaise primary key MySQL ke case mein) store hota hai.
-     * Phir DBMS clustered index mein jaake us key se poori row dhoondhta hai.
+     * Non-clustered index ke B+ Tree leaf node par clustered key (jaise primary key MySQL ke case mein) store hota hai.
+     * Phir DBMS us clustered key ka use karke clustered index ke B+ Tree mein lookup karta hai.
+     * Clustered index ke B+ Tree ke leaf level par actual row stored hota hai, isliye wahan se poori row mil jaati hai.
      * Example: MySQL InnoDB.
 
   2: Bina clustered index ke table mein :
@@ -5623,7 +5626,7 @@ B+ Tree mein leaf node ke key (indexed column value) ke corresponding kya store 
 ### NOTE :
 -----------
 
-* Agar table mein Clustered Index present hai, toh table ki rows disk par clustered index column ke sorted order mein stored hoti hain.
+* Agar table mein Clustered Index present hai, toh table ki rows disk par clustered index column ki values ke sorted order mein stored hoti hain.
 * Agar table mein Clustered Index present nahi hai, toh table ki rows disk par jahan jagah mili, wahan padi hoti hain — koi order nahi. 
   Aise tables ko heap table bhi bolte hain.
 
@@ -6285,3 +6288,96 @@ Replica 10 units return kar dega, even though Primary par actual latest value 5 
 
 
 
+### QUESTION: SINGLE-NODE SYSTEM MEIN CA KYUN POSSIBLE HAI?
+-------------------------------------------------------------
+
+Single-node system mein sirf ek hi node hota hai — koi doosra node nahi, koi network communication nahi.
+
+- P (Partition Tolerance): Doosra node hi nahi hai, toh partition ka scenario hi nahi banta → P ki zaroorat nahi.
+- C (Consistency): Sirf ek node hai, isliye multiple nodes ke beech data inconsistency ka issue nahi hota.
+- A (Availability): Jab tak node up hai, wo har request ko respond kar sakta hai.
+
+➡️ Isliye single-node system mein C + A = CA possible hai.
+
+
+
+======================================
+#12. CONSISTENCY AND AVAILABILITY
+======================================
+
+-------------------------------------------
+### QUESTION: STRONG CONSISTENCY KYA HAI ? 
+-------------------------------------------
+
+- Har read latest write dikhata hai. Koi stale data nahi.
+
+- Example: Replication Consistency
+  Agar replication ko synchronously perform kiya jaye, toh strong consistency achieve ki ja sakti hai.
+
+- Example: Distributed Transaction Consistency 
+  2PC (Two-Phase Commit) strong consistency provide karta hai — kyunki wo multiple shards / databases
+  ke beech distributed transaction ko all-or-nothing manner mein coordinate karta hai.
+
+
+---------------------------------------------
+### QUESTION: EVENTUAL CONSISTENCY KYA HAI ? 
+---------------------------------------------
+
+- Write ke turant baad read stale data de sakta hai, lekin eventually saare nodes sync ho jaate hain — 
+  yaani eventually sab jagah latest data reflect ho jaata hai.
+
+- Example: Replication Consistency
+  Agar replication ko asynchronously perform kiya jaye, toh eventual consistency achieve ki ja sakti hai.
+
+- Example: Distributed Transaction Consistency
+  SAGA pattern eventual consistency provide karta hai — kyunki wo failed local transaction ko rollback karne 
+  ke liye compensation transaction chalata hai, jisse thodi der tak involved databases inconsistent state mein
+  aa sakte hain. Lekin eventually compensation transactions ke successful execution ke baad sabhi involved 
+  databases eventually consistent state mein aa jaate hain.
+
+
+---------------------------------------
+### QUESTION: AVAILABILITY KYA HAI ? 
+---------------------------------------
+
+- Availability ek guarantee hai ki system jitne time available hai, utne time mein wo incoming
+  request ka response de — chahe data stale ho, chahe kuch nodes/components down hon, request fail
+  nahi honi chahiye.
+- Highly Available System Examples: Social Media Feed, CDN, DNS.
+
+
+
+=========================
+#13. BACKUP AND RECOVERY
+=========================
+
+-------------------------------------
+## QUESTION: BACKUP KYUN CHAHIYE? 
+-------------------------------------
+
+Backup ka purpose database ke data ko recover karna hai agar data loss due to hardware failure,
+corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
+
+- Data Loss: Disk crash, server dead.
+- Data Corruption: Software bug, virus.
+- Accidental Deletion: Galti se DROP TABLE ya DELETE bina WHERE ke.
+- Disaster: Fire, flood, earthquake.
+
+---------------------------------------
+## QUESTION: BACKUP KE TYPES KYA HAIN?
+---------------------------------------
+
+- Full backup ka matlab hai database ke complete data ka backup ek specific point in time par lena.
+- Example:
+
+   Monday 10:00 AM
+      ↓
+   Full Backup
+      ↓
+  Database ka complete data
+
+Agar Monday 10:00 AM ke baad database mein changes hue aur baad mein data loss ho gaya, toh sirf Full Backup restore karne par
+database Monday 10:00 AM wali state mein aa jayega.
+
+- Slow aur storage zyada.
+- Restore fast (ek hi backup se).
