@@ -1,15 +1,19 @@
-=============
-## SCALING
-=============
+=================================
+# QUESTION : SCALING KYA HAI ?
+=================================
 
 Scaling is the process of increasing the system's capacity to handle the increased workload.
 
----------------------------
-WHY DO WE NEED SCALING ?
----------------------------
+---------------------------------------------
+## QUESTION : SCALING KI ZARURAT KYA HAI ?
+---------------------------------------------
 
-Sabse pehle ek simple E-commerce Spring Boot Application lete hain jo ek
-single Physical Machine (PM) ya Virtual Machine (VM) par deployed hai.
+Sabse pehle ek simple E-commerce Spring Boot Application lete hain.
+
+Spring Boot application ke andar ek embedded application server (e.g. Tomcat) hota hai,
+aur ye application server ek Physical/Virtual server par run karta hai.Yaani Application Server 
+ek software hai, jo hamesha kisi Physical Server ya Virtual Server ke upar hi run karta hai.
+
 
 Architecture:
 
@@ -26,15 +30,17 @@ Architecture:
                 v
              Database
 
-Spring Boot application embedded application server (e.g. Tomcat) ke saath
-isi Physical/Virtual server par run kar rahi hai.
 
-Ab is server ke paas kuch limited resources hain.
+Ab is Physical/Virtual server and application server (Tomcat) dono ke paas apne limited resources hote hain.
 
 
 
-## SERVER RESOURCES
----------------------
+-----------------------------------------------------------------------------
+## QUESTION : SERVER RESOURCES AUR APPLICATION RESOURCES ME FARAK KYA HAI?
+-----------------------------------------------------------------------------
+
+### SERVER RESOURCES
+----------------------
 
 CPU              : 2 Cores
 RAM              : 4 GB
@@ -43,312 +49,277 @@ Network Card     : 1 Gbps
 
 
 
-## APPLICATION RESOURCES
+### APPLICATION RESOURCES
 --------------------------
 
 1: WORKER THREADS :
 --------------------
 
-Har incoming HTTP request ko process karne ke liye Tomcat ko ek worker thread
-allocate karna padta hai.
+Har incoming HTTP request ko process karne ke liye Tomcat ek worker thread allocate karta hai.
 
-Suppose Tomcat configuration:
+Suppose:
 
-    Maximum Threads = 200
+Maximum Threads = 200
 
-Matlab Tomcat ke paas maximum 200 worker threads available hain request
-processing ke liye.
+Matlab Tomcat ek time par maximum 200 requests ko actively process kar sakta hai (assuming each request occupies one worker thread).
 
-Tomcat ek time par maximum 200 requests actively process kar sakta hai
-(assuming each request occupies one worker thread).
+Isse zyada requests aane par:
 
-Baaki requests:
+- Accept Queue me wait karti hain, ya
+- Overload hone par reject ho jaati hain
 
-    - Accept Queue me wait kar sakti hain
-      (OS / Tomcat configuration par depend karta hai)
-
-                OR
-
-    - Overload hone par reject bhi ho sakti hain.
+(OS / Tomcat configuration par depend karta hai.)
 
 
 
 2: DATABASE CONNECTIONS :
 -------------------------
 
-Spring Boot application database se communicate karne ke liye
-connection pool use karti hai.
+Spring Boot application database se communicate karne ke liye connection pool use karti hai.
 
-Suppose configuration:
+Suppose:
 
-    Maximum Pool Size = 100
+Maximum Pool Size = 100
 
-Matlab ek time par application maximum 100 active database connections
-use kar sakti hai.
+Matlab ek time par application maximum 100 active database connections use kar sakti hai.
 
 
+
+-----------------------------------------------------------------
+## QUESTION : TRAFFIC BADHNE PAR SYSTEM PAR KYA ASAR PADTA HAI?
+-----------------------------------------------------------------
 
 ## INITIALLY EVERYTHING WORKS FINE :
 ------------------------------------
 
-Suppose application ke sirf
+Suppose application ke sirf 100 users hain, traffic kam hai, server ke resources sufficient hain. Application smoothly chal rahi hai.
 
-    100 Users
-
-hain.
-
-Traffic bhi kam hai.
-
-Server ke resources sufficient hain.
-
-Application smoothly chal rahi hai.
-
+Users : 100
+Traffic : 10 Requests / Second
+Status : Sab smooth
 
 
 ## COMPANY STARTS GROWING :
 ---------------------------
+Kuch months baad users 10,000 ho gaye aur traffic 500 RPS ho gayi — server ab bhi chal raha tha, lekin resources gradually saturate hone lage.
 
-Initially:
+Aur kuch months baad users 100,000 aur traffic 2,000 RPS ho gayi — ab actual problems start ho gayi.
 
-    Users
 
-        100
 
-Server Traffic
+## QUESTION: KYA EXACTLY FAIL HOTA HAI ?
+------------------------------------------
 
-        10 Requests / Second
+1. TOMCAT THREADS GET EXHAUSTED
+---------------------------------
 
-Server easily handle kar raha tha.
+Suppose Tomcat Worker Threads = 200, aur ek request ko complete hone me 2 seconds lag rahe hain.
 
+Agar ek hi time par 500 requests aa jaati hain:
 
-Kuch months baad:
-
-    Users
-
-        10,000
-
-Ab naturally application par incoming HTTP requests bhi badhne lagti hain.
-
-Suppose traffic increase hokar
-
-    500 Requests / Second
-
-ho gayi.
-
-Server ab bhi kaam kar raha hai, lekin CPU utilization aur memory usage
-increase hone lagi.
-
-
-Aur kuch months baad:
-
-    Users
-
-        100,000
-
-Suppose traffic aur badhkar
-
-    2,000 Requests / Second
-
-ho gayi.
-
-Ab actual problems start hoti hain.
-
-
-
-## WHAT EXACTLY STARTS FAILING ?
-----------------------------------
-
-
-1. CPU BECOMES A BOTTLENECK
-------------------------------
-
-Har incoming HTTP request ko process karne ke liye ek worker thread allocate
-hota hai aur wo thread CPU instructions execute karta hai.
-
-Initially:
-
-    Traffic
-
-        10 Requests / Second
-
-    CPU Utilization
-
-        15%
-
-Traffic increase hua:
-
-    Traffic
-
-        500 Requests / Second
-
-    CPU Utilization
-
-        75%
-
-Traffic aur badha:
-
-    Traffic
-
-        2,000 Requests / Second
-
-    CPU Utilization
-
-        100%
-
-Ab CPU continuously busy hai.
-
-Naye requests ko process karne ke liye immediately CPU time available nahi hai.
-
-Result:
-
-    Response Time increase hone lagta hai.
-
-    Latency badhne lagti hai.
-
-
-
-2. TOMCAT THREADS GET EXHAUSTED
-----------------------------------
-
-Suppose:
-
-    Tomcat Worker Threads = 200
-
-Ek request ko complete hone me
-
-    2 Seconds
-
-lag rahe hain.
-
-Agar ek hi time par
-
-    500 Requests
-
-aa jaati hain,
-
-to kya hoga?
-
-Pehli
-
-    200 Requests
-
-ko worker thread mil jayega.
-
-Baaki
-
-    300 Requests
-
-immediately process nahi ho paayengi.
+Pehli 200 Requests → worker thread mil jayega
+Baaki 300 Requests → immediately process nahi ho paayengi
 
 Wo:
 
-    - Accept Queue me wait karengi
-      (agar queue me jagah hai)
+Accept Queue me wait karengi (agar queue me jagah hai)
 
-                OR
+Ya queue full hone par reject ho sakti hain
 
-    - Queue bhi full ho gayi to reject ho sakti hain.
+Result:
 
-
-## RESULT:
------------
-
-    High Response Time
-            ↓
-        Timeouts
-            ↓
-    5xx Errors (depending on situation)
+High Response Time → Timeouts → 5xx Errors
 
 
 
-3. DATABASE CONNECTION POOL GETS EXHAUSTED
----------------------------------------------
+2. CPU BECOMES A BOTTLENECK
+------------------------------
+
+Har HTTP request ko process karne ke liye ek worker thread allocate hota hai,
+aur us thread ka code CPU par execute hota hai.
+
+
+## CPU CORES vs THREADS
+--------------------------
+
+Lekin CPU ke paas limited cores hote hain (jaise 2, 4, 8 cores),
+jabki threads ki sankhya usse kaafi zyada ho sakti hai (jaise 200 threads).
 
 Suppose:
 
-    Maximum DB Connections = 100
+CPU Cores = 4
+Tomcat Worker Threads = 200
 
-Ab ek hi time par
+CPU ek time par sirf 4 threads ko hi parallel execute kar sakta hai (assuming 1 thread per core at a time).
 
-    300 Requests
+Baaki 196 threads runnable state me wait karte hain. Unhe CPU time milne ka intezaar hota hai.
 
-database access karna chahti hain.
+OS CPU time ko threads ke beech share karta hai, aur is process ko Context Switching kehte hain.
 
-Kya application
+Context switching me OS pehle ek running thread ki current state save karta hai, phir doosre thread ki saved state load karta hai,
+aur us thread ko thoda CPU time deta hai. Ye process OS baaki threads ke saath bhi repeat karta rehta hai.
 
-    300
-
-database connections bana legi?
-
-Nahi.
-
-Sirf
-
-    100
-
-connections available hain.
-
-Baaki requests connection available hone ka wait karengi.
-
-Agar bahut der tak connection available nahi hua,
-
-to request fail bhi ho sakti hai.
-
-
-## RESULT :
-------------
-
-    Slow Queries
-            ↓
-        Waiting
-            ↓
-    Connection Timeout
+Har context switch kuch CPU time consume karta hai, jise context switching overhead kehte hain.
 
 
 
-4. RAM STARTS FILLING UP
---------------------------
+## RPS vs CONCURRENT REQUESTS
+------------------------------
 
-Har request kuch memory consume karti hai.
+Dhyan rakhne wali baat: RPS aur Concurrent Requests alag cheezein hain.
 
-Example:
+    RPS                 = Ek second me kitni requests aati hain (throughput)
+    Concurrent Requests = Ek time par kitni requests actively process ho rahi hain
 
-    - Request Objects
-    - Response Objects
-    - Local Variables
-    - JSON Serialization
-    - Hibernate Objects
-    - Session Data
+    Max RPS = Number of Threads / Average Request Processing Time (sec)
+
+
+### EXAMPLE
+-----------
+
+    Tomcat Worker Threads            = 200
+    Average Request Processing Time  = 100 ms (0.1 sec)
+
+    Max RPS = 200 / 0.1 = 2000 RPS
+
+Matlab 200 threads ke saath bhi 2000 RPS handle ho sakti hai,
+kyunki har thread 1 second me 10 requests process kar leta hai.
+
+
+
+## LOW TRAFFIC vs HIGH TRAFFIC
+--------------------------------
+
+Jab traffic kam hoti hai, i.e. kam requests application par aati hain:
+
+    10 RPS  → Kam threads simultaneously active hote hain
+            → CPU par kam context switching hoti hai
+            → Context switching ka overhead kam rehta hai
+              (i.e. CPU time context switching me waste nahi hota)
+            → CPU ka zyadatar time actual application logic execute karne me lagta hai
+            → CPU utilization = 15%
+
+Jab traffic badhta hai, i.e. zyada requests application par aati hain:
+
+    500 RPS → Zyada threads simultaneously active ho jaate hain
+            → Context switching badh jaati hai
+            → CPU ka kuch time context switching overhead me chala jaata hai
+            → CPU utilization = 75%
+
+Jab traffic bahut zyada hoti hai:
+
+    2000 RPS → Almost saare 200 threads continuously runnable ho jaate hain
+             → CPU continuously context switching karta rehta hai
+             → CPU utilization = 100%
+             → Actual application logic execute karne ka time kam milta hai
+             → Har thread ko CPU time kam milta hai
+             → Response time increase
+             → Latency badhne lagti hai
+
+
+
+
+================================================================================
+4. RAM BECOMES A BOTTLENECK
+================================================================================
+
+Sabse pehle ye samajhna zaroori hai ki physical/virtual server jispe
+Spring Boot application deployed hai, uski TOTAL RAM poori ki poori
+Spring Boot application ke application server (e.g. Tomcat) ko nahi milti.
+
+Suppose server ki Total RAM = 4 GB.
+
+Ye 4 GB kai cheezon me divide hoti hai:
+
+    - Operating System (OS)         → kuch memory
+    - Other processes/services      → kuch memory
+    - JVM (Tomcat)                  → kuch memory
+
+Yaani JVM ko sirf ek portion milta hai — poori 4 GB nahi.
+
+Aur JVM ke andar bhi ye space further divide hoti hai:
+
+    JVM
+    ├── Heap      → Objects, request/response objects,
+    │                Hibernate entities, session data etc.
+    │
+    ├── Stack     → Har thread ka apna private stack
+    │
+    ├── Metaspace → Class metadata, method metadata
+    │
+    └── Other areas → Code cache, JIT compiled code, etc.
+
+Important:
+
+
+## HEAP vs STACK
+-----------------
+
+HEAP:
+    - Shared area across all threads.
+    - Stores actual objects (Request/Response objects,
+      Hibernate entities, Session data, etc.).
+
+STACK:
+    - Private per thread. Har thread ka apna alag stack hota hai.
+    - Jab bhi koi thread method call karta hai, us method call
+      ke liye stack par ek STACK FRAME push hota hai.
+
+
+Ek Stack Frame me store hota hai:
+
+    - Method ke parameters
+    - Method ke local primitive variables (int, boolean, char, etc.)
+    - Method ke local object references (heap me stored object ka address)
+    - Return address
+
+
+
+## TRAFFIC BADHNE PAR KYA HOTA HAI?
+-------------------------------------
 
 Initially:
 
-    RAM Usage
-
-        1 GB / 4 GB
+    Heap Usage = 1 GB / 4 GB
 
 Traffic badha:
 
-    RAM Usage
+    Heap Usage = 3.5 GB / 4 GB
 
-        3.5 GB / 4 GB
+Traffic aur badha:
 
-Aur badha:
+    Heap Usage = 4 GB / 4 GB
 
-    RAM Usage
 
-        4 GB / 4 GB
+Ab JVM heap almost full ho jaati hai.
 
-Ab JVM ko Garbage Collection frequently run karni padegi.
+Is situation me JVM ko Garbage Collection (GC) frequently run karni
+padti hai, taaki unused objects ko reclaim karke memory free ki ja sake.
 
-GC jab memory reclaim karti hai, kuch phases me application threads ko temporarily stop karna pad sakta hai.
+Problem:
 
-Agar memory fir bhi insufficient hui,
+GC jab memory reclaim karti hai, to kuch phases me application
+threads ko temporarily stop karna pad sakta hai
+(Stop-The-World pauses).
 
-to application
+Isse:
 
-    OutOfMemoryError
+    - Response time badh jaata hai (i.e. Latency increase)
 
-bhi throw kar sakti hai.
+Aur agar memory iske baad bhi insufficient rehti hai, to application
+OutOfMemoryError throw kar sakti hai.
+
+
+## IMPORTANT:
+---------------
+
+Method call hone par stack frame push hota hai,
+method return hone par frame automatically pop ho jaata hai.
+Isliye stack memory automatically free hoti hai —
+koi manual cleanup ki zaroorat nahi padti.
+
+Note: GC sirf Heap ko clean karta hai, Stack ko nahi.
+
 
 
 
