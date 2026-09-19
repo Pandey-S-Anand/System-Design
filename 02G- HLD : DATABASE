@@ -6681,7 +6681,6 @@ connections borrow kar sakte hain, but ek connection ek time par
 sirf ek hi thread ko milta hai.
 
 
-
 ## QUESTION : JAB APPLICATION START HOTI HAI TO DATABASE CONNECTION POOL KE SAATH KYA HOTA HAI ?
 -------------------------------------------------------------------------------------------------
 
@@ -6733,3 +6732,385 @@ sirf ek hi thread ko milta hai.
       jisse DB overload prevent hota hai
 
     - Application performance improve hoti hai
+
+
+
+
+============================================================================
+#16. KYA EK APPLICATION SLOW HO SAKTI HAI AGAR JVM CPU USAGE SIRF 20% HO ?
+============================================================================
+
+Haan, bilkul possible hai.
+
+Iska ek potential reason slow database ho sakta hai.
+
+Suppose:
+
+    Tomcat Worker Threads   = 200
+    DB Connection Pool      = 100
+
+Ab 200 concurrent requests aayi jinko database operation required hai.
+
+    200 Requests → 200 Tomcat worker threads allocate ho jaate hain
+    Lekin DB Connection Pool me sirf 100 connections hain
+
+    First 100 Requests → DB connection mil jaata hai, query execute hoti hai
+    Baaki 100 Requests → DB connection available hone ka wait karte hain
+
+
+Ab suppose database slow hai — yaani queries ko complete hone me
+zyada time lag raha hai.
+
+Toh ye 100 connections lambi der tak occupied rehte hain,
+aur baaki 100 requests bas wait karti rehti hain.
+
+Jisse application ka response time aur latency badh jaati hai,
+aur end user ko application slow lagti hai.
+
+Aur ab sawaal ye hai: database slow kyun ho raha hai?
+
+
+## DATABASE SLOW KYUN HO JATA HAI ? (POSSIBLE REASONS)
+--------------------------------------------------------
+
+1. POORLY DESIGNED QUERY
+--------------------------
+
+   Query inefficient likhi gayi ho sakti hai.
+
+   Example: Unnecessary joins, large table scan, poor query design.
+
+   Result: Query jo normally 20 ms me honi chahiye, wo 5–10 seconds le sakti hai.
+
+
+
+2. MISSING INDEX
+------------------
+
+Suppose kisi column par frequently read queries aati hain,
+lekin us column par index nahi hai.
+
+Example:
+
+    SELECT * FROM orders WHERE customer_id = 101;
+
+Maan lo customer_id ke basis par bahut saari read queries
+aati hain, lekin is column par index missing hai.
+
+Is case me database poori table scan karega, jo large tables
+me bahut slow hota hai.
+
+
+
+
+3. DATABASE LOCK CONTENTION
+----------------------------
+
+## EXAMPLE
+------------
+
+Agar Transaction-1 kisi row par exclusive lock le chuki hai
+(write operation karne ke liye), to Transaction-2 usi row
+ko access karne ke liye wait karegi — jab tak Transaction-1
+apna lock release na kar de (COMMIT / ROLLBACK ke baad).
+
+Transaction-1 ke lock release karne ke baad, Transaction-2
+apni required operation ke according lock legi:
+
+    - Write karna hai → Exclusive Lock
+    - Read karna hai  → Shared Lock
+
+Agar bahut saari transactions same row ke lock ka wait karein,
+to queries slow ho jaati hain, aur DB response time badh jaata hai.
+
+
+## DEFINITION
+--------------
+
+Lock Contention tab hota hai jab multiple transactions same row / table /
+database ka lock acquire karne ke liye compete karti hain.
+
+Agar ek transaction kisi lock ko lambe time tak hold kar rahi hai,
+to baaki transactions us lock ke release hone tak blocked rehti hain.
+
+Isse response time increase ho jaata hai, aur application slow ho
+sakti hai — chahe CPU utilization relatively kam ho.
+
+
+
+4. TOO MANY CONCURRENT QUERIES
+--------------------------------
+
+   Database ek limited number of queries efficiently process kar sakta hai.
+   Zyada queries aane par baaki queries queue me wait karti hain.
+
+   Sirf connection pool size badhane se ye problem solve nahi hoti —
+   ulta badh sakti hai. Kyunki DB server ke CPU cores bhi limited hote hain.
+   Zyada concurrent connections par DB server ko zyada context switching
+   karni padti hai, jisse query execution ka time kam milta hai aur
+   overall throughput degrade ho jaata hai.
+
+
+
+5. CPU SATURATION ON DATABASE SERVER
+------------------------------------
+
+(Jab database alag server par deployed ho.)
+
+Agar DB server ka CPU continuously high utilization par hai,
+to query execution time badh jaata hai.
+
+DB Server CPU high hone ke possible reasons:
+
+    - Bahut zyada concurrent queries execute ho rahi hain
+    - Connection pool size bahut zyada badha diya gaya hai,
+      jisse database server par zyada concurrent connections
+      active hote hain, zyada context switching hoti hai,
+      aur CPU utilization high ho jaati hai
+    - Heavy queries (large joins, sorting, aggregation)
+    - Missing indexes ki wajah se full table scans
+    - Complex calculations / functions queries me
+
+Result:
+
+    Query Execution Time increase ho jata hai.
+
+Aur kyunki application database ke response ka wait karti hai,
+
+Overall Application Response Time bhi increase ho jata hai.
+
+
+
+6. MEMORY PRESSURE
+----------------------
+
+   Database frequently accessed data ko RAM me cache karta hai
+   (in the form of database pages), taaki read/write operations
+   fast ho sakein.
+
+   Agar RAM kam pad jaye, to database ko required data pages
+   disk se wapas RAM me load karna padta hai, taaki us page par
+   read/write operation perform kiya ja sake.
+
+   Since disk RAM ke comparison me bahut slow hota hai,
+   isse query execution time increase ho jaata hai.
+
+
+
+7. DISK I/O BOTTLENECK
+------------------------
+
+Database apna data disk (SSD/HDD) par store karta hai. Jab required
+data page Buffer Pool (RAM) me nahi milta, to disk se load karna
+padta hai. 
+
+Agar disk already busy ho (bahut saare concurrent queries disk access
+kar rahe hon), to I/O operations queue hone lagte hain.
+
+
+
+8. NETWORK LATENCY BETWEEN APPLICATION AND DATABASE
+------------------------------------------------------
+
+Application aur Database alag machines par ho sakte hain.
+
+Agar network slow hai, to request aur response travel karne 
+me hi extra time lag sakta hai.
+
+Result:
+
+Application slow feel hota hai.
+
+
+
+9. DB CONNECTION LEAK
+----------------------
+
+Application DB connection lekar use close/release nahi karti
+(jaise finally block me connection.close() missing).
+
+Result:
+
+    DB connection Pool me free (available) connections gradually kam hote jaate hain
+         ↓
+    Eventually saare DB connections borrowed state me atak jaate hain
+         ↓
+    DB connection Pool me koi available connection nahi bachta
+         ↓
+    Naye requests configured connection-timeout tak wait karte hain
+         ↓
+    Timeout cross hone par request FAIL ho jaati hai
+    (Connection Timeout)
+
+
+
+## INTERVIEW TIP :
+------------------
+
+Agar interviewer bole:
+
+    "DB Connection Pool 100% busy hai."
+
+To immediately ye conclude mat karna ki connection pool size kam hai.
+
+Connection Pool Exhaustion aksar ek symptom hota hai.
+
+Actual root cause investigate karna chahiye, jaise:
+
+    - Slow Queries
+    - Missing Indexes
+    - Lock Contention
+    - Connection Leaks
+    - Network Latency
+
+Production me pehle root cause identify kiya jata hai,
+sirf connection pool size increase nahi kiya jata.
+
+
+
+
+
+
+
+
+
+
+
+
+Q3. WHAT METRICS WOULD YOU MONITOR BEFORE DECIDING TO SCALE?
+--------------------------------------------------------------
+
+1. CPU UTILIZATION
+-------------------
+Ye batata hai CPU kitna busy hai.
+Agar continuously bahut high (e.g. 90-100%) ho, to CPU bottleneck ho sakta hai.
+
+
+2. MEMORY USAGE
+----------------
+Ye batata hai application/server kitni RAM use kar raha hai.
+Agar memory frequently fill hone lage, to JVM ko baar-baar Garbage Collection (GC) run karna padta hai.
+GC ke kuch phases me application threads temporarily pause ho sakte hain, jisse response time increase ho sakta hai.
+Aur agar memory fir bhi insufficient ho jaye, to application OutOfMemoryError throw kar sakti hai.
+
+
+3. THREAD POOL USAGE
+---------------------
+Ye batata hai kitne worker threads currently busy hain.
+Agar saare threads busy ho gaye, to naye requests wait ya reject ho sakte hain.
+
+
+4. DATABASE CONNECTION POOL USAGE
+----------------------------------
+Ye batata hai connection pool me kitne DB connections use ho rahe hain.
+Agar saare connections busy ho gaye, to requests connection ke liye wait karengi.
+
+
+5. DATABASE CPU UTILIZATION
+----------------------------
+Ye batata hai Database Server ka CPU kitna busy hai.
+High CPU indicate kar sakta hai ki database heavy load handle kar raha hai.
+
+
+6. DATABASE DISK I/O
+---------------------
+Ye batata hai database kitna fast disk read/write kar pa raha hai.
+High Disk I/O database ko slow bana sakta hai.
+
+
+7. NETWORK UTILIZATION
+-----------------------
+Ye batata hai available network bandwidth ka kitna use ho raha hai.
+Agar bandwidth limit ke paas pahunch gayi, to latency increase ho sakti hai.
+
+
+8. REQUEST RATE (RPS)
+----------------------
+RPS (Requests Per Second) batata hai ek second me kitni requests aa rahi hain.
+Traffic increase ho raha hai ya nahi, ye samajhne me help karta hai.
+
+
+9. RESPONSE TIME
+-----------------
+Ek request ko complete hone me kitna time lag raha hai.
+Agar response time badh raha hai, to system slow ho raha hai.
+
+
+10. P95 LATENCY
+----------------
+95% requests kitne time ke andar complete ho rahi hain.
+Ye average se better picture deta hai.
+
+
+11. P99 LATENCY
+----------------
+99% requests kitne time ke andar complete ho rahi hain.
+Worst-case user experience ko samajhne ke liye use hota hai.
+
+
+12. QUEUE LENGTH
+-----------------
+Ye batata hai kitni incoming requests processing start hone ka wait kar rahi hain (i.e. worker thread available hone ka wait).
+Agar queue continuously badh rahi ho, to application incoming requests ko utni fast process nahi kar pa rahi jitni fast requests aa rahi hain.
+
+
+13. ERROR RATE
+---------------
+Kitni requests fail ho rahi hain (4xx/5xx etc.).
+Error rate increase hona system health ke liye warning sign hai.
+
+
+NOTE:
+-----
+
+Ye metrics generally Monitoring Dashboards me monitor kiye jaate hain.
+
+Examples:
+
+- Prometheus + Grafana (Most Common)
+- AWS CloudWatch
+- Datadog
+- New Relic
+
+
+
+
+
+
+
+
+
+
+
+Q7. IF YOUR APPLICATION'S RESPONSE TIME SUDDENLY INCREASES, HOW WOULD YOU IDENTIFY THE BOTTLENECK ?
+----------------------------------------------------------------------------------------------------
+
+Answer:
+
+I will not immediately assume that scaling is required. First, I will identify the actual bottleneck.
+
+Step 1:
+Check the monitoring dashboard and analyze:
+
+- CPU Utilization
+- Memory Usage
+- Thread Pool Utilization
+- Database Connection Pool Usage
+- Network Utilization
+- Request Queue Length
+- Response Time (P95/P99)
+- Error Rate
+
+Step 2:
+
+Based on these metrics, identify which resource is saturated.
+
+Step 3:
+
+If the bottleneck is still not clear, analyze:
+
+- Application Logs
+- Thread Dumps (if required)
+
+After identifying the root cause, I will decide whether the problem can be solved by code optimization, configuration tuning, or scaling.
+
