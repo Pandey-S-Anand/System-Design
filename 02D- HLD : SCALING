@@ -1,12 +1,8 @@
-=================================
-# QUESTION : SCALING KYA HAI ?
-=================================
+==========================================================
+## QUESTION : SCALING KYA HAI AUR USKI ZARURAT KYA HAI ?
+==========================================================
 
-Scaling is the process of increasing the system's capacity to handle the increased workload.
-
----------------------------------------------
-## QUESTION : SCALING KI ZARURAT KYA HAI ?
----------------------------------------------
+Scaling ek aisi process hai jisme system ki capacity badhai jaati hai, taaki badhe hue workload ko handle kiya ja sake.
 
 Sabse pehle ek simple E-commerce Spring Boot Application lete hain.
 
@@ -32,7 +28,6 @@ Architecture:
 
 
 Ab is Physical/Virtual server and application server (Tomcat) dono ke paas apne limited resources hote hain.
-
 
 
 -----------------------------------------------------------------------------
@@ -82,6 +77,7 @@ Suppose:
 Maximum Pool Size = 100
 
 Matlab ek time par application maximum 100 active database connections use kar sakti hai.
+
 
 
 
@@ -343,6 +339,7 @@ Result:
 
 
 
+
 ## FINAL OBSERVATION
 ---------------------
 
@@ -353,6 +350,7 @@ Problem sirf itni hai ki:
     Existing Workload  >  Server Capacity
 
 ho gayi hai.
+
 
 
 ## WHAT IS THE ROOT CAUSE?
@@ -367,9 +365,259 @@ saturate hone lagte hain.
 
 
 
------------------------------------------------------------------------------------------------------------------
+====================================================================================
+## QUESTION : BADHE HUE WORKLOAD KO KAISE HANDLE KAREIN ? (SCALING APPROACHES)
+====================================================================================
+
+
+Jab:
+
+Existing Workload > Server Capacity
+
+ho jaata hai, to generally do approaches hoti hain:
+
+
+### OPTION 1 : VERTICAL SCALING (Scale Up)
+---------------------------------------------
+
+Existing server ke hardware resources ko increase kar do.
+
+Example:
+
+CPU : 2 Cores → 16 Cores
+RAM : 4 GB → 64 GB
+Disk : 100 GB → 2 TB
+Network: 1 Gbps → 10 Gbps
+
+Yaani same machine ko aur powerful bana diya.
+
+
+### BENIFIT : 
+--------------
+Simple hai, application architecture change nahi karna padta.
+
+
+### LIMITATION :
+----------------
+Ek machine ki hardware limit hoti hai. Aur ye single point of failure bhi rehta hai.
+
+
+
+## OPTION 2 : HORIZONTAL SCALING (Scale Out)
+-----------------------------------------------
+
+Ek powerful server ke bajaye, application ke multiple instances different servers par deploy kar do.
+
+### EXAMPLE :
+--------------
+
+Initially
+
+                Users
+                  |
+                  |
+                  v
+            ----------------
+            | Spring Boot  |
+            | Application  |
+            ----------------
+                  |
+                  v
+               Database
+
+
+After Scaling
+
+                   Users
+                      |
+                      |
+                      v
+               Load Balancer
+              /      |      \
+             /       |       \
+            v        v        v
+
+      SpringBoot SpringBoot SpringBoot
+        Server-1   Server-2   Server-3
+             \        |        /
+              \       |       /
+               --------|-------
+                      |
+                  Database
+
+
+Load Balancer incoming requests ko available application
+instances ke beech distribute karta hai.
+
+Is approach ko Horizontal Scaling (Scale Out) kehte hain.
+
+
+
+### BENIFIT : 
+--------------
+
+- Traffic ke hisaab se instances add/remove kar sakte ho.
+
+- Ek instance crash ho jaye to baaki instances traffic sambhal lete hain — isi wajah se High Availability milti hai.
+
+
+### LIMITATION : 
+-----------------
+
+- Application ko horizontally scalable banana padta hai (stateful session problems aate hain).
+
+
+## QUESTION : APPLICATION KO HORIZONTALLY SCALE KARNE ME KYA PROBLEM AATI HAI ?
+---------------------------------------------------------------------------------
+
+Horizontal Scaling sirf multiple application instances
+deploy kar dene se complete nahi ho jaati.
+
+Suppose application ke multiple instances chal rahe hain,
+aur tumhara application HttpSession use kar raha hai
+authentication ke liye.
+
+
+                   Load Balancer
+                  /      |      \
+                 /       |       \
+                v        v        v
+
+            Server-1  Server-2  Server-3
+
+User ne login kiya.
+
+Load Balancer ne login request
+
+Server-1
+
+par bhej di.
+
+Server-1 ne HttpSession create ki aur
+user ka login session apni local memory (RAM)
+me store kar diya.
+
+Ab user ki next request aayi.
+
+Is baar Load Balancer ne request
+
+Server-2
+
+ko forward kar di.
+
+Problem:
+
+Server-2 ke paas Server-1 wali HttpSession
+available hi nahi hai,
+
+kyunki wo sirf Server-1 ki local memory
+me stored thi.
+
+Result:
+
+Server-2 ko lagega ki user login hi nahi hai.
+
+User ko dobara login karna pad sakta hai,
+ya request fail ho sakti hai.
+
+Isi wajah se Horizontal Scaling ke liye
+sirf multiple application instances deploy
+kar dena enough nahi hota.
+
+Application ko bhi horizontally scalable
+banana padta hai.
+
+
+## NOTE:
+---------
+Stateful vs Stateless Architecture ek separate topic hai, jise baad me detail me discuss karenge.
+
+
+
+## QUESTION : KAUNSA APPROACH CHOOSE KAREIN — HORIZONTAL YA VERTICAL SCALING?
+-------------------------------------------------------------------------------
+
+Is question ka koi universal answer nahi hai.
+
+Ye mainly following factors par depend karta hai:
+
+1. CURRENT TRAFFIC
+-------------------
+
+- Agar traffic abhi kam hai, to Vertical Scaling sufficient ho sakti hai.
+- Agar traffic bahut zyada hai, to Horizontal Scaling ki zarurat pad sakti hai.
+
+
+2. FUTURE TRAFFIC GROWTH
+--------------------------
+
+Agar expected hai ki users continuously increase honge,
+to Horizontal Scaling generally better option hoti hai.
+
+
+3. DOWNTIME TOLERANCE / HIGH AVAILABILITY
+---------------------------------------------
+
+- Agar application ko server upgrade ke time kuch downtime allow hai,
+  to Vertical Scaling consider ki ja sakti hai.
+
+- Lekin agar application ko continuously available rakhna hai —
+  to Horizontal Scaling generally preferred hoti hai, kyunki multiple
+  instances hone se ek instance down hone par bhi baaki traffic handle kar lete hain.
+
+
+4. BUDGET
+-----------
+
+- Kabhi-kabhi ek powerful server lena sasta pad sakta hai.
+
+- Kabhi multiple normal servers use karna better option hota hai.
+
+Ye infrastructure cost par depend karta hai.
+
+
+5. APPLICATION ARCHITECTURE
+-----------------------------
+
+- Kuch applications ko horizontally scale karna relatively easy hota hai.
+
+- Kuch applications ko horizontally scale karne ke liye additional changes karne padte hain.
+
+
+
+
+## QUESTION : KYA HORIZONTAL AND VERTICAL SCALING EK SAATH USE KIYE JA SAKTE HAIN ?
+--------------------------------------------------------------------------------------
+
+Yes.
+
+Production systems me aksar dono ka combination use hota hai:
+
+Vertical Scaling + Horizontal Scaling
+
+Example:
+
+Pehle server ko reasonably powerful banaya jaata hai (Vertical).
+Phir traffic badhne par multiple application instances deploy kiye jaate hain (Horizontal).
+
+
+## NOTE:
+---------
+
+Horizontal Scaling primarily application tier ki capacity badhata hai.
+
+Jab traffic aur badhta hai, to Database khud bottleneck ban sakta hai —
+uske liye alag se scaling chahiye hoti hai .
+
+Database Scaling ek separate topic hai, baad me discuss karenge.
+
+
+
+
+
+=================================================================================================================
 ## QUESTION : TOMCAT THREAD POOL KO HAMESHA KYUN NAHI BADHANA CHAHIYE ZYADA REQUESTS HANDLE KARNE KE LIYE? ?
------------------------------------------------------------------------------------------------------------------
+=================================================================================================================
 
 Suppose:
 
@@ -494,9 +742,10 @@ poora distributed system impact ho sakta hai.
 
 
 
--------------------------------------------------------------------------
+
+========================================================================
 ## QUESTION : KYA USERS BADHNE KA MATLAB HAMESHA SCALING ZARURI HAI ?
-------------------------------------------------------------------------
+========================================================================
 
 NAHI.
 
@@ -513,9 +762,9 @@ Kyunki actual load total users se nahi, concurrent users se decide hota hai.
 
 
 
-----------------------------------------------------------------------------------------
-## QUESTION : AGAR CPU 100% HAI, TO KYA SCALING SE PROBLEM HAMESHA SOLVE HO JAYEGI ?
-----------------------------------------------------------------------------------------
+==================================================================================================
+## QUESTION : AGAR JVM CPU USAGE 100% HAI, TO KYA SCALING SE PROBLEM HAMESHA SOLVE HO JAYEGI ?
+==================================================================================================
 
 Suppose application me infinite loop likh diya.
 
@@ -540,9 +789,9 @@ Uske baad scaling ka socho.
 
 
 
-----------------------------------------------------------------------
+======================================================================
 ## QUESTION : SABSE PEHLE KAUNSA RESOURCE BOTTLENECK BANTA HAI ?
-----------------------------------------------------------------------
+======================================================================
 
 Ye application par depend karta hai.
 
@@ -564,9 +813,9 @@ Iska koi universal answer nahi hai.
 
 
 
---------------------------------------------------------
+========================================================
 ## QUESTION : KYA HIGH CPU HAMESHA BURI BAAT HAI ?
---------------------------------------------------------
+========================================================
 
 NAHI.
 
@@ -587,279 +836,329 @@ Isliye CPU utilization alone decision nahi hota.
 
 
 
+==================================================================================
+## QUESTION : SCALING KA DECISION LENE SE PEHLE KAUNSE METRICS MONITOR KAROGE ?
+==================================================================================
 
+1. JVM CPU USAGE
+-----------------
 
+JVM process CPU ka kitna use kar raha hai.
 
--------------------------------------------------
-## HOW CAN WE HANDLE THE INCREASED WORKLOAD ?
--------------------------------------------------
+Continuously 90–100% → CPU bottleneck ho sakta hai.
 
-Ab tak humne dekha ki jaise-jaise application par traffic increase hota gaya,
-ek single server ke limited resources gradually exhaust hone lage.
+Note: Physical/virtual server ka CPU JVM ko "allocated" nahi hota —
+server par chalne wala OS apne saare processes (JVM, DB, OS services)
+ke beech share karta hai. Yahan hum JVM process ki CPU consumption
+dekh rahe hain.
 
-Result:
 
-        Existing Workload
 
-                >
+2. JVM RAM USAGE (HEAP USAGE)
+-------------------------------
 
-        Server Capacity
+JVM ko server ki total RAM ka ek fixed portion allocated hoti hai.
+Us portion me se ek hissa HEAP ka hota hai.
 
+Heap do values se control hoti hai:
 
-Question:
+    -Xms  → Initial heap size
+    -Xmx  → Maximum heap size
 
-Ab company ke paas kya options hain?
+Production me commonly -Xms aur -Xmx same rakhte hain, taaki runtime
+me heap grow karne ka overhead na ho.
 
-Generally do approaches available hoti hain.
+Heap kyun fill hoti hai?
 
+    More requests → JVM me zyada objects create honge
+        - Request / Response Objects
+        - Hibernate Entities
+        - Session Data
+        - JSON Serialization buffers
 
-## OPTION-1
-------------
+Heap frequently fill → JVM baar-baar GC run karti hai.
+GC ke kuch phases me application threads temporarily pause hote hain
+(Stop-The-World pauses) → response time increase.
 
-Existing server ke Hardware Resources ko increase kar do.
+Agar GC ke baad bhi heap insufficient rahe
+    → OutOfMemoryError: Java heap space.
 
-Example:
+Agar problem heap pressure ki hai, to -Xmx badha sakte hain.
+Lekin physical/virtual server ke paas enough RAM honi chahiye.
 
-CPU
 
-    2 Cores
 
-        ↓
+3. NETWORK UTILIZATION (SERVER NIC)
+-------------------------------------
 
-    16 Cores
+Network bandwidth ek physical/virtual server (NIC) level ka resource hai.
+JVM ko koi specific bandwidth allocate nahi hoti.
 
-RAM
+Application same NIC ka use karti hai jab:
 
-    4 GB
+    - Incoming requests aati hain (Client → Application)
+    - Outgoing calls jaati hain (Application → DB, Application → Downstream Services)
 
-        ↓
+Agar total traffic NIC ki capacity ke paas pahunch jaye, to packets
+queue hone lagte hain → latency increase hoti hai.
 
-    64 GB
 
-Network
 
-    1 Gbps
-
-        ↓
-
-    10 Gbps
-
-Yaani existing machine ko aur powerful bana diya.
-
-Is approach ko
-
-    Vertical Scaling (Scale Up)
-
-kehte hain.
-
-
-
-## OPTION-2
-------------
-
-Ek hi powerful server ko continuously upgrade karne ke bajay,
-
-application ke multiple instances different servers par deploy kar diye jaate hain.
-
-Example:
-
-Initially
-
-                Users
-                  |
-                  |
-                  v
-            ----------------
-            | Spring Boot  |
-            | Application  |
-            ----------------
-                  |
-                  v
-               Database
-
-
-
-After Scaling
-
-                   Users
-                      |
-                      |
-                      v
-               Load Balancer
-              /      |      \
-             /       |       \
-            v        v        v
-
-      SpringBoot SpringBoot SpringBoot
-        Server-1   Server-2   Server-3
-             \        |        /
-              \       |       /
-               --------|-------
-                      |
-                  Database
-
-
-Load Balancer incoming requests ko available application
-instances ke beech distribute karta hai.
-
-Is approach ko
-
-    Horizontal Scaling (Scale Out)
-
-kehte hain.
-
-
-## WHICH APPROACH SHOULD WE CHOOSE ?
---------------------------------------
-
-Is question ka koi universal answer nahi hai.
-
-Ye mainly following factors par depend karta hai:
-
-1. CURRENT TRAFFIC
--------------------
-Agar traffic abhi kam hai, to Vertical Scaling sufficient ho sakti hai.
-Agar traffic bahut zyada hai, to Horizontal Scaling ki zarurat pad sakti hai.
-
-
-2. FUTURE TRAFFIC GROWTH
---------------------------
-Agar expected hai ki users continuously increase honge,
-to Horizontal Scaling generally better option hoti hai.
-
-
-3. DOWNTIME TOLERANCE
------------------------
-Agar application ko server upgrade ke time kuch downtime allow hai,
-to Vertical Scaling consider ki ja sakti hai.
-
-Agar application ko continuously available rakhna hai,
-to Horizontal Scaling generally preferred hoti hai.
-
-
-4. BUDGET
------------
-Kabhi-kabhi ek powerful server lena sasta pad sakta hai.
-
-Kabhi multiple normal servers use karna better option hota hai.
-
-Ye infrastructure cost par depend karta hai.
-
-
-5. APPLICATION ARCHITECTURE
+4. DATABASE CPU UTILIZATION
 -----------------------------
 
-Kuch applications ko horizontally scale karna relatively easy hota hai.
+(Jab database alag server par deployed ho.)
 
-Kuch applications ko horizontally scale karne ke liye additional changes karne padte hain.
+Agar DB server ka CPU continuously high utilization par hai,
+to query execution time badh jaata hai.
 
+DB Server CPU high hone ke possible reasons:
 
-## WHY DOES THIS CREATE A PROBLEM IN HORIZONTAL SCALING?
----------------------------------------------------------
+    - Bahut zyada concurrent queries execute ho rahi hain,
+      possibly because DB Connection Pool size bahut zyada
+      badha diya gaya hai.
 
-Horizontal Scaling sirf multiple application instances
-deploy kar dene se complete nahi ho jaati.
+      Zyada concurrent DB connections active hone par DB server
+      ko zyada context switching karni padti hai. Isse DB server
+      apna significant time context switching me waste kar deta hai,
+      actual query instructions execute karne ke bajay.
 
-Suppose application ke multiple instances chal rahe hain.
+      Result: DB server CPU utilization high ho jaati hai.
 
-                   Load Balancer
-                  /      |      \
-                 /       |       \
-                v        v        v
+    - Heavy queries (large joins, sorting, aggregation)
 
-            Server-1  Server-2  Server-3
+    - Missing indexes ki wajah se full table scans
 
-User ne login kiya.
+    - Complex calculations / functions queries me
 
-Load Balancer ne login request
-
-    Server-1
-
-par bhej di.
-
-Server-1 ne HttpSession create ki aur
-user ka login session apni local memory (RAM)
-me store kar diya.
-
-Ab user ki next request aayi.
-
-Is baar Load Balancer ne request
-
-    Server-2
-
-ko forward kar di.
-
-Problem:
-
-Server-2 ke paas Server-1 wali HttpSession
-available hi nahi hai,
-
-kyunki wo sirf Server-1 ki local memory
-me stored thi.
+    - Poorly designed queries
 
 Result:
 
-Server-2 ko lagega ki user login hi nahi hai.
+    Query Execution Time increase ho jata hai.
 
-User ko dobara login karna pad sakta hai,
-ya request fail ho sakti hai (application implementation par depend karta hai).
+Aur kyunki application database ke response ka wait karti hai,
 
-Isi wajah se Horizontal Scaling ke liye
-sirf multiple application instances deploy
-kar dena enough nahi hota.
-
-Application ko bhi horizontally scalable
-banana padta hai.
-
-Common Solutions:
-
-    - Stateless Design (Most Preferred)
-    - External Session Store (Redis)
-    - Sticky Sessions (Less Preferred)
-
-
-6. HIGH AVAILABILITY REQUIREMENT
----------------------------------
-Agar ek server fail hone ke baad bhi application continuously
-chalti rehni chahiye, to Horizontal Scaling generally better choice hoti hai.
+Overall Application Response Time bhi increase ho jata hai.
 
 
 
-## CAN BOTH APPROACHES BE USED TOGETHER ?
--------------------------------------------
+5. DATABASE DISK I/O
+---------------------
 
-Yes.
+Database apna data disk (SSD/HDD) par store karta hai.
 
-Production systems me sirf Vertical ya sirf Horizontal
-Scaling use karna mandatory nahi hai.
+Disk I/O ka matlab hai — database kitni fast disk par read/write
+kar pa raha hai.
 
-Bahut saari companies dono approaches ka combination
-use karti hain.
+Agar disk par read/write operations bahut zyada ho jaayein,
+to database slow ho sakta hai.
 
-Example:
+Common reasons high disk I/O ke:
 
-Pehle server ko reasonably powerful banaya jaata hai
-(Vertical Scaling).
+    1. Bahut saare READ operations
 
-Uske baad traffic aur increase hone par multiple
-application instances deploy karke Horizontal Scaling
-ki jaati hai.
+       Agar required database page RAM ke Buffer Pool me available
+       nahi hai, to database ko wo page disk se RAM me load karna
+       padta hai. Kyunki disk RAM se bahut slow hai, overall
+       query execution time badh jaata hai.
 
-Yaani,
+    2. Bahut saare WRITE operations
 
-        Vertical Scaling
+       Har write (INSERT / UPDATE / DELETE) ke liye database
+       ko WAL / Redo Log disk par persist karna padta hai,
+       aur modified data pages ko bhi eventually disk par flush
+       karna padta hai. Zyada writes → zyada disk I/O → slow.
 
-                +
+    3. Missing indexes on frequently accessed queries
 
-        Horizontal Scaling
+       Index na hone par database full table scan karta hai,
+       jisme bahut zyada data pages read karne padte hain.
+       Isse disk I/O significantly badh jaata hai.
 
-ka combination bhi production environments me
-kaafi common hai.
 
 
-## NOTE:
+6. DATABASE CONNECTION POOL USAGE
+-----------------------------------
+
+Pool me kitne DB connections busy hain.
+
+Saare busy → requests connection ke liye wait karengi
+(Connection Timeout ho sakta hai).
+
+
+## CONNECTION POOL EXHAUSTION KE COMMON REASONS
+-------------------------------------------------
+
+a) SLOW QUERIES
+-----------------
+
+   Agar queries bahut slow hain (missing index, large joins,
+   poorly designed queries), to DB connections lambi der tak
+   occupied rehte hain.
+
+   Agar ek hi time par kai aisi requests aa jaayein jinki
+   queries slow hain, to wo saari connections lambi der tak
+   occupied rakh deti hain.
+
+   Agar ye situation continuously bani rahe, to pool me
+   available free connections kam ho jaate hain aur eventually
+   poori DB connection pool exhaust ho jaati hai.
+
+
+b) CONNECTION LEAK
+--------------------
+
+   Application DB connection lekar use close/release nahi karti
+   (jaise finally block me connection.close() missing).
+
+   Result:
+
+       Pool me free connections gradually kam hote jaate hain
+            ↓
+       Eventually saare connections borrowed state me atak jaate hain
+            ↓
+       Pool me koi available connection nahi bachta
+            ↓
+       Naye requests configured connection-timeout tak wait karte hain
+            ↓
+       Timeout cross hone par request FAIL ho jaati hai
+       (Connection Timeout)
+
+
+
+7. THREAD POOL USAGE
+---------------------
+
+   Kitne Tomcat worker threads currently busy hain.
+
+   Saare busy → naye requests queue me wait karti hain, aur
+   configured timeout ke baad wo requests fail ho jaati hain.
+
+   Important:
+
+   Worker threads badhane se pehle ye find out karna zaroori hai
+   ki threads itni der tak occupied kyun hain:
+
+       a) Kya genuinely high traffic volume ki wajah se hai?
+          → Is case me thread pool badhana valid ho sakta hai.
+
+       b) Ya koi blocking operation hai?
+          (jaise slow DB queries, slow downstream API calls, network latency , lock wait)
+          → Is case me sirf thread pool badhane se problem
+            aur badh sakti hai, kyunki wo bhi usi slow resource
+            ka wait karengi.
+
+   Isliye pehle root cause identify karo, phir decide karo
+   ki thread pool badhana hai ya actual bottleneck fix karna hai.
+
+
+
+8. REQUEST RATE (RPS)
+-----------------------
+
+Ek second me application par kitni requests aa rahi hain.
+
+Ye batata hai ki traffic increase ho raha hai ya nahi.
+
+
+
+9. RESPONSE TIME
+------------------
+
+Ek request ko complete hone me kitna time lag raha hai.
+
+Response time badh raha hai → system slow ho raha hai.
+
+Average alone misleading hota hai (slow requests chhup jaati hain).
+Isliye P95/P99 dekhte hain.
+
+
+- P95 LATENCY
+--------------
+
+95% requests is time ke andar complete ho rahi hain.
+
+Majority users ka experience.
+
+
+- P99 LATENCY
+---------------
+
+99% requests is time ke andar complete ho rahi hain.
+
+Worst-case user experience.
+
+
+## EXAMPLE
+-----------
+
+100 requests:
+
+    95 requests → 100 ms
+    4 requests  → 500 ms
+    1 request   → 5000 ms
+
+    Average = 165 ms   (normal lagta hai, lekin misleading)
+    P95     = 100 ms
+    P99     = 500 ms
+    Max     = 5000 ms
+
+
+
+10. ERROR RATE
+---------------
+
+Kitni requests fail ho rahi hain (4xx / 5xx).
+
+Error rate increase → system health ke liye warning sign.
+
+
+## NOTE
 ---------
 
-Horizontal Scaling primarily increases the capacity of the application tier.
-As traffic grows further, the database can also become a bottleneck and may need to be scaled.
-Database Scaling is a separate topic and will be discussed later.
+Ye metrics generally Monitoring Dashboards me monitor kiye jaate hain.
+
+Common tools:
+
+    - Prometheus + Grafana      (most common)
+    - AWS CloudWatch
+    - Datadog
+    - New Relic
+
+
+
+=============================================================================================================
+## QUESTION : AGAR APPLICATION KA RESPONSE TIME ACHANAK BADH JAYE, TO BOTTLENECK KAISE IDENTIFY KAROGE ? 
+=============================================================================================================
+
+Answer:
+
+I will not immediately assume that scaling is required. First, I will identify the actual bottleneck.
+
+Step 1:
+Check the monitoring dashboard and analyze:
+
+- JVM CPU usage
+- JVM HEAP usage
+- Network utilization 
+- DB CPU utilization
+- DB Connection pool utilization
+- DB disk I/O
+- Thread pool utilization
+- Request rate (RPS)
+- Response Time (P95/P99)
+- Error Rate
+
+Step 2:
+
+Based on these metrics, identify which resource is saturated.
+
+Step 3:
+
+If the bottleneck is still not clear, analyze:
+
+- Application Logs
+- Thread Dumps (if required)
+
+After identifying the root cause, I will decide whether the problem can be solved by code optimization, configuration tuning, or scaling.
