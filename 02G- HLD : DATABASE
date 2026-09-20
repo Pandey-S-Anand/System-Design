@@ -6901,12 +6901,35 @@ isse query execution time increase ho jaata hai.
 7. DISK I/O BOTTLENECK
 ------------------------
 
-Database apna data disk (SSD/HDD) par store karta hai. Jab required
-data page Buffer Pool (RAM) me nahi milta, to disk se load karna
-padta hai. 
+Database apna data disk (SSD/HDD) par store karta hai.
 
-Agar disk already busy ho (bahut saare concurrent queries disk access
-kar rahe hon), to I/O operations queue hone lagte hain.
+Disk I/O ka matlab hai — database kitni fast disk par read/write
+kar pa raha hai.
+
+Agar disk par read/write operations bahut zyada ho jaayein,
+to database slow ho sakta hai.
+
+Common reasons high disk I/O ke:
+
+    1. Bahut saare READ operations
+
+       Agar required database page RAM ke Buffer Pool me available
+       nahi hai, to database ko wo page disk se RAM me load karna
+       padta hai. Kyunki disk RAM se bahut slow hai, overall
+       query execution time badh jaata hai.
+
+    2. Bahut saare WRITE operations
+
+       Har write (INSERT / UPDATE / DELETE) ke liye database
+       ko WAL / Redo Log disk par persist karna padta hai,
+       aur modified data pages ko bhi eventually disk par flush
+       karna padta hai. Zyada writes → zyada disk I/O → slow.
+
+    3. Missing indexes on frequently accessed queries
+
+       Index na hone par database full table scan karta hai,
+       jisme bahut zyada data pages read karne padte hain.
+       Isse disk I/O significantly badh jaata hai.
 
 
 
