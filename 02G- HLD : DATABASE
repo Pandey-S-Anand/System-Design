@@ -6863,13 +6863,14 @@ to query execution time badh jaata hai.
 DB Server CPU high hone ke possible reasons:
 
     - Bahut zyada concurrent queries execute ho rahi hain
-    - Connection pool size bahut zyada badha diya gaya hai,
-      jisse database server par zyada concurrent connections
+      possibly because ki DB Connection pool size bahut zyada badha diya gaya hai,
+      jisse database server par zyada concurrent DB connections
       active hote hain, zyada context switching hoti hai,
       aur CPU utilization high ho jaati hai
     - Heavy queries (large joins, sorting, aggregation)
     - Missing indexes ki wajah se full table scans
     - Complex calculations / functions queries me
+    - Poorly designed queries
 
 Result:
 
@@ -6881,19 +6882,19 @@ Overall Application Response Time bhi increase ho jata hai.
 
 
 
-6. MEMORY PRESSURE
-----------------------
+6. MEMORY / RAM PRESSURE ON DATABASE SERVER
+---------------------------------------------
 
-   Database frequently accessed data ko RAM me cache karta hai
-   (in the form of database pages), taaki read/write operations
-   fast ho sakein.
+Database frequently accessed data pages ko RAM me cache karta hai
+(Buffer Pool me), taaki read/write operations fast ho sakein.
 
-   Agar RAM kam pad jaye, to database ko required data pages
-   disk se wapas RAM me load karna padta hai, taaki us page par
-   read/write operation perform kiya ja sake.
+Agar Buffer Pool me required data page available nahi hota
+(i.e. RAM pressure ki wajah se page evict ho chuka hai),
+to database ko wo page disk se wapas RAM me load karna padta hai,
+taaki us page par read/write operation perform kiya ja sake.
 
-   Since disk RAM ke comparison me bahut slow hota hai,
-   isse query execution time increase ho jaata hai.
+Kyunki disk (SSD/HDD) RAM ke comparison me bahut slow hota hai,
+isse query execution time increase ho jaata hai.
 
 
 
