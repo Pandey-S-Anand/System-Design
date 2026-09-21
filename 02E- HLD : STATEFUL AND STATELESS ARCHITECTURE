@@ -1126,9 +1126,9 @@ hai — Request reject kar di jaati hai.
 
 
 
-------------------------------------------------------------------------------------------------
-## QUESTION : QUESTION : SPRING BOOT ME COMPLETE JWT AUTHENTICATION FLOW KAISE KAAM KARTA HAI?
-------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+## QUESTION : SPRING BOOT ME COMPLETE JWT AUTHENTICATION FLOW KAISE KAAM KARTA HAI?
+---------------------------------------------------------------------------------------
 
 Suppose humare paas ek Spring Boot application hai
 jo JWT-based authentication use karti hai.
@@ -1588,445 +1588,203 @@ Controller us result ko HTTP Response ke form me client ko return kar deta hai.
 
 
 
+----------------------------------------------
+## QUESTION : ACCESS TOKEN vs REFRESH TOKEN ?
+----------------------------------------------
 
+Agar JWT ko 30 days ka rakhein, to user ko baar-baar login nahi karna padega — convenient hai.
+Lekin agar token leak/stolen ho gaya, to attacker usse 30 days tak misuse kar sakta hai. Security risk hai.
 
-
-
-
-
-## 7. ACCESS TOKEN vs REFRESH TOKEN ?
----------------------------------------
-
-Ab ek practical problem aati hai:
-
-JWT ki expiry kitni rakhein?
-
-Maan lo humne JWT ko:
-
-    Expiration = 30 Days
-
-rakh diya.
-
-To user ko 30 din tak baar-baar login nahi karna padega.
-
-Convenient hai.
-
-Lekin isme ek security concern hai.
-
-Suppose JWT leak / stolen ho gaya aur kisi attacker ke
-haath lag gaya.
-
-Attacker potentially us token ka 30 days tak misuse kar sakta hai,
-jab tak token expire ya otherwise invalidate na ho.
-
-
-Ab hum soch sakte hain:
-
-"Theek hai, JWT ko 30 days ka mat rakho.
-Sirf 15 minutes ka rakho."
-
-    JWT Expiration = 15 minutes
-
-Security better ho gayi.
-
-Agar token leak bhi ho gaya, to theoretically attacker ke paas
-limited validity window hogi.
-
-Lekin ab ek nayi problem aati hai.
-
-Agar JWT ko bahut short-lived bana diya:
-
-    JWT Expiration = 5 minutes
-
-to user ko har 5 minutes ke baad dobara
-username + password se login karna padega.
-
-Ye poor user experience hoga.
-
-
-## TOH HUME ACTUALLY KYA CHAHIYE?
----------------------------------
+Agar JWT ko 5 minutes ka rakhein, to security better ho jaati hai — stolen token ka misuse window bahut chhota ho jaata hai.
+Lekin ab user ko har 5 minutes ke baad dobara username/password daal kar login karna padega. Poor user experience.
 
 Hume aisa mechanism chahiye jisme:
 
-    - Security better rahe.
-    - User experience bhi achha ho. i.e. User ko baar-baar Username + Password se login na karna pade.
-
-Isi problem ko solve karne ke liye commonly:
-
-    Access Token
-          +
-    Refresh Token
-
-use kiye jaate hain.
+    - Security better rahe (stolen token ka misuse limited ho, i.e., token ki validity window kam rahe)
+    - User experience bhi achha ho. (user ko baar-baar login na karna pade)
 
 
-Login ke time authentication successful hone ke baad,
-application generally do tokens issue kar sakti hai:
+## SOLUTION :
+---------------
 
-    Username + Password
-            ↓
-      Authentication
-            ↓
-          SUCCESS
-            ↓
-      ┌─────┴─────┐
-      ↓           ↓
-Access Token   Refresh Token
+Ek hi JWT se dono achieve karna possible nahi. Isliye do tokens use kiye jaate hain:
 
-Dono tokens ka purpose different hota hai.
+Login ke time authentication successful hone ke baad application do tokens issue karti hai:
+
+Access Token + Refresh Token
 
 
-## 1. ACCESS TOKEN
-------------------
 
-Access Token ka primary purpose hai:
+### QUESTION : ACCESS TOKEN KYA HAI ?
+---------------------------------------
 
-    Protected APIs / Resources ko access karna.
+Access Token ka primary purpose hai Protected APIs/Resources ko access karna.
 
 Client API request ke saath Access Token bhejta hai:
 
-    GET /api/orders
+GET /api/orders
+Authorization: Bearer <ACCESS_TOKEN>
 
-    Authorization: Bearer <ACCESS_TOKEN>
+Application usse verify karke Authentication → Authorization perform karti hai, aur phir Allow/Reject decide karti hai.
 
+#### IMPORTANT : 
+-----------------
 
-Application:
-
-    Access Token
-         ↓
-       Verify
-         ↓
-    Authentication
-         ↓
-    Authorization
-         ↓
-    Allow / Reject
+Access Token generally short-lived rakha jata hai — jaise 5, 15, ya 30 minutes. Exact duration application ki security requirements par depend karti hai.
 
 
-## IMPORTANT:
 
-Access Token generally short-lived rakha jata hai.
+### QUESTION : REFRESH TOKEN KYA HAI ?
+----------------------------------------
 
-Example:
-
-    5 minutes
-    15 minutes
-    30 minutes
-
-Exact duration application ki security requirements
-par depend karti hai.
+Refresh Token ka use normal business APIs access karne ke liye nahi hota. 
+Iska primary purpose hai — Access Token expire hone ke baad naya Access Token obtain karna.
 
 
-## 2. REFRESH TOKEN
--------------------
+#### FLOW :
+------------
 
-Refresh Token ka use normal business APIs
-access karne ke liye nahi hota.
+Access Token Expired
+↓
+Client Refresh Token ko designated token endpoint par bhejta hai
+↓
+Application Refresh Token validate karti hai
+↓
+Naya Access Token issue hota hai
 
-Iska primary purpose hai:
-
-    Current Access Token expire hone ke baad
-    ek naya Access Token obtain karna.
-
-Example:
-
-    Access Token
-         ↓
-    Expires after 15 minutes
-
-Client ke paas ab bhi:
-
-    Refresh Token
-
-available hai.
-
-Client Refresh Token ko application/service ke designated token endpoint par bhejta hai.
-
-Application:
-
-    Refresh Token
-         ↓
-       Validate
-         ↓
-    Validation Successful
-         ↓
-    Issue New Access Token
+Is process me user ko dobara username/password se login nahi karna padta.
 
 
-Is process me user ko dobara:
-
-    Username + Password
-
-provide karke login nahi karna padta.
+Agar Refresh Token bhi expire ho gaya, to naya Access Token obtain nahi kiya ja sakta — user ko dobara login karna padega.
+Yaani Refresh Token longer-lived login experience deta hai, lekin indefinitely valid nahi hota.
 
 
-## IMPORTANT:
--------------
+#### IMPORTANT : 
+-----------------
 
-Refresh Token generally Access Token se
-longer-lived hota hai.
+- Refresh Token generally Access Token se longer-lived hota hai:
 
-Example:
+  Example:
 
-    Access Token   → 15 minutes
-    Refresh Token  → 30 days
+   Access Token → 15 minutes
+   Refresh Token → 30 days
 
-
-Agar Refresh Token bhi expire ho gaya, to uske basis par naya Access Token obtain nahi kiya ja sakta.
-
-Is case me user ko dobara login karke authenticate karna pad sakta hai, jiske baad application new Access Token aur Refresh Token issue karegi.
-
-Yaani Refresh Token user ko longer-lived login experience provide karta hai, lekin ye indefinitely valid nahi hota.
+- Access Token aur Refresh Token dono ka JWT hona mandatory nahi hai — dono kuch bhi ho sakte hain (JWT ya opaque token).
+  Lekin practically Access Token generally JWT hota hai and Refresh Token commonly opaque hota hai 
 
 
-## NOTE:
-----------
 
-Access Token aur Refresh Token dono ka
-JWT hona mandatory nahi hai.
-
-For example:
-
-    Access Token  → JWT
-    Refresh Token → Opaque Random Token
-
-Ye ek perfectly valid architecture hai.
-
-
-## REFRESH TOKEN SE NEW ACCESS TOKEN KAISE MILTA HAI ?
--------------------------------------------------------
+### QUESTION : REFRESH TOKEN SE NEW ACCESS TOKEN KAISE MILTA HAI ?
+----------------------------------------------------------------------
 
 Suppose:
 
-    Access Token Expiry    = 1 hour
-    Refresh Token Expiry   = 30 days
+Access Token Expiry = 1 hour
+Refresh Token Expiry = 30 days
 
-User login karta hai aur successful authentication ke baad
-client ko backend application se:
+User login karta hai, aur successful authentication ke baad client ko backend se 
+Access Token + Refresh Token milta hai. Client dono tokens ko securely store karta 
+hai aur Access Token ko subsequent API requests me use karta hai.
 
-    Access Token
-    +
-    Refresh Token
+Refresh Token khud automatically naya Access Token generate nahi karta. Client me 
+logic implement kiya jaata hai jo decide karta hai ki naya Access Token kab obtain 
+karna hai.
 
-milta hai.
+Client 2 situations me Refresh Token se naya Access Token obtain kar sakta hai:
 
-Client in dono tokens ko securely store karta hai aur
-Access Token ko subsequent API requests me use karta hai.
+- Approach 1: Jab Access Token expire hone wala ho (expiry se pehle).
+              Is approach me Access Token expire hone se pehle hi new Access Token
+              client ko available ho jata hai, isliye API requests me interruption nahi hota.
 
+- Approach 2: Jab Access Token expire hone ke baad pehli request aaye 
+              (401 Unauthorized milne par)
 
-## NOTE:
---------
-
-Client = woh application/software jo User ki taraf se backend ko HTTP requests bhejta hai.
-
-      User
-        ↓
-Frontend / Browser / Mobile App / Postman / Another Backend Service
-        ↓
-     HTTP Request
-        ↓
-Backend Application
-
-
-Refresh Token khud automatically new Access Token generate nahi karta. 
-Client me logic implement kiya ja sakta hai jo Access Token ki expiry ko track kare aur expiry hone wali ho to 
-Refresh Token ka use karke Backend ke designated token endpoint se new Access Token obtain kare.
-
-Example:
-
-    Refresh Token
-          ↓
-    Backend Token Endpoint
-          ↓
-    Backend validates Refresh Token
-          ↓
-    Backend issues New Access Token
-          ↓
-    Backend returns New Access Token
-          ↓
-    Client receives New Access Token
-          ↓
-    Client stores/uses New Access Token
-
-
-## WHEN IS THE NEW ACCESS TOKEN OBTAINED?
-------------------------------------------
-
-Ye Client ke implementation par depend karta hai.
-
-
-### APPROACH 1: BEFORE ACCESS TOKEN EXPIRY
-------------------------------------------
-
-Client Access Token ki expiry ko track kar sakta hai.
-
-For example:
-
-    Access Token Expiry = 1 hour
-
-Client Access Token ki expiry se kuch time pehle Refresh Token ka use karke new Access Token obtain kar sakta hai, 
-taaki Access Token expire hone se pehle hi new token available ho.
-
-
-Example:
-
-    10:00 AM → Access Token issued
-    11:00 AM → Access Token expires
-
-    10:55 AM → Client Refresh Token ke through
-               Backend ke designated token endpoint
-               ko request bhejta hai.
-
-    Backend → New Access Token issue karta hai.
-
-Is approach me Access Token expire hone se pehle hi new Access Token client ko available ho jata hai, isliye API requests me interruption nahi hota.
-
-
-## NOTE:
-----------
-
-Refresh Token se new Access Token issue hone par
-purana Access Token automatically invalidate hona mandatory nahi hai.
-
-Agar purane Access Token ki expiry abhi baaki hai aur
-application ke paas token revocation mechanism nahi hai,
-to old aur new Access Token kuch time ke liye simultaneously valid
-ho sakte hain.
-
-Old Access Token normally apni expiry tak valid reh sakta hai.
-
-Agar application token revocation / rotation mechanism use karti hai,
-to old token ko explicitly invalidate kiya ja sakta hai.
-
-
-### APPROACH 2: AFTER ACCESS TOKEN EXPIRY
-----------------------------------------
-
-Another common approach me Client pehle Access Token ke
-saath API request bhejta hai.
-
-Agar Access Token expire ho chuka hai:
-
-    API Request
-         ↓
-    Access Token Expired
-         ↓
-    401 Unauthorized
-         ↓
-    Client Refresh Token use karta hai
-         ↓
-    Client Backend ke designated token endpoint par
-    refresh request bhejta hai
-         ↓
-    Backend Refresh Token ko validate karta hai
-         ↓
-    Refresh Token valid hai
-         ↓
-    Backend new Access Token issue karta hai
-         ↓
-    Backend new Access Token Client ko return karta hai
-         ↓
-    Client new Access Token receive karta hai
-         ↓
-    Original API request retry ki ja sakti hai
+Dono cases me client Backend ke designated token endpoint par Refresh Token bhejta 
+hai, application us Refresh Token ko validate karti hai, aur successful validation 
+ke baad naya Access Token obtain karta hai, aur usse apne side store kar leta hai.
 
 
 
-## 8. JWT STORAGE & SECURITY
-------------------------------
+#### NOTE : 
+------------
 
+Refresh Token se naya Access Token issue hone par purana Access Token automatically invalidate nahi hota.
+
+Agar purane token ki expiry abhi baaki hai, to wo apni expiry tak valid rehta hai — aur naya token bhi valid
+hota hai (dono kuch time ke liye simultaneously valid).
+
+Agar application revocation mechanism use karti hai, to old token ko explicitly invalidate kiya ja sakta hai.
+
+
+
+
+
+---------------------------------------------------------
 ## QUESTION: JWT KO CLIENT SIDE PAR KAHAN STORE KAREIN?
 ---------------------------------------------------------
 
-JWT client side par maintain kiya jata hai, taaki subsequent
-authenticated requests me client JWT ko server ko bhej sake.
-
-Do common approaches hain:
+JWT client side par store kiya jata hai, taaki subsequent requests
+me server ko bheja ja sake. Do common approaches hain:
 
 
-## 1. localStorage
-------------------
+1. BROWSER LOCAL STORAGE
+--------------------------
 
-Browser JWT ko localStorage me store kar sakta hai.
-
-JavaScript is token ko read kar sakti hai.
-
-Example:
-
-    localStorage.getItem("accessToken")
-
+Browser JWT ko localStorage me store kar sakta hai, aur JavaScript usse read kar sakti hai.
 
 Agar application me Cross-Site Scripting (XSS) vulnerability
 aa gayi aur attacker JavaScript execute karwa paya, to malicious
 JavaScript localStorage se JWT read kar sakti hai.
 
 
-## WHAT IS XSS (CROSS-SITE SCRIPTING)?
----------------------------------------
+### QUESTION : WHAT IS XSS (CROSS-SITE SCRIPTING) ?
+----------------------------------------------------
 
-XSS me attacker application ke page ke andar malicious JavaScript
-inject/execute karwane me successful ho jata hai.
+XSS me attacker application ke web page me malicious JavaScript execute 
+karwane me successful ho jata hai.
 
-Ye malicious JavaScript victim ke browser me run hoti hai aur
-browser me accessible data, jaise localStorage me stored JWT,
-read karke attacker ko bhej sakti hai.
+Ye malicious JavaScript victim ke browser me run hoti hai aur browser me 
+accessible data (jaise localStorage me stored JWT) read karke attacker ko 
+bhej sakti hai.
 
-Isliye sensitive authentication tokens ko localStorage me
-store karne se XSS ke case me token theft ka risk ho sakta hai.
+Isliye sensitive tokens ko localStorage me store karne se XSS ke case me 
+token theft ka risk hota hai.
+
+
+
 
 
 ## 2. HttpOnly Cookie
----------------------
+-----------------------
 
 JWT ko browser ke HttpOnly Cookie me store kiya ja sakta hai.
 
-
-### WHAT IS COOKIE?
--------------------
-
-Cookie browser me stored chhota sa data hota hai jo browser
-matching HTTP requests ke saath automatically Backend ko bhej
-sakta hai.
-
-
-### WHAT IS HttpOnly COOKIE?
-----------------------------
+Cookie ek chhota data (key-value pair) hota hai jo browser apne storage me rakhta hai, aur matching HTTP requests ke saath automatically Backend ko bhej deta hai.
 
 HttpOnly Cookie = Cookie + HttpOnly attribute.
 
-Example:
+Set-Cookie:
+accessToken=<JWT>;
+HttpOnly;
+Secure;
+SameSite=Lax;
 
-    Set-Cookie:
-        accessToken=<JWT>;
-        HttpOnly;
-        Secure;
-        SameSite=Lax;
+
+JWT ko browser ke HttpOnly Cookie me store kiya ja sakta hai.
 
 
 ### 2.1 HttpOnly
 ----------------
 
-Ye attribute browser ko instruct karta hai ki
-JavaScript is cookie ko directly read nahi kar sakti.
+Ye attribute browser ko instruct karta hai ki JavaScript is cookie ko directly read nahi kar sakti.
 
-Isliye agar application me XSS vulnerability aa bhi jaye,
-to malicious JavaScript HttpOnly cookie ko directly
-read karke JWT steal nahi kar sakti.
-
-    HttpOnly Cookie
-          ↓
-    JavaScript cannot directly read the cookie
+Isliye agar application me XSS vulnerability aa bhi jaye, to malicious JavaScript HttpOnly cookie ko read karke JWT steal nahi kar sakti.
 
 
 ### 2.2 Secure
 --------------
 
-Ye attribute browser ko instruct karta hai ki
-cookie ko sirf HTTPS requests ke saath send kiya jaye.
-
-Isse JWT ko insecure HTTP connection par transmit hone
-se protect karne me help milti hai.
+Secure attribute browser ko instruct karta hai ki cookie sirf HTTPS requests ke saath bheji jaaye — insecure HTTP par transmit nahi hogi.
 
 
 ### 2.3 SameSite
@@ -2037,8 +1795,8 @@ cross-site requests ke saath cookie bhej sakta hai
 ya nahi.
 
 
-### WHAT IS A "SITE"?
---------------------
+#### SAME-SITE  vs CROSS-SITE :
+---------------------------------
 
 Browser ke perspective se site mainly domain context ko refer karti hai.
 
@@ -2058,38 +1816,28 @@ Jabki:
 Ye different sites hain.
 
 
-### WHAT IS A CROSS-SITE REQUEST?
----------------------------------
-
-Suppose user logged in hai:
-
-    https://mybank.com
-
-Browser ke paas mybank.com ki ek cookie stored hai,
-jisme access token (JWT) hai:
-
-    accessToken=ABC123
+Cross-site request = Request FROM ek site se aati hai aur TO doosri site par jaati hai.
 
 
-Ab user another website open karta hai:
+#### QUESTION :  CSRF (Cross-Site Request Forgery) KYA HAI?
+---------------------------------------------------------------
 
-    https://evil.com
+CSRF (Cross-Site Request Forgery) me attacker victim ke
+browser se target application, for example bank.com, par
+unwanted request bhejwane ki koshish karta hai.
 
+Suppose user mybank.com par logged in hai. Browser ke paas mybank.com ki ek cookie stored hai (jisme JWT hai).
 
-Malicious website ke andar attacker malicious HTML /
-JavaScript code rakh sakta hai.
+Ab user kisi doosri website — maan lo evil.com — ko open karta hai.
 
-User jaise hi evil.com open karta hai,
-malicious website ka code user ke browser se
-mybank.com ke kisi endpoint par request
-trigger karne ki koshish kar sakta hai:
+Attacker evil.com ke page me malicious HTML/JavaScript code daal deta hai. Jaise hi user evil.com open karta hai, 
+wo code automatically user ke browser se mybank.com ke kisi endpoint par request trigger karne ki koshish karta hai:
 
-    evil.com
-        |
-        | POST https://mybank.com/api/transfer
-        ↓
-    mybank.com
+evil.com → POST mybank.com/api/transfer
 
+Ab dhyan do — browser request ke saath mybank.com ki cookie automatically bhej deta hai (kyunki ye mybank.com ke liye hai).
+
+Matlab mybank.com ko lagega ki ye request genuine user ne bheji hai — aur wo transfer execute kar dega. Jabki user ne kuch bhi nahi kiya.
 
 Ye cross-site request hai.
 
@@ -2099,99 +1847,49 @@ Kyunki request:
     TO   → mybank.com
 
 Aur:
-
     evil.com ≠ mybank.com
 
 
-### IMPORTANT:
---------------
 
-Bank API ka koi visible link user ko dikhna
-zaroori nahi hai.
-
-Attacker evil.com ke page ke andar code likh sakta hai
-jo page load hote hi victim ke browser se
-target bank endpoint par request trigger karne
-ki koshish kare.
-
-CSRF (Cross-Site Request Forgery) me attacker victim ke
-browser se target application, for example bank.com, par
-unwanted request bhejwane ki koshish karta hai.
+#### QUESTION : SameSite ISKO KAISE ROKTA HAI?
+-------------------------------------------------
 
 SameSite cross-site requests ke saath cookies bhejne ko
 restrict karke CSRF risk ko reduce karta hai.
 
 
-### HOW DOES SameSite CONTROL THIS?
-------------------------------------
+##### SameSite = Strict
+--------------------------
 
-Kya browser is cross-site request ke saath
-mybank.com ki cookie automatically bheje?
-
-SameSite attribute isi behaviour ko control karta hai.
+- Sabse restrictive option. 
+- Browser cross-site context me cookie send nahi karta.
 
 
-### SameSite=Strict
--------------------
 
-Sabse restrictive option.
+##### SameSite = Lax
+----------------------
 
-Browser cross-site context me cookie send nahi karta.
-
-    Same-site request  → Cookie ✅
-    Cross-site request → Cookie ❌
-
-
-### SameSite=Lax
-----------------
-
-Ye Strict se thoda relaxed option hai.
-
-Cross-site requests me cookie generally restricted hoti hai.
-
-Lekin kuch safe / top-level navigation scenarios me
-cookie send ki ja sakti hai.
-
-Top-level navigation ka simple meaning:
-
-    User kisi website par hai
-            ↓
-    User ek normal link par click karta hai
-            ↓
-    Browser ka main page doosri website par open hota hai
+- Strict se thoda relaxed.
+- Cross-site API requests me cookie nahi bhejta,  lekin safe top-level navigation (user kisi link par click kare) me bhej deta hai.
 
 Example:
 
-    evil.com
-        |
-        | User clicks "Go to mybank.com"
-        ↓
-    mybank.com
+    evil.com internally automatically calls mybank.com/api/transfer
+        → Cookie nahi bhejta ❌
+
+    evil.com → User clicks "Go to mybank.com"
+        → Cookie bhejta hai ✅
+
+Isliye Lax ko commonly balanced option maana jata hai.
 
 
-Lekin agar evil.com se directly background/API request
-bheji ja rahi ho:
-
-    evil.com
-        |
-        | POST mybank.com/api/transfer
-        ↓
-    mybank.com
-
-to SameSite=Lax generally cookie cross-site API request
-ke saath nahi bhejta.
-
-Lax ko commonly balanced option maana jata hai.
-
-
-### SameSite=None
------------------
+### SameSite = None
+---------------------
 
 Ye attribute browser ko cross-site requests ke saath
 bhi cookie send karne ki permission deta hai.
 
-SameSite=None use karne par Secure attribute bhi required hota hai.
+SameSite = None use karne par Secure attribute bhi required hota hai.
 
-    SameSite=None
-          +
-       Secure
+
+
