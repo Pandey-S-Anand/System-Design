@@ -686,9 +686,9 @@ session shared state maintain kar sakti hai.
 
 
 
-=============================================================
-# QUESTION : QUESTION : STATELESS AUTHENTICATION KYA HAI?
-=============================================================
+==================================================
+# QUESTION  : STATELESS AUTHENTICATION KYA HAI?
+==================================================
 
 External Session Store (Redis) distributed environment me HttpSession manage karne ki problem solve karta hai.
 Lekin Redis use karne ke baad bhi application ko user ki session state server-side maintain karni pad rahi hai.
