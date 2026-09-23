@@ -579,35 +579,234 @@ OSI layer ke basis par Load Balancers mainly 2 types ke hote hain:
 2. L7 Load Balancer (Application Layer)
 
 
+
 1: L4 LOAD BALANCER (TRANSPORT LAYER)
 ---------------------------------------
 
 L4 LB OSI model ke Transport Layer (Layer 4) par kaam karta hai.
 
-Ye sirf IP Address aur Port Number dekh sakta hai. Uske aage ka content (URL, Headers, Body) usse dikhta hi nahi.
+Ye sirf IP Address aur Port Number dekh sakta hai.
 
-Example :
+
+### QUESTION : KYA L4 LB NAHI DEKH SAKTA ?
+---------------------------------------------
+
+- URL kya hai? (/api/users ya /api/orders)
+- HTTP method kya hai? (GET, POST, DELETE)
+- Headers me kya hai? (JWT token, cookies)
+- Body me kya hai?
+
+
+### QUESTION : KYA L4 LB KAISE KAAM KARTA HAI ?
+-------------------------------------------------
 
 Suppose tumhare paas 3 servers hain:
 
-  Server A → 10.0.0.1:8080
-  Server B → 10.0.0.2:8080
-  Server C → 10.0.0.3:8080
+    Server A → 10.0.0.1:8080
+    Server B → 10.0.0.2:8080
+    Server C → 10.0.0.3:8080
+
+LB ka public IP: 1.2.3.4
+Port → 443    (HTTPS traffic ke liye)
+
+
+### FINAL FLOW :
+-----------------
+
+1 - Client and LB ke beech TCP 3 way handshake hota hai, ye sucessfull hone ke
+    baad Client aur LB ke beech TCP connection establish ho jata hai.
+
+2 - Client apna TLS ClientHello bhejta hai (ye bytes hain — TLS handshake ka pehla message).
+    LB inhe padh NAHI sakta — usse sirf Source/Destination IP aur Port dikhta hai.
+
+3 - LB apne algorithm (Round Robin / Least Conn / etc.) ke basis par
+    decide karta hai — "Ye request Server B ko bhej dete hain."
+
+4-  LB aur Server B ke beech TCP 3 way handshake hota hai, ye successful hone ke 
+    baad LB aur Server B ke beech ek naya TCP connection establish ho jaata hai.
+
+5-  LB wahi encrypted TLS ClientHello bytes Server B ko forward
+    kar deta hai (SSL Passthrough — bina decrypt kiye).
+
+6-  Server B apna TLS ServerHello (ClientHello ka response)
+    aur Certificate bhejta hai. Ye TLS handshake messages hain
+    TLS 1.2 me plaintext hote hain. Lekin L4 LB inhe inspect
+    nahi karta — bas bytes forward kar deta hai.
+
+    ⚠️ IMPORTANT:
+
+    - TLS 1.2 me ServerHello + Certificate dono plaintext hote hain.
+    - TLS 1.3 me sirf ServerHello plaintext hota hai, Certificate encrypted hota hai.
+    - Lekin L4 LB ke liye ye baat matter nahi karti — wo bas bytes forward karta hai.
+
+7- Ab TLS session established ho gaya — Client aur Server B ke beech (end-to-end).
+
+    ⚠️ IMPORTANT:
+        - LB is TLS handshake me participate NAHI karta.
+        - LB bas encrypted bytes idhar se udhar forward kar raha tha.
+
+8-  Client encrypted HTTPS request bhejta hai (HTTPS = HTTP + TLS; HTTP request TLS ke through encrypted hai) LB ko
+    LB wahi encrypted bytes Server B ko forward kar deta hai.
+    Server B decrypt karta hai, process karta hai.
+
+9-  Server B encrypted HTTPS response bhejta hai.
+    LB wahi bytes Client ko forward kar deta hai.
+    Client decrypt karta hai.
+
+
+### IMPORTANT POINT :
+-----------------------
+
+1. Client ↔ LB    →  Sirf TCP handshake
+2. LB ↔ Server B  →  Sirf TCP handshake
+3. Client ↔ Server B  →  TLS handshake (end-to-end)
+4. HTTPS request →  Client Server B ko bhejta hai (encrypted),
+                    LB sirf forward karta hai
+
+LB ek dumb pipe ki tarah kaam karta hai — bytes ko aage bhejta hai,
+par unhe samajhta nahi, decrypt nahi karta.Isi ko SSL Passthrough kehte hain.
 
 
 
-Iska matlab hai ki ye sirf ye cheezein dekhta hai:
+2: L7 LOAD BALANCER (Application Layer)
+-----------------------------------------
 
-    - Source IP
-    - Source Port
-    - Destination IP
-    - Destination Port
-    - Protocol (TCP / UDP)
+L7 LB OSI model ke Application Layer (Layer 7) par kaam karta hai.
 
 
+### QUESTION : L7 LB KYA DEKH SAKTA HAI ?
+--------------------------------------------
+
+L7 LB poori HTTP/HTTPS request padh sakta hai. Usse ye sab dikhta hai:
+
+- IP Address       (Source IP, Destination IP)
+- Port Number      (Source Port, Destination Port)
+- URL kya hai?     (/api/users ya /api/orders)
+- HTTP method?     (GET, POST, DELETE)
+- Headers me kya?  (JWT token, cookies, content-type)
+- Body me kya hai?
+- Host kya hai?    (myapp.com, admin.myapp.com)
+- Cookies          (JSESSIONID, AWSALB, etc.)
+
+
+⚠️ IMPORTANT:
+
+OSI layers nested hoti hain — Layer 7 tak pahunchne ke liye
+data Layer 4 se hoke guzarta hai. Isliye L7 LB ko IP aur Port ki
+information bhi already available hoti hai.
 
 
 
+### QUESTION : L7 LB KAISE KAAM KARTA HAI ?
+---------------------------------------------
+
+Suppose tumhare paas ek **User Service** hai, aur uske multiple
+instances different servers par run kar rahe hain:
+
+    Server A → User Service Instance 1 → 10.0.0.1:8080
+    Server B → User Service Instance 2 → 10.0.0.2:8080
+    Server C → User Service Instance 3 → 10.0.0.3:8080
+
+
+LB ka public IP: 1.2.3.4
+Port → 443    (HTTPS traffic ke liye)
+
+
+### FINAL FLOW :
+-----------------
+
+1 - Client aur LB ke beech TCP 3-way handshake hota hai. Successful
+    hone ke baad Client aur LB ke beech TCP connection establish
+    ho jaata hai.
+
+2 - Ab Client TLS handshake initiate karta hai LB ke saath.
+    Iske liye Client sabse pehla TLS handshake message — TLS ClientHello —
+    LB ko bhejta hai, taaki HTTPS connection establish kiya ja sake.
+
+3 - LB ClientHello ka response me apna TLS ServerHello bhejta hai,
+    aur apna SSL certificate bhi Client ko present karta hai.
+    Client certificate verify karta hai, aur dono sides encryption
+    algorithm aur session keys par agree karte hain.
+    TLS handshake successful hone par Client aur LB ke beech ek
+    encrypted channel establish ho jaata hai.
+
+4 - Ab Client HTTPS request bhejta hai LB ko.
+    Ye request encrypted bytes ke form me LB tak pahunchti hai.
+    LB un encrypted bytes ko DECRYPT karta hai.
+
+    Isi ko SSL Termination kehte hain.
+
+    Yaani HTTPS connection LB par terminate ho jaata hai.
+
+5 - Decrypt hone ke baad LB ke paas plain HTTP request hoti hai:
+
+        Method   → GET
+        URL      → /api/users/123
+        Host     → myapp.com
+        Headers  → Authorization: Bearer <JWT>
+        Body     → (empty in this case)
+
+    Ab LB request ko padh sakta hai. 
+
+
+6- LB apne algorithm (Round Robin / Least Conn / etc.) ke basis par
+   decide karta hai — "Ye request Server B ko bhej dete hain."
+
+
+7 - Ab LB aur Server B ke beech TCP 3-way handshake hota hai.
+    Successful hone ke baad LB aur Server B ke beech TCP connection
+    establish ho jaata hai.
+
+
+8- LB request ko Server B ko forward karta hai. Yahan do possibilities hain:
+
+     Option 1:  LB → Server B (HTTP)     ← plain HTTP (jo Client se aayi thi, SSL termination ke baad decrypt hui thi)
+     Option 2:  LB → Server B (HTTPS)    ← naya TLS session
+
+     Ye architecture par depend karta hai. Agar backend services internal
+     network me hain (secure VLAN me), to HTTP bhi kaafi hota hai. Agar
+     stricter security chahiye, to LB backend ke saath naya TLS session
+     establish karta hai.
+
+     Agar TLS session chahiye, to Client aur LB wale jaisa hi TLS handshake
+     hoga. Successful TLS handshake ke baad LB Server B ko HTTPS request
+     bhej sakta hai.
+
+
+9 - Server B(Instance) request process karta hai aur response generate karta hai.
+
+    Yahan bhi do possibilities hain — depending on Step 8 me kaunsa
+    option use hua tha:
+
+    Option 1 (LB → Server B HTTP tha):
+        - Server B plain HTTP response bhejta hai LB ko.
+        - Ab LB ke paas plaintext response aa jaata hai.
+
+    Option 2 (LB → Server B HTTPS tha):
+        - Server B apne TLS Session keys (jo LB ↔ Server B ke beech wale TLS session ki keys hain)
+          se response encrypt karta hai.
+        - Encrypted bytes LB ko bhejta hai.
+        - LB un bytes ko DECRYPT karta hai using the same TLS Session keys (LB ↔ Server B wale session ki keys).
+        - LB ke paas ab plaintext HTTP response aa jaata hai.
+
+
+10 - Ab LB ke paas plaintext HTTP response hai (kisi bhi option me).
+
+     Ab LB is response ko Client tak pahunchane ke liye TLS Session ki keys (jo LB ↔ Client ke beech wale TLS session ki keys hai) 
+     se ENCRYPT karta hai and  Encrypted bytes Client ko bhejta hai.
+
+11 - Client encrypted bytes receive karta hai.
+     Client same TLS Session ki keys (LB ↔  Client wale session ki keys) se DECRYPT karta hai.
+     Client ko plaintext HTTP response mil jaata hai ✅
+
+
+
+
+### QUESTION : LOAD BALANCER KI EXTRA CAPABILITIES KYA HAIN ?
+----------------------------------------------------------------
+
+1: HEALTH CHECKS
+------------------
 
 
 
