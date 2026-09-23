@@ -853,6 +853,7 @@ lekin slow hai. Dono combine karke LB sahi decision leta hai.
 
 
 
+
 2: PATH BASED ROUTING
 -----------------------
 
@@ -871,6 +872,8 @@ Kai architectures me dono ka kaam ek hi component kar deta hai —
 jaise AWS ALB ya NGINX (Proxy).
 
 
+
+
 3: RATE LIMITING
 ------------------
 
@@ -878,16 +881,19 @@ Rate Limiting ka matlab: Ek client/user kitni requests bhej sakta hai,
 uski limit set karna.
 
 
-#### EXAMPLE 1: /login → 5 requests/min per IP
------------------------------------------------
+A:  IP-BASED RATE LIMITING 
+-----------------------------
+
+Example : /login → 5 requests/min per IP
 
 Ek IP address se 1 minute me maximum 5 baar hi login try kar sakte ho.
 
 Real-world: Bank login page, OTP verification, ATM PIN — sabme
 rate limiting hoti hai.
 
-##### IP-BASED RATE LIMITING KAB USE KARTE HAIN?
---------------------------------------------------
+
+#### QUESTION : IP-BASED RATE LIMITING KAB USE KARTE HAIN ?
+-------------------------------------------------------------
 
 IP-based rate limiting un endpoints ke liye use karte hain jahan
 user ka authenticated identity available nahi hota — jaise Login,
@@ -901,8 +907,8 @@ Isliye limit thodi loose rakhte hain (jaise 5/min per IP) taaki
 genuine users impact na hon.
 
 
-##### PROBLEM: AGAR ATTACKER DIFFERENT IPs SE DHER SAARI LOGIN REQUESTS BHEJTA HAI TO?
-----------------------------------------------------------------------------------------
+##### QUESTION : AGAR ATTACKER DIFFERENT IPs SE DHER SAARI LOGIN REQUESTS BHEJTA HAI TO?
+-------------------------------------------------------------------------------------------
 
 Sirf IP-based limit kaafi nahi hoti — kyunki har request alag IP
 se aa rahi hai, aur per-IP limit easily bypass ho jaayegi.
@@ -945,10 +951,14 @@ rakhni padti hai.
 
 
 
-#### EXAMPLE 2: /api/** → 100 requests/min per user
------------------------------------------------------
+
+2: USER-BASED RATE LIMITING 
+---------------------------------
+
+Example : /api/** → 100 requests/min per user
 
 Ek logged-in user 1 minute me maximum 100 API calls kar sakta hai.
+
 
 Yahan "per IP" nahi, "per user" hai, Kyunki ek IP ke peeche 100 users ho 
 sakte hain (office NAT). Har user ka private IP NAT/PAT ke through ek public
@@ -969,8 +979,10 @@ rate limit bhi individually enforce hoti hai.
 
 
 
-#### EXAMPLE 3: /otp/send → 3 requests/10min per mobile number
-----------------------------------------------------------------
+3: MOBILE NUMBER BASED RATE LIMITING 
+---------------------------------------
+
+Example : /otp/send → 3 requests/10min per mobile number
 
 Ek mobile number par 10 minute me maximum 3 hi OTP bhej sakte ho.
 
@@ -987,6 +999,188 @@ Ye SMS bombing attack kehlata hai.
 
 Real-world: IRCTC, PhonePe, Paytm, WhatsApp — sabme OTP rate limiting
 hoti hai.
+
+
+
+
+4: REQUEST TRANSFORMATION
+----------------------------
+
+L7 LB client request ko modify kar sakta hai before forwarding to
+the backend services. Isliye backend services ko ye kaam nahi
+karna padta.
+
+
+Common examples:
+
+
+1. HEADER ADD KARNA
+---------------------
+
+   a) X-FORWARDED-FOR HEADER ADD KARNA
+   -------------------------------------
+
+   LB original client IP ko `X-Forwarded-For` header me add karta
+   hai before forwarding to backend.
+
+   Backend ko by default LB ka IP dikhta hai, actual client ka nahi.
+   Isliye LB original client IP ko header me add kar deta hai:
+
+   X-Forwarded-For: 49.205.10.20
+
+   
+   Kyun zaroori hai:
+       - Backend me per-client-IP rate limiting lagane ke liye
+       - Audit logs me actual client IP record karne ke liye
+
+   Fintech/bank me ye compliance requirement hai (PCI DSS, RBI)
+      — audit trail me client IP hona mandatory hota hai.
+
+
+   b) X-Request-ID — Unique Request Identifier
+   --------------------------------------------
+    LB har request me `X-Request-ID: uuid` add kar deta hai.
+
+    Isse distributed tracing me help milti hai — ek hi request ko
+    multiple services ke across uniquely identify kiya ja sakta hai.
+    Agar koi issue aaye, to us request ID se saari service logs
+    me filter karke trace kar sakte hain.
+
+
+2. HEADER REMOVE KARNA
+------------------------
+   Client se aaye internal headers strip kar deta hai (jaise
+   `X-Internal-Debug`), taaki backend pe unintended effect na ho.
+
+
+3. PATH PREFIX STRIP
+----------------------
+   Client bhejta hai:  /api/users/123
+   LB backend ko bhejta hai:  /users/123
+
+   Ye common hai microservices me — backend ko `/api` prefix
+   ke baare me pata hi nahi hota.
+
+
+
+
+5: RESPONSE TRANSFORMATION
+----------------------------
+
+L7 LB Backend response ko modify kar sakta hai before forwarding to
+the client.
+
+Common examples:
+
+1. HEADER ADD KARNA
+----------------------
+   Security headers add karna — jaise `X-Frame-Options`,
+   `Strict-Transport-Security`, `X-Content-Type-Options`.
+
+2. HEADER REMOVE KARNA
+-----------------------
+   Backend ke internal headers strip karna — jaise server
+   version, internal service names. Security ke liye important.
+
+3. RESPONSE BODY MODIFY KARNA
+-------------------------------
+   Kam common, lekin possible — sensitive fields hide karna
+   (salary, internal IDs) before sending to client.
+
+
+
+6: COMPRESSION
+----------------
+
+LB Backend ke response ko compress karke Client ko bhejta hai.
+
+Primary purpose:
+
+    - Network bandwidth reduce karna, jisse network transfer
+      time kam hota hai aur overall network performance
+      improve hota hai.
+
+
+#### KAISE KAAM KARTA HAI?
+----------------------------
+
+Client request me `Accept-Encoding: gzip, br` header bhejta hai —
+matlab "main gzip aur Brotli compression ko samajh sakta hoon."
+
+LB ye header dekhta hai, aur saath hi response ka Content-Type bhi
+check karta hai. Agar client ne compression support kiya hai AND
+content compressible hai (jaise plain JSON), to LB usse compress
+karke Client ko bhejta hai.
+
+    Client ←(gzip)←  LB  ←(plain JSON)←  Backend
+
+
+Client ka browser automatically decompress kar leta hai —
+developer ko kuch nahi karna padta.
+
+Slow networks (mobile) me bahut bada difference padta hai
+compression ka.
+
+
+#### NOTE:
+----------
+Compression ke liye do cheezein chahiye — client support kare
+(Accept-Encoding) AND content compressible ho (text-based).
+Agar client ne gzip maang liya bhi, lekin response JPEG/MP4 hai,
+to LB compress nahi karega kyunki already compressed content
+ko dobara compress karne se fayda nahi hota, sirf CPU waste hota hai.
+
+
+#### COMMON ALGORITHMS:
+-----------------------
+
+- GZIP → Most common, universally supported
+- Brotli (br) → Modern, better compression ratio
+
+
+
+7: CACHING
+------------
+
+LB frequently requested responses ko apne paas cache kar leta hai.
+Baar-baar backend tak request nahi jaati.
+
+#### QUESTION : KAISE KAAM KARTA HAI?
+-----------------------------------------
+
+1. Client request bhejta hai: GET /product/101
+2. LB check karta hai — "Ye response mere cache me hai?"
+3. Agar hai (CACHE HIT): LB directly Client ko return kar deta hai, backend ko request hi nahi jaati.
+4. Agar nahi (CACHE MISS): LB backend se fetch karta hai, response cache me store karta hai (agar cacheable hai to), aur Client ko return karta hai.
+
+
+#### QUESTION : LB KAISE DECIDE KARTA HAI KI RESPONSE KO CACHE KARNA HAI KI NAHI ?
+----------------------------------------------------------------------------------
+
+LB cache karne ka decision khud nahi leta. Backend response ke saath Cache-Control header bhejta hai — jaise public, max-age=60. 
+LB us header ko respect karta hai aur us duration tak response cache karta hai. Agar no-store hai to cache nahi karega. 
+Ye decision backend engineer ka hota hai, kyunki usse best pata hota hai ki kaunsa data cacheable hai aur kaunsa nahi.
+
+#### QUESTION :  KYUN USEFUL HAI?
+----------------------------------
+
+- Backend load kam hota hai
+- Response time bahut fast ho jaata hai (LB ke paas hi data hai)
+- Network bandwidth bachta hai
+
+#### IMPORTANT:
+---------------
+
+- Sirf GET / HEAD requests cache hoti hain (safe, read-only methods).
+
+- POST / PUT / DELETE / PATCH technically cache ho sakti hain
+  (POST spec ke according), lekin practically nahi karte — kyunki
+  ye state change karte hain, jisse inconsistency create hoti hai.
+
+
+
+8: SSL TERMINATION
+---------------------
 
 
 
