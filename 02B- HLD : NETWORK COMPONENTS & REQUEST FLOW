@@ -802,13 +802,191 @@ Port → 443    (HTTPS traffic ke liye)
 
 
 
-### QUESTION : LOAD BALANCER KI EXTRA CAPABILITIES KYA HAIN ?
-----------------------------------------------------------------
+### QUESTION : L7 LOAD BALANCER KI EXTRA CAPABILITIES KYA HAIN ?
+-----------------------------------------------------------------
 
 1: HEALTH CHECKS
 ------------------
 
+Ye L4/L7 LB dono karte hain (common capability).
 
+LB do tarike se detect karta hai ki server healthy hai ya nahi.
+
+
+#### Active Health Check
+-------------------------
+
+LB khud periodically server ke /health endpoint par request bhejta hai.
+Agar response nahi aaya ya error aaya, to server unhealthy mark karta hai.
+
+
+#### Passive Health Check
+---------------------------
+
+LB live traffic observe karta hai. Agar koi server baar-baar
+failures/timeouts de raha hai, to usse unhealthy mark karta hai.
+
+
+#### NOTE:
+-----------
+
+LB turant unhealthy mark nahi karta. Configured consecutive failures
+(e.g. 3) ke baad hi unhealthy maanta hai — taaki temporary glitch
+ki wajah se server pool se na hat jaaye.
+
+
+#### FINAL BEHAVIOUR:
+-----------------------
+
+Dono cases me LB us unhealthy server ka traffic baaki healthy servers
+me distribute kar deta hai.
+
+
+#### PRODUCTION ME:
+--------------------
+
+Real systems me Active aur Passive — dono saath use hote hain.
+
+Active jaldi detect karta hai ki server down hai. Passive actual
+failure pattern pakadta hai — jaise server HTTP 200 de raha hai
+lekin slow hai. Dono combine karke LB sahi decision leta hai.
+
+
+
+2: PATH BASED ROUTING
+-----------------------
+
+    /api/users/**    → User Service
+    /api/orders/**   → Order Service
+    /api/payments/** → Payment Service
+
+Ye ek prominent feature hai jo actually **API Gateway** ka hota hai —
+alag-alag services ke beech URL ke basis par routing karna.
+
+Lekin L7 LB bhi ye kaam kar sakta hai, kyunki wo request ka URL
+padh sakta hai (jo L4 LB nahi kar sakta).
+
+Isi wajah se L7 LB aur API Gateway ka overlap bahut zyada hai.
+Kai architectures me dono ka kaam ek hi component kar deta hai —
+jaise AWS ALB ya NGINX (Proxy).
+
+
+3: RATE LIMITING
+------------------
+
+Rate Limiting ka matlab: Ek client/user kitni requests bhej sakta hai,
+uski limit set karna.
+
+
+#### EXAMPLE 1: /login → 5 requests/min per IP
+-----------------------------------------------
+
+Ek IP address se 1 minute me maximum 5 baar hi login try kar sakte ho.
+
+Real-world: Bank login page, OTP verification, ATM PIN — sabme
+rate limiting hoti hai.
+
+##### IP-BASED RATE LIMITING KAB USE KARTE HAIN?
+--------------------------------------------------
+
+IP-based rate limiting un endpoints ke liye use karte hain jahan
+user ka authenticated identity available nahi hota — jaise Login,
+Register, Forgot Password, OTP Send, ya public/anonymous APIs.
+
+NAT issue yahan bhi hota hai — kyunki dher saare users ka NAT/PAT
+translation ke baad sabka same public IP ho jaata hai (office NAT
+ke peeche 100 users, sab ek hi public IP share karte hain).
+
+Isliye limit thodi loose rakhte hain (jaise 5/min per IP) taaki
+genuine users impact na hon.
+
+
+##### PROBLEM: AGAR ATTACKER DIFFERENT IPs SE DHER SAARI LOGIN REQUESTS BHEJTA HAI TO?
+----------------------------------------------------------------------------------------
+
+Sirf IP-based limit kaafi nahi hoti — kyunki har request alag IP
+se aa rahi hai, aur per-IP limit easily bypass ho jaayegi.
+
+
+1: Login Endpoints 
+-------------------
+
+   Login/Register/OTP jaise endpoints me humare paas user ka
+   claimed identifier bhi hota hai — Email, Mobile Number, Username.
+   (Claimed isliye, kyunki user ne bas khud bata diya hai ki wo kaun hai. Verify nahi hua hai.)
+
+   To hum identifier-based rate limiting lagate hain:
+
+    - 5 requests/min per Email
+    - 3 requests/10min per Mobile
+
+   Ab chahe attacker 100 different IPs use kare, agar wo same
+   email/mobile par attack kar raha hai, to identifier-based limit
+   usse rok legi — jaise 10 failed login attempts → Account
+   lockout 30 mins.
+
+
+2: Truly Anonymous Endpoints (Public APIs)
+---------------------------------------------
+
+Agar endpoint sach me anonymous hai — jaise Weather API, Exchange
+Rate API, Stock Price API — yahan user ka koi identifier hi nahi
+hota. Sirf IP bacha hai.
+
+Is case me:
+
+1. Per IP limit (medium, loose) — jaise 1000 req/hour per IP
+2. Agar API keys issue ki hain, to per API key limit — ye
+   IP-independent hoti hai, isliye NAT problem bhi solve ho jaata hai
+
+Aur agar koi API key bhi nahi hai (bilkul open API), to NAT
+problem ka koi perfect solution nahi hota. Isliye limit loose
+rakhni padti hai.
+
+
+
+#### EXAMPLE 2: /api/** → 100 requests/min per user
+-----------------------------------------------------
+
+Ek logged-in user 1 minute me maximum 100 API calls kar sakta hai.
+
+Yahan "per IP" nahi, "per user" hai, Kyunki ek IP ke peeche 100 users ho 
+sakte hain (office NAT). Har user ka private IP NAT/PAT ke through ek public
+IP me convert hota hai, aur wahi public IP internet par dikhta hai — jis wajah
+se dher saare users ke liye same public IP dikh sakta hai.
+
+Agar hum IP ke basis par rate limiting lagayenge, toh ek user ke limit exceed karne 
+par usi public IP ke peeche maujood baaki users bhi block ho sakte hain.
+
+Isliye authenticated requests ke liye generally per-user rate limiting use karte hain.
+
+User ko uniquely identify karne ke liye hum JWT token se sub claim (user ID)
+extract karte hain. Ye user ki stable identity hai — same user ka same sub
+hota hai, chahe kitne bhi naye tokens issue hon.
+
+Isse har user ki API request count independently track hoti hai aur
+rate limit bhi individually enforce hoti hai.
+
+
+
+#### EXAMPLE 3: /otp/send → 3 requests/10min per mobile number
+----------------------------------------------------------------
+
+Ek mobile number par 10 minute me maximum 3 hi OTP bhej sakte ho.
+
+Kyun?
+
+Problem: OTP SMS bhejne ka cost hota hai (SMS gateway ka paisa lagta hai).
+Agar koi attacker script chala kar 10,000 OTP bhejwa de kisi number pe:
+
+    - Company ka paisa waste hoga (10,000 SMS ka bill)
+    - Victim user ko spam milta rahega — uske phone me OTP messages
+      ki barsaat
+
+Ye SMS bombing attack kehlata hai.
+
+Real-world: IRCTC, PhonePe, Paytm, WhatsApp — sabme OTP rate limiting
+hoti hai.
 
 
 
