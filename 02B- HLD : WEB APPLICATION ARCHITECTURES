@@ -6,73 +6,196 @@
 CASE 1: MONOLITHIC APPLICATION DEPLOYED ON A SINGLE SERVER
 -------------------------------------------------------------
 
-Suppose ek small monolithic application hai jo sirf ek single server par deployed hai.
+Suppose ek small monolithic application hai jo sirf ek single
+server par deployed hai.
 
-Is case me DNS resolution ke baad directly us server ka IP return hota hai, aur saari requests usi ek server par jaati hain.
-
-Flow:
-
-    User
-      |
-      | DNS Resolution
-      v
-    DNS returns Server IP
-      |
-      v
-    Single Server
-      |
-      v
-    Monolithic Application processes the request
+Is case me DNS resolution ke baad directly us server ka IP
+return hota hai, aur saari requests usi ek server par jaati hain.
 
 
-Ye setup small applications, personal projects, ya basic VPS deployments me common hai.
+FLOW:
 
+            User
+              |
+              | DNS Resolution
+              v
+        ┌───────────┐
+        │    DNS    │
+        └─────┬─────┘
+              |
+              | returns Server IP
+              v
+      ┌──────────────────┐
+      │  Single Server   │
+      │                  │
+      │  Monolithic      │
+      │  Application     │
+      └──────────────────┘
+
+
+Ye setup small applications, personal projects, ya basic VPS
+deployments me common hai.
 
 
 -------------------------------------------------------------------------------
 CASE 2: MONOLITHIC APPLICATION WITH MULTIPLE INSTANCES BEHIND A LOAD BALANCER
 -------------------------------------------------------------------------------
 
-Suppose ek monolithic application hai, lekin uske multiple instances 
-different servers par run kar rahe hain. Kyunki ab ek se zyada servers hain,
-to incoming traffic ko un servers ke beech distribute karne ke liye ek Load Balancer configure kiya jaata hai.
-
+Suppose ek monolithic application hai, lekin uske multiple instances
+different servers par run kar rahe hain. Kyunki ab ek se zyada servers
+hain, to incoming traffic ko un servers ke beech distribute karne ke
+liye ek Load Balancer configure kiya jaata hai.
 
 Is case me DNS resolution ke baad Load Balancer ka IP return hota hai.
-URL routing usually application ke andar hoti hai, like Spring Boot controllers.
+URL routing usually application ke andar hoti hai, like Spring Boot
+controllers.
 
 Example in Spring Boot:
 
-    /users      -> UserController
-    /orders     -> OrderController
-    /payments   -> PaymentController
-
-Flow:
-
-    User
-      |
-      v
-    DNS
-      |
-      | returns Load Balancer IP
-      v
-    Load Balancer
-      |
-      |------------------|------------------|
-      v                  v                  v
-    App Instance 1     App Instance 2     App Instance 3
+    /users      →  UserController
+    /orders     →  OrderController
+    /payments   →  PaymentController
 
 
+FLOW:
+
+                          User
+                            |
+                            | DNS Resolution
+                            v
+                    ┌───────────────┐
+                    │      DNS      │
+                    └───────┬───────┘
+                            |
+                            | returns Load Balancer IP
+                            v
+                    ┌───────────────┐
+                    │ Load Balancer │
+                    └───────┬───────┘
+                            |
+              ┌─────────────┼─────────────┐
+              v             v             v
+      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+      │ App Instance │ │ App Instance │ │ App Instance │
+      │      1       │ │      2       │ │      3       │
+      │ (Monolith)   │ │ (Monolith)   │ │ (Monolith)   │
+      └──────────────┘ └──────────────┘ └──────────────┘
 
 
 
---------------------------------------------------------------------------------------------
-CASE 3: MICROSERVICES ARCHITECTURE WITH API GATEWAYS AND SERVICE-SPECIFIC LOAD BALANCERS
---------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+CASE 3: MICROSERVICES ARCHITECTURE WITH API GATEWAY AND SERVICE-SPECIFIC LOAD BALANCERS
+------------------------------------------------------------------------------------------
+
+Suppose ek microservices architecture hai jisme multiple services hain —
+jaise User Service, Order Service, Payment Service.
+
+Har service ke multiple instances different servers par run kar rahe hain,
+aur har service ka apna Load Balancer hai (jo us service ke instances ke
+beech traffic distribute karta hai).
+
+Client ke liye ek Single Entry Point provide karne ke liye API Gateway
+rakha jaata hai — jo URL dekh kar request ko appropriate service ke
+Load Balancer tak route karta hai.
+
+
+FLOW:
+
+                                    User
+                                      |
+                                      | DNS Resolution
+                                      v
+                              ┌───────────────┐
+                              │      DNS      │
+                              └───────┬───────┘
+                                      |
+                                      | returns API Gateway IP
+                                      v
+                              ┌───────────────┐
+                              │  API Gateway  │
+                              └───────┬───────┘
+                                      |
+              ┌───────────────────────┼───────────────────────┐
+              |                       |                       |
+     /users/**|             /orders/**|           /payments/**|
+              v                       v                       v
+      ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
+      │  User Svc    │        │  Order Svc   │        │ Payment Svc  │
+      │  LB          │        │  LB          │        │  LB          │
+      └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
+             |                       |                       |
+       ┌─────┼─────┐           ┌─────┼─────┐           ┌─────┼─────┐
+       v     v     v           v     v     v           v     v     v
+      ┌───┐ ┌───┐ ┌───┐       ┌───┐ ┌───┐ ┌───┐       ┌───┐ ┌───┐ ┌───┐
+      │U-1│ │U-2│ │U-3│       │O-1│ │O-2│ │O-3│       │P-1│ │P-2│ │P-3│
+      └───┘ └───┘ └───┘       └───┘ └───┘ └───┘       └───┘ └───┘ └───┘
+
+
+Yahan:
+
+    - API Gateway    →  Single Entry Point, URL-based routing
+    - Service LB     →  Us service ke instances ke beech load balance
+    - Service        →  Actual business logic
 
 
 
+# NOTE : SINGLE API GATEWAY SPOF BAN SAKTA HAI
+-------------------------------------------------
 
+Upar wala architecture small / low-traffic systems ke liye valid hai.
+Lekin production me single API Gateway SPOF ban jaata hai — agar wo
+down ho gaya, to saari client requests fail ho jaayengi.
+
+Isliye production me multiple API Gateway instances deploy kiye jaate
+hain, aur unke aage ek Load Balancer rakha jaata hai.
+
+
+PRODUCTION FLOW:
+
+                                    User
+                                      |
+                                      | DNS Resolution
+                                      v
+                              ┌───────────────┐
+                              │      DNS      │
+                              └───────┬───────┘
+                                      |
+                                      | returns LB IP
+                                      v
+                              ┌───────────────┐
+                              │  Load Balancer│
+                              └───────┬───────┘
+                                      |
+              ┌───────────────────────┼───────────────────────┐
+              v                       v                       v
+      ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
+      │ API Gateway  │        │ API Gateway  │        │ API Gateway  │
+      │      1       │        │      2       │        │      3       │
+      └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
+             |                       |                       |
+             └───────────────────────┼───────────────────────┘
+                                     |
+              ┌──────────────────────┼──────────────────────┐
+              v                      v                      v
+      ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
+      │  User Svc    │        │  Order Svc   │        │ Payment Svc  │
+      │  LB          │        │  LB          │        │  LB          │
+      └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
+             |                       |                       |
+       ┌─────┼─────┐           ┌─────┼─────┐           ┌─────┼─────┐
+       v     v     v           v     v     v           v     v     v
+      ┌───┐ ┌───┐ ┌───┐       ┌───┐ ┌───┐ ┌───┐       ┌───┐ ┌───┐ ┌───┐
+      │U-1│ │U-2│ │U-3│       │O-1│ │O-2│ │O-3│       │P-1│ │P-2│ │P-3│
+      └───┘ └───┘ └───┘       └───┘ └───┘ └───┘       └───┘ └───┘ └───┘
+
+
+KEY POINTS:
+
+    - Multiple API Gateway instances → High Availability, no SPOF
+    - Load Balancer API Gateways ke aage → Traffic distribute
+    - Service LBs har service ke instances ke beech load balance karte hain
 
 
 
@@ -81,42 +204,69 @@ CASE 4: MICROSERVICES ARCHITECTURE WITH CDN, API GATEWAY AND LOAD BALANCERS
 -----------------------------------------------------------------------------
 
 Suppose ek microservices architecture hai jisme multiple services hain,
-har service ke multiple instances hain, har service ke paas apna Load Balancer hai,
-aur URL routing ke liye API Gateway bhi hai.
+har service ke multiple instances hain, har service ke paas apna Load
+Balancer hai, aur URL routing ke liye API Gateway bhi hai.
 
 Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
 
 
 ## REQUEST FLOW
-------------------
+-----------------
+
+                             User
+                               |
+                               | DNS Resolution
+                               v
+                       ┌───────────────┐
+                       │      DNS      │
+                       └───────┬───────┘
+                               |
+                               | returns CDN IP
+                               v
+                       ┌───────────────┐
+                       │ Nearby CDN    │
+                       │ Edge          │
+                       └───────┬───────┘
+                               |
+                ┌──────────────┴──────────────┐
+                |                             |
+                v                             v
+          Cache Hit                     Cache Miss
+                |                             |
+                v                             v
+        Response returned          ┌────────────────────┐
+        directly from CDN          │  Load Balancer     │
+                                   └─────────┬──────────┘
+                                             |
+                          ┌──────────────────┼──────────────────┐
+                          v                  v                  v
+                   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+                   │ API Gateway  │   │ API Gateway  │   │ API Gateway  │
+                   │      1       │   │      2       │   │      3       │
+                   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+                          |                  |                  |
+                          └──────────────────┼──────────────────┘
+                                             |
+              ┌──────────────────────────────┼──────────────────────────────┐
+              v                              v                              v
+      ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
+      │  User Svc    │              │  Order Svc   │              │ Payment Svc  │
+      │  LB          │              │  LB          │              │  LB          │
+      └──────┬───────┘              └──────┬───────┘              └──────┬───────┘
+             |                             |                             |
+       ┌─────┼─────┐                 ┌─────┼─────┐                 ┌─────┼─────┐
+       v     v     v                 v     v     v                 v     v     v
+      ┌───┐ ┌───┐ ┌───┐             ┌───┐ ┌───┐ ┌───┐             ┌───┐ ┌───┐ ┌───┐
+      │U-1│ │U-2│ │U-3│             │O-1│ │O-2│ │O-3│             │P-1│ │P-2│ │P-3│
+      └───┘ └───┘ └───┘             └───┘ └───┘ └───┘             └───┘ └───┘ └───┘
 
 
-                    User
-                      |
-                      v
-                     DNS
-                      |
-                      | returns CDN IP
-                      v
-               Nearby CDN Edge
-                      |
-          -----------------------------
-          |                           |
-          | Cache Hit                 | Cache Miss
-          |                           |
-          |                           v
-          |                     API Gateway
-          |                           |
-          |          -----------------------------------
-          |          |                 |               |
-          |          v                 v               v
-          |     User Service LB   Order Service LB  Payment Service LB
-          |          |                 |               |
-          |          v                 v               v
-          |     User Instances   Order Instances  Payment Instances
-          |
-          |
-          +-----------------------------> Response returned directly from CDN
+KEY POINTS:
+
+    - CDN →  Static content user ke nearby serve, Origin load reduce
+    - Multiple API Gateway instances + aage LB → High Availability
+    - Service LBs → Har service ke instances ke beech load balance
+
 
 
 
@@ -124,77 +274,80 @@ Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
 CASE 5: MICROSERVICES ARCHITECTURE WITH A LAYER-7 LOAD BALANCER (WITHOUT A DEDICATED API GATEWAY)
 ---------------------------------------------------------------------------------------------------
 
-Suppose ek microservices architecture hai jisme multiple services hain.
+Suppose ek microservices architecture hai jisme multiple services hain:
 
-Example:
-
-    User Service
-    Order Service
-    Payment Service
+    - User Service
+    - Order Service
+    - Payment Service
 
 Har service ke multiple instances different servers par run kar rahe hain.
 
-In services ke traffic ko handle karne ke liye ek Layer-7
-(Application Layer) Load Balancer use kiya ja raha hai.
+In services ke traffic ko handle karne ke liye ek Layer-7 (Application
+Layer) Load Balancer use kiya ja raha hai. Ye URL / Path based routing
+support karta hai.
 
-Ye Load Balancer URL / Path based routing support karta hai.
-
-Is architecture me separate API Gateway mandatory nahi hai.
-
-Relatively simple applications me Layer-7 Load Balancer
-khud hi incoming requests ko appropriate backend service
-tak route kar sakta hai.
+Is architecture me separate API Gateway mandatory nahi hai — relatively
+simple applications me L7 LB khud hi incoming requests ko appropriate
+backend service tak route kar sakta hai.
 
 
 Example Routing Rules:
 
-    /users/**
-
-            -> User Service
-
-    /orders/**
-
-            -> Order Service
-
-    /payments/**
-
-            -> Payment Service
-
-  
-
+    /users/**     →  User Service
+    /orders/**    →  Order Service
+    /payments/**  →  Payment Service
 
 
 ## FLOW :
 ----------
 
-                User
-                  |
-                  v
-                 DNS
-                  |
-                  | returns CDN IP
-                  v
-            Nearby CDN Edge
-                  |
-                  | Cache Miss
-                  v
-          Layer-7 Load Balancer
-                  |
-      -----------------------------------------
-      |                  |                    |
-      |                  |                    |
-      v                  v                    v
+                             User
+                               |
+                               | DNS Resolution
+                               v
+                       ┌───────────────┐
+                       │      DNS      │
+                       └───────┬───────┘
+                               |
+                               | returns CDN IP
+                               v
+                       ┌───────────────┐
+                       │ Nearby CDN    │
+                       │ Edge          │
+                       └───────┬───────┘
+                               |
+                ┌──────────────┴──────────────┐
+                |                             |
+                v                             v
+          Cache Hit                     Cache Miss
+                |                             |
+                v                             v
+        Response returned          ┌────────────────────┐
+        directly from CDN          │   L7 Load Balancer │
+                                   └─────────┬──────────┘
+                                             |
+                          ┌──────────────────┼──────────────────┐
+                          |                  |                  |
+                          v                  v                  v
+                  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+                  │  User Svc    │   │  Order Svc   │   │ Payment Svc  │
+                  │  Target      │   │  Target      │   │  Target      │
+                  │  Group       │   │  Group       │   │  Group       │
+                  └──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+                         |                  |                  |
+                   ┌─────┼─────┐      ┌─────┼─────┐      ┌─────┼─────┐
+                   v     v     v      v     v     v      v     v     v
+                  ┌───┐ ┌───┐ ┌───┐  ┌───┐ ┌───┐ ┌───┐  ┌───┐ ┌───┐ ┌───┐
+                  │U-1│ │U-2│ │U-3│  │O-1│ │O-2│ │O-3│  │P-1│ │P-2│ │P-3│
+                  └───┘ └───┘ └───┘  └───┘ └───┘ └───┘  └───┘ └───┘ └───┘
 
-  User Target Group  Order Target Group  Payment Target Group
 
-      |                  |                    |
-  ----------        ----------            ----------
-   User-1            Order-1              Payment-1
-   User-2            Order-2              Payment-2
-   User-3            Order-3              Payment-3
+KEY POINTS:
 
-
-
+    - L7 LB hi API Gateway ka role perform kar raha hai (URL-based routing)
+    - Separate API Gateway ki zaroorat nahi (simple applications me)
+    - Har service ka apna Target Group → us service ke instances
+    - Ek hi L7 LB different services ke instances tak route kar sakta hai
 
 
 
