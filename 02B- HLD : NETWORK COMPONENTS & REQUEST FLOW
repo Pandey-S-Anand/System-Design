@@ -1,3 +1,45 @@
+===========================================================
+# QUESTION : DNS KYA HOTA HAI AUR KAISE KAAM KARTA HAI ?
+===========================================================
+
+DNS ka main kaam hota hai:
+
+    Domain Name  →  IP Address
+
+Example:
+
+    api.example.com  →  34.120.10.5
+
+DNS bas configured records ke basis par response deta hai.
+
+
+## COMMON DNS RECORDS
+----------------------
+
+A Record —     Domain ko IPv4 address se map karta hai.
+               Example:  api.example.com → 34.120.10.5
+
+
+AAAA Record —  Domain ko IPv6 address se map karta hai.
+               Example:  api.example.com → 2400:cb00:2048:1::c629:d7a2
+
+
+CNAME Record — Ek domain ko doosre domain name se map karta hai.
+               Example:  api.example.com → my-load-balancer.aws.com
+
+               Is case me DNS resolver recursively ya internally CNAME ko
+               resolve karke final IP address nikalta hai. Final result
+               eventually IP address hi hota hai.
+
+
+Usually modern cloud infrastructure me CNAME / Alias records zyada
+use hote hain, kyunki cloud resources ke actual IP addresses
+change ho sakte hain.
+
+
+
+
+
 ===========================================
 # QUESTION : LOAD BALANCER KYA HOTA HAI ?
 ===========================================
@@ -1875,286 +1917,3 @@ Without CDN:
 With CDN:
     First Request  → CDN Edge → Cache Miss → Origin → Cache & Return
     Subsequent     → CDN Edge → Cache Hit  → Direct return (Origin tak request nahi jaati)
-
-
-
-
-
-
-
-
-
-============================================================
-## REQUEST FLOW IN DIFFERENT WEB APPLICATION ARCHITECTURES
-============================================================
-
--------------------------------------------------------------
-CASE 1: MONOLITHIC APPLICATION DEPLOYED ON A SINGLE SERVER
--------------------------------------------------------------
-
-Suppose ek small monolithic application hai jo sirf ek single server par deployed hai.
-
-Is case me DNS resolution ke baad directly us server ka IP return hota hai, aur saari requests usi ek server par jaati hain.
-
-Flow:
-
-    User
-      |
-      | DNS Resolution
-      v
-    DNS returns Server IP
-      |
-      v
-    Single Server
-      |
-      v
-    Monolithic Application processes the request
-
-
-Ye setup small applications, personal projects, ya basic VPS deployments me common hai.
-
-
-
--------------------------------------------------------------------------------
-CASE 2: MONOLITHIC APPLICATION WITH MULTIPLE INSTANCES BEHIND A LOAD BALANCER
--------------------------------------------------------------------------------
-
-Suppose ek monolithic application hai, lekin uske multiple instances 
-different servers par run kar rahe hain. Kyunki ab ek se zyada servers hain,
-to incoming traffic ko un servers ke beech distribute karne ke liye ek Load Balancer configure kiya jaata hai.
-
-
-Is case me DNS resolution ke baad Load Balancer ka IP return hota hai.
-URL routing usually application ke andar hoti hai, like Spring Boot controllers.
-
-Example in Spring Boot:
-
-    /users      -> UserController
-    /orders     -> OrderController
-    /payments   -> PaymentController
-
-Flow:
-
-    User
-      |
-      v
-    DNS
-      |
-      | returns Load Balancer IP
-      v
-    Load Balancer
-      |
-      |------------------|------------------|
-      v                  v                  v
-    App Instance 1     App Instance 2     App Instance 3
-
-
-
-
-
---------------------------------------------------------------------------------------------
-CASE 3: MICROSERVICES ARCHITECTURE WITH API GATEWAYS AND SERVICE-SPECIFIC LOAD BALANCERS
---------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
------------------------------------------------------------------------------
-CASE 4: MICROSERVICES ARCHITECTURE WITH CDN, API GATEWAY AND LOAD BALANCERS
------------------------------------------------------------------------------
-
-Suppose ek microservices architecture hai jisme multiple services hain,
-har service ke multiple instances hain, har service ke paas apna Load Balancer hai,
-aur URL routing ke liye API Gateway bhi hai.
-
-Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
-
-
-## REQUEST FLOW
-------------------
-
-
-                    User
-                      |
-                      v
-                     DNS
-                      |
-                      | returns CDN IP
-                      v
-               Nearby CDN Edge
-                      |
-          -----------------------------
-          |                           |
-          | Cache Hit                 | Cache Miss
-          |                           |
-          |                           v
-          |                     API Gateway
-          |                           |
-          |          -----------------------------------
-          |          |                 |               |
-          |          v                 v               v
-          |     User Service LB   Order Service LB  Payment Service LB
-          |          |                 |               |
-          |          v                 v               v
-          |     User Instances   Order Instances  Payment Instances
-          |
-          |
-          +-----------------------------> Response returned directly from CDN
-
-
-
----------------------------------------------------------------------------------------------------
-CASE 5: MICROSERVICES ARCHITECTURE WITH A LAYER-7 LOAD BALANCER (WITHOUT A DEDICATED API GATEWAY)
----------------------------------------------------------------------------------------------------
-
-Suppose ek microservices architecture hai jisme multiple services hain.
-
-Example:
-
-    User Service
-    Order Service
-    Payment Service
-
-Har service ke multiple instances different servers par run kar rahe hain.
-
-In services ke traffic ko handle karne ke liye ek Layer-7
-(Application Layer) Load Balancer use kiya ja raha hai.
-
-Ye Load Balancer URL / Path based routing support karta hai.
-
-Is architecture me separate API Gateway mandatory nahi hai.
-
-Relatively simple applications me Layer-7 Load Balancer
-khud hi incoming requests ko appropriate backend service
-tak route kar sakta hai.
-
-
-Example Routing Rules:
-
-    /users/**
-
-            -> User Service
-
-    /orders/**
-
-            -> Order Service
-
-    /payments/**
-
-            -> Payment Service
-
-  
-
-
-
-## FLOW :
-----------
-
-                User
-                  |
-                  v
-                 DNS
-                  |
-                  | returns CDN IP
-                  v
-            Nearby CDN Edge
-                  |
-                  | Cache Miss
-                  v
-          Layer-7 Load Balancer
-                  |
-      -----------------------------------------
-      |                  |                    |
-      |                  |                    |
-      v                  v                    v
-
-  User Target Group  Order Target Group  Payment Target Group
-
-      |                  |                    |
-  ----------        ----------            ----------
-   User-1            Order-1              Payment-1
-   User-2            Order-2              Payment-2
-   User-3            Order-3              Payment-3
-
-
-
-
-
-
---------------------------------------------------------------
-CASE 6: MONOLITHIC ARCHITECTURE WITH CDN AND LOAD BALANCER
---------------------------------------------------------------
-
-Suppose ek monolithic application hai.
-
-Uske multiple instances different servers par run kar rahe hain.
-In instances ke traffic ko distribute karne ke liye ek Load Balancer hai.
-
-CDN bhi present hai.
-
-Is case me DNS resolution ke baad CDN ka IP return hota hai.
-
-Flow:
-
-                    User
-                      |
-                      v
-                     DNS
-                      |
-                      | returns CDN IP
-                      v
-               Nearby CDN Edge
-                      |
-          -----------------------------
-          |                           |
-          | Cache Hit                 | Cache Miss
-          |                           |
-          |                           v
-          |                     Load Balancer
-          |                           |
-          |          -----------------------------------
-          |          |                 |               |
-          |          v                 v               v
-          |     Monolith-1       Monolith-2      Monolith-3
-          |
-          |
-          +-----------------------------> Response returned directly from CDN
-
-
-Explanation:
-
-    Load Balancer incoming requests ko monolithic application ke multiple running instances ke beech distribute karta hai.
-
-    Agar koi ek instance down ho jaye, to Load Balancer remaining healthy instances ko traffic forward kar sakta hai.
-
-    URL routing application ke andar hoti hai.
-
-
-## NOTE :
----------
-
-Unlike a microservices architecture,
-all business modules (Users, Orders, Payments, etc.)
-are part of the same application deployment.
-
-Although multiple instances of the application
-may be running, every instance contains
-the complete application.
-
-
-Example in Spring Boot:
-
-Saare endpoints same monolithic application
-ke different controllers/modules ke through
-handle kiye jaate hain.
-
-Example:
-
-    /users      -> UserController
-
-    /orders     -> OrderController
-
-    /payments   -> PaymentController
