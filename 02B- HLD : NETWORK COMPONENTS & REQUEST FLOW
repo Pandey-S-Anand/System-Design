@@ -1834,121 +1834,52 @@ change karte hain.
 
 
 
-## DNS AND CDN BEHAVIOUR
---------------------------
+## DNS AUR CDN KA BEHAVIOUR
+-----------------------------
 
 Case 4.1 : Anycast IP Based CDN
 
-    Multiple CDN Edge Locations same IP address announce kar sakti hain.
-
-    Ye same IP DNS me configured ho sakta hai.
-
-    DNS resolution ke baad CDN ka IP return hota hai.
-
-    Uske baad BGP routing automatically request ko
-    nearest/optimal CDN Edge tak route karti hai.
+    Multiple CDN Edge Locations same IP address announce kar sakti hain,
+    aur ye same IP DNS me configured ho sakta hai. DNS resolution ke baad
+    CDN ka IP return hota hai. Uske baad BGP routing automatically request
+    ko nearest/optimal CDN Edge tak route karti hai.
 
     Example:
 
-        User in India
+        User in India  →  Nearby CDN Edge (e.g. Mumbai / Singapore)
+        User in US     →  Nearby CDN Edge (e.g. Virginia)
 
-            -> Nearby CDN Edge
-               (e.g. Mumbai / Singapore)
-
-        User in US
-
-            -> Nearby CDN Edge
-               (e.g. Virginia)
-
-    User ko generally pata bhi nahi hota
-    ki request kis CDN Edge ne serve ki.
-
-    Network routing automatically
-    appropriate CDN Edge select karti hai.
-
+    User ko generally pata bhi nahi hota ki request kis CDN Edge ne serve
+    ki. Network routing automatically appropriate CDN Edge select karti hai.
 
 
 Case 4.2 : Geo DNS Based CDN
 
-    Different CDN Edge Locations ke different IP addresses
-    ho sakte hain.
-
-    DNS resolver user ki approximate geographical location
-    ke basis par nearby CDN IP return kar sakta hai.
+    Different CDN Edge Locations ke different IP addresses ho sakte hain.
+    DNS resolver user ki approximate geographical location ke basis par
+    nearby CDN IP return kar sakta hai.
 
     Example:
 
-        User India me hai
-
-            DNS returns India / Singapore CDN IP
-
-
-        User Europe me hai
-
-            DNS returns Europe CDN IP
+        User India me hai   →  DNS returns India / Singapore CDN IP
+        User Europe me hai  →  DNS returns Europe CDN IP
 
 
 
-## WHY CDN HELPS
------------------
-
-Suppose ek image repeatedly same geographical region
-se request ho rahi hai.
-
+## CDN KAISE HELP KARTA HAI
+-----------------------------
 
 Without CDN:
-
-Har User request Origin tak travel karegi.
-
+    Har request Origin tak travel karti hai.
 
 With CDN:
-
-First Request:
-
-        User Request
-
-            ↓
-
-         Nearest CDN Edge
-
-            ↓
-
-        Cache Miss
-
-            ↓
-
-         Origin
-
-            ↓
-
-        Image fetched
-
-            ↓
-
-        Cached at that CDN Edge.
-
-            ↓
-
-        Response returned
+    First Request  → CDN Edge → Cache Miss → Origin → Cache & Return
+    Subsequent     → CDN Edge → Cache Hit  → Direct return (Origin tak request nahi jaati)
 
 
-Subsequent Requests (from the same geographical region):
 
-         User Request
 
-            ↓
 
-         Nearest CDN Edge
-
-            ↓
-
-         Cache Hit
-
-            ↓
-
-        Image directly returned
-
-Origin ko request nahi jaati.
 
 
 
@@ -2021,224 +1952,6 @@ Flow:
 
 
 
-## MAIN BENEFITS OF CDN
---------------------------
-
-1. Static content ko cache karna.
-
-Examples:
-
-    - Images
-    - Videos
-    - CSS files
-    - JavaScript files
-    - Fonts
-    - Public static files
-
-
-Iske benefits:
-
-    1. Cached content CDN Edge se serve hota hai.
-
-       Isliye Origin tak baar-baar request nahi jaati. 
-       Origin = Wo original source jahan se CDN first time content fetch karta hai.
-
-       Result:
-
-           - Origin par unnecessary load reduce hota hai.
-
-
-    2. CDN Edge generally user ke geographically nearby located hota hai.
-
-       Isliye request ko har baar distant Origin tak
-       travel nahi karna padta.
-
-       Result:
-
-           - Network latency reduce hoti hai.
-
-
-    3. Reduced network latency ki wajah se response faster milta hai.
-
-
-## HOW DOES CDN KNOW WHETHER CONTENT IS CACHEABLE ?
-----------------------------------------------------
-
-CDN khud decide nahi karta ki content cache karna hai ya nahi.
-
-Origin Server HTTP caching headers (e.g. Cache-Control, Expires)
-ke through CDN ko batata hai ki:
-
-    - Response cache karna hai ya nahi.
-    - Agar cache karna hai, to kitni der tak.
-
-Examples:
-
-    Cache-Control: public, max-age=86400
-
-        -> CDN response ko 24 hours tak cache kar sakta hai.
-
-    Cache-Control: no-store
-
-        -> CDN response cache nahi karega.
-        -> Har request Origin Server tak jayegi.
-
-NOTE:
-
-CDNs most commonly static content (Images, CSS, JS, Videos, etc.)
-cache karte hain.
-
-However, cacheable dynamic GET responses bhi appropriate HTTP
-caching headers ke saath CDN par cache kiye ja sakte hain.
-
-Example:
-
-    GET /products
-
-Suppose product catalog frequently change nahi hota.
-
-Origin Server response ke saath bhejta hai:
-
-    Cache-Control: public, max-age=60
-
-Meaning:
-
-    CDN is API response ko 60 seconds tak cache kar sakta hai.
-
-Is duration ke andar same API ke subsequent requests
-directly CDN se serve ho sakte hain, aur request ko
-API Gateway, Load Balancer, Service aur Database tak jane ki zarurat
-nahi padti.
-
-## NOTE:
-----------
-
-Generally POST, PUT, PATCH aur DELETE requests cache
-nahi ki jaati. Dynamic GET responses hi cache kiye
-ja sakte hain, woh bhi sirf tab jab Origin Server
-appropriate HTTP caching headers ke through explicitly
-allow kare.
-
-
-## DNS AND CDN BEHAVIOUR
---------------------------
-
-Case 4.1 : Anycast IP Based CDN
-
-    Multiple CDN Edge Locations same IP address announce kar sakti hain.
-
-    Ye same IP DNS me configured ho sakta hai.
-
-    DNS resolution ke baad CDN ka IP return hota hai.
-
-    Uske baad BGP routing automatically request ko
-    nearest/optimal CDN Edge tak route karti hai.
-
-    Example:
-
-        User in India
-
-            -> Nearby CDN Edge
-               (e.g. Mumbai / Singapore)
-
-        User in US
-
-            -> Nearby CDN Edge
-               (e.g. Virginia)
-
-    User ko generally pata bhi nahi hota
-    ki request kis CDN Edge ne serve ki.
-
-    Network routing automatically
-    appropriate CDN Edge select karti hai.
-
-
-
-Case 4.2 : Geo DNS Based CDN
-
-    Different CDN Edge Locations ke different IP addresses
-    ho sakte hain.
-
-    DNS resolver user ki approximate geographical location
-    ke basis par nearby CDN IP return kar sakta hai.
-
-    Example:
-
-        User India me hai
-
-            DNS returns India / Singapore CDN IP
-
-
-        User Europe me hai
-
-            DNS returns Europe CDN IP
-
-
-
-## WHY CDN HELPS
------------------
-
-Suppose ek image repeatedly same geographical region
-se request ho rahi hai.
-
-
-Without CDN:
-
-Har User request Origin tak travel karegi.
-
-
-With CDN:
-
-First Request:
-
-        User Request
-
-            ↓
-
-         Nearest CDN Edge
-
-            ↓
-
-        Cache Miss
-
-            ↓
-
-         Origin
-
-            ↓
-
-        Image fetched
-
-            ↓
-
-        Cached at that CDN Edge.
-
-            ↓
-
-        Response returned
-
-
-Subsequent Requests (from the same geographical region):
-
-         User Request
-
-            ↓
-
-         Nearest CDN Edge
-
-            ↓
-
-         Cache Hit
-
-            ↓
-
-        Image directly returned
-
-Origin ko request nahi jaati.
-
-
-
-
 --------------------------------------------------------------------------------------------
 CASE 3: MICROSERVICES ARCHITECTURE WITH API GATEWAYS AND SERVICE-SPECIFIC LOAD BALANCERS
 --------------------------------------------------------------------------------------------
@@ -2258,171 +1971,6 @@ har service ke multiple instances hain, har service ke paas apna Load Balancer h
 aur URL routing ke liye API Gateway bhi hai.
 
 Ab system ko optimize karne ke liye CDN add kiya ja sakta hai.
-
-CDN ka full form hai Content Delivery Network.
-
-CDNs geographically distributed servers hote hain jo different
-geographical locations (e.g. Mumbai, Singapore, London, Virginia)
-me deployed hote hain.
-
-In geographical deployment locations ko CDN Edge Locations bola jata hai.
-
-CDN ka primary purpose frequently requested content ko user ke
-nearby CDN Edge se serve karna hota hai.
-
-
-
-## MAIN BENEFITS OF CDN
---------------------------
-
-1. Static content ko cache karna.
-
-Examples:
-
-    - Images
-    - Videos
-    - CSS files
-    - JavaScript files
-    - Fonts
-    - Public static files
-
-
-Iske benefits:
-
-    1. Cached content CDN Edge se serve hota hai.
-
-       Isliye Origin tak baar-baar request nahi jaati. 
-       Origin = Wo original source jahan se CDN first time content fetch karta hai.
-
-       Result:
-
-           - Origin par unnecessary load reduce hota hai.
-
-
-    2. CDN Edge generally user ke geographically nearby located hota hai.
-
-       Isliye request ko har baar distant Origin tak
-       travel nahi karna padta.
-
-       Result:
-
-           - Network latency reduce hoti hai.
-
-
-    3. Reduced network latency ki wajah se response faster milta hai.
-
-
-## HOW DOES CDN KNOW WHETHER CONTENT IS CACHEABLE ?
-----------------------------------------------------
-
-CDN khud decide nahi karta ki content cache karna hai ya nahi.
-
-Origin Server HTTP caching headers (e.g. Cache-Control, Expires)
-ke through CDN ko batata hai ki:
-
-    - Response cache karna hai ya nahi.
-    - Agar cache karna hai, to kitni der tak.
-
-Examples:
-
-    Cache-Control: public, max-age=86400
-
-        -> CDN response ko 24 hours tak cache kar sakta hai.
-
-    Cache-Control: no-store
-
-        -> CDN response cache nahi karega.
-        -> Har request Origin Server tak jayegi.
-
-NOTE:
-
-CDNs most commonly static content (Images, CSS, JS, Videos, etc.)
-cache karte hain.
-
-However, cacheable dynamic GET responses bhi appropriate HTTP
-caching headers ke saath CDN par cache kiye ja sakte hain.
-
-Example:
-
-    GET /products
-
-Suppose product catalog frequently change nahi hota.
-
-Origin Server response ke saath bhejta hai:
-
-    Cache-Control: public, max-age=60
-
-Meaning:
-
-    CDN is API response ko 60 seconds tak cache kar sakta hai.
-
-Is duration ke andar same API ke subsequent requests
-directly CDN se serve ho sakte hain, aur request ko
-API Gateway, Load Balancer, Service aur Database tak jane ki zarurat
-nahi padti.
-
-## NOTE:
-----------
-
-Generally POST, PUT, PATCH aur DELETE requests cache
-nahi ki jaati. Dynamic GET responses hi cache kiye
-ja sakte hain, woh bhi sirf tab jab Origin Server
-appropriate HTTP caching headers ke through explicitly
-allow kare.
-
-
-## DNS AND CDN BEHAVIOUR
---------------------------
-
-Case 4.1 : Anycast IP Based CDN
-
-    Multiple CDN Edge Locations same IP address announce kar sakti hain.
-
-    Ye same IP DNS me configured ho sakta hai.
-
-    DNS resolution ke baad CDN ka IP return hota hai.
-
-    Uske baad BGP routing automatically request ko
-    nearest/optimal CDN Edge tak route karti hai.
-
-    Example:
-
-        User in India
-
-            -> Nearby CDN Edge
-               (e.g. Mumbai / Singapore)
-
-        User in US
-
-            -> Nearby CDN Edge
-               (e.g. Virginia)
-
-    User ko generally pata bhi nahi hota
-    ki request kis CDN Edge ne serve ki.
-
-    Network routing automatically
-    appropriate CDN Edge select karti hai.
-
-
-
-Case 4.2 : Geo DNS Based CDN
-
-    Different CDN Edge Locations ke different IP addresses
-    ho sakte hain.
-
-    DNS resolver user ki approximate geographical location
-    ke basis par nearby CDN IP return kar sakta hai.
-
-    Example:
-
-        User India me hai
-
-            DNS returns India / Singapore CDN IP
-
-
-        User Europe me hai
-
-            DNS returns Europe CDN IP
 
 
 ## REQUEST FLOW
@@ -2458,90 +2006,6 @@ Case 4.2 : Geo DNS Based CDN
 
 
 
-Cache Hit:
-
-    Requested content already available
-    at the CDN Edge.
-
-    Response directly CDN se serve ho jata hai.
-
-    Origin ko request nahi jaati.
-
-
-Cache Miss:
-
-    Requested content CDN Edge par available nahi hota.
-
-    CDN Origin se content fetch karta hai.
-
-    Response client ko return karta hai.
-
-    Saath hi content future requests ke liye
-    CDN Edge par cache bhi kar leta hai.
-
-
-## WHY CDN HELPS
------------------
-
-Suppose ek image repeatedly same geographical region
-se request ho rahi hai.
-
-
-Without CDN:
-
-Har User request Origin tak travel karegi.
-
-
-With CDN:
-
-First Request:
-
-        User Request
-
-            ↓
-
-         Nearest CDN Edge
-
-            ↓
-
-        Cache Miss
-
-            ↓
-
-         Origin
-
-            ↓
-
-        Image fetched
-
-            ↓
-
-        Cached at that CDN Edge.
-
-            ↓
-
-        Response returned
-
-
-Subsequent Requests (from the same geographical region):
-
-         User Request
-
-            ↓
-
-         Nearest CDN Edge
-
-            ↓
-
-         Cache Hit
-
-            ↓
-
-        Image directly returned
-
-Origin ko request nahi jaati.
-
- 
 ---------------------------------------------------------------------------------------------------
 CASE 5: MICROSERVICES ARCHITECTURE WITH A LAYER-7 LOAD BALANCER (WITHOUT A DEDICATED API GATEWAY)
 ---------------------------------------------------------------------------------------------------
