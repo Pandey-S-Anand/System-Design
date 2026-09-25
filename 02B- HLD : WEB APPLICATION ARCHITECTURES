@@ -83,6 +83,29 @@ FLOW:
 
 
 
+## QUESTION : KAUNSA LB USE KARNA HAI ?
+-----------------------------------------
+
+Since ye monolithic architecture hai — sirf ek hi service ke multiple
+instances hain. URL routing application ke andar hoti hai (Spring Boot
+controllers me), LB ke paas nahi.
+
+Isliye technically L4 kaafi hai — bas traffic distribute karna hai.
+
+Lekin production me generally L7 prefer karte hain:
+
+    - SSL Termination    → Centralized certificate management
+
+    - App-level health checks  → /health endpoint hit karke actual
+                                  application health check karta hai.
+                                  L4 sirf TCP-level check kar sakta hai
+                                  (port open hai ya nahi) — usse pata
+                                  nahi chalta ki application andar se
+                                  hang hai ya healthy.
+
+    - Future-proofing    → Kal microservices me convert ho, to L7
+                            already URL routing support karta hai
+
 
 
 ------------------------------------------------------------------------------------------
@@ -196,6 +219,36 @@ KEY POINTS:
     - Multiple API Gateway instances → High Availability, no SPOF
     - Load Balancer API Gateways ke aage → Traffic distribute
     - Service LBs har service ke instances ke beech load balance karte hain
+
+
+
+## QUESTION : KAUNSA LB USE KARNA HAI ?
+-----------------------------------------
+
+### LB in front of API Gateways
+---------------------------------
+
+API Gateway ke saamne L4 LB hi kaafi hai, kyunki:
+
+    - URL routing API Gateway khud karta hai
+    - LB ka kaam sirf API Gateway instances ke beech traffic
+      distribute karna hai
+    - L4 LB sirf TCP-level check karta hai (port open hai ya nahi).
+      Agar API Gateway andar se hang hai lekin port open hai, to L4
+      usse healthy maan lega — ye problem detect nahi hogi.
+    - Isliye modern L4 LB (jaise AWS NLB) HTTP health checks bhi
+      support karta hai
+
+
+### Service LBs
+------------------
+
+Technically L4 kaafi hai, kyunki API Gateway ne routing already
+kar di hoti hai — Service LB ko bas us service ke instances
+ke beech traffic distribute karna hai.
+
+Lekin production me generally L7 prefer karte hain — proper
+health checks aur observability ke liye.
 
 
 
@@ -342,12 +395,17 @@ Example Routing Rules:
                   └───┘ └───┘ └───┘  └───┘ └───┘ └───┘  └───┘ └───┘ └───┘
 
 
-KEY POINTS:
 
-    - L7 LB hi API Gateway ka role perform kar raha hai (URL-based routing)
-    - Separate API Gateway ki zaroorat nahi (simple applications me)
-    - Har service ka apna Target Group → us service ke instances
-    - Ek hi L7 LB different services ke instances tak route kar sakta hai
+## NOTE : YAHAN L7 LB MANDATORY HAI
+-------------------------------------
+
+Yah dedicated API Gateway nahi hai. L7 LB hi API
+Gateway ka role perform kar raha hai — URL routing, SSL Termination,
+app-level health checks.
+
+Isliye yahan L4 kaafi nahi hoga — L7 mandatory hai.
+
+
 
 
 
@@ -355,14 +413,12 @@ KEY POINTS:
 CASE 6: MONOLITHIC ARCHITECTURE WITH CDN AND LOAD BALANCER
 --------------------------------------------------------------
 
-Suppose ek monolithic application hai.
-
-Uske multiple instances different servers par run kar rahe hain.
-In instances ke traffic ko distribute karne ke liye ek Load Balancer hai.
-
-CDN bhi present hai.
+Suppose ek monolithic application hai, jiske multiple instances
+different servers par run kar rahe hain. In instances ke traffic ko
+distribute karne ke liye ek Load Balancer hai. Saath me CDN bhi hai.
 
 Is case me DNS resolution ke baad CDN ka IP return hota hai.
+
 
 Flow:
 
@@ -391,38 +447,28 @@ Flow:
           +-----------------------------> Response returned directly from CDN
 
 
-Explanation:
 
-    Load Balancer incoming requests ko monolithic application ke multiple running instances ke beech distribute karta hai.
+## QUESTION  : KAUNSA LB USE KARNA HAI ?
+------------------------------------------
 
-    Agar koi ek instance down ho jaye, to Load Balancer remaining healthy instances ko traffic forward kar sakta hai.
+Since ye monolithic architecture hai — sirf ek hi service ke multiple
+instances hain. URL routing application ke andar hoti hai (controllers
+me), LB ke paas nahi.
 
-    URL routing application ke andar hoti hai.
+Isliye technically L4 kaafi hai — bas traffic distribute karna hai.
 
+Lekin production me generally L7 prefer karte hain:
 
-## NOTE :
----------
+    - SSL Termination    → Centralized certificate management
 
-Unlike a microservices architecture,
-all business modules (Users, Orders, Payments, etc.)
-are part of the same application deployment.
+    - App-level health checks  → /health endpoint hit karke actual
+                                  application health check karta hai.
+                                  L4 sirf TCP-level check kar sakta hai
+                                  (port open hai ya nahi) — agar
+                                  application andar se hang hai lekin
+                                  port open hai, to L4 usse healthy
+                                  maan lega.
 
-Although multiple instances of the application
-may be running, every instance contains
-the complete application.
-
-
-Example in Spring Boot:
-
-Saare endpoints same monolithic application
-ke different controllers/modules ke through
-handle kiye jaate hain.
-
-Example:
-
-    /users      -> UserController
-
-    /orders     -> OrderController
-
-    /payments   -> PaymentController
+    - Future-proofing    → Kal microservices me convert ho, to L7
+                            already URL routing support karta hai
 
