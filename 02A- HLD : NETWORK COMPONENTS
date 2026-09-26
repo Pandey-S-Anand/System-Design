@@ -40,6 +40,16 @@ change ho sakte hain.
 
 
 
+
+
+
+
+
+
+
+
+
+
 ===========================================
 # QUESTION : LOAD BALANCER KYA HOTA HAI ?
 ===========================================
@@ -1426,6 +1436,14 @@ Use case: Modern cloud, high-scale systems.
 
 
 
+
+
+
+
+
+
+
+
 ============================================================================
 # QUESTION : API GATEWAY KYA HOTA HAI AUR YE KYA PROBLEM SOLVE KARTA HAI ?
 ============================================================================
@@ -1638,6 +1656,7 @@ jab tak clients naye version par migrate na ho jaayein.
             { "id": 101, "firstName": "Anurag", "lastName": "Pandey" }
 
 
+
 ##### DONO VERSIONS KE SERVICES ALAG-ALAG DEPLOY KARO
 --------------------------------------------------------
 
@@ -1731,20 +1750,22 @@ Isse unnecessary requests aur cascading failures avoid ho jaate hain.
 ### 12. LOAD BALANCING 
 -------------------------
 
-Kuch API Gateway implementations backend service instances ke
-beech khud bhi load balancing kar sakte hain.
+Kuch API Gateways (depending on implementation) khud bhi load balancing kar sakte hain. 
+Ye URL routing ke baad, us service ke available instances me traffic
+distribute kar dete hain:
 
-    API Gateway → User Instance-1 / Instance-2 / Instance-3
+        /users/**  →  User Service instances me load balance
+        /orders/** →  Order Service instances me load balance
 
-NOTE:
 
-Ye implementation par depend karta hai. Production me commonly
-API Gateway ke baad dedicated Service Load Balancers ya Service
-Discovery mechanisms (Eureka, Consul, Kubernetes Services) backend
-instances ko discover aur load balance karte hain.
+#### NOTE:
+------------
 
-Isliye har architecture me API Gateway khud load balancing kare,
-ye zaroori nahi hai.
+Production me commonly API Gateway ke
+baad dedicated Service Load Balancers ya Service Discovery
+mechanisms (Eureka, Consul, Kubernetes Services) instances ko
+discover aur load balance karte hain.
+
 
 
 
@@ -1766,12 +1787,29 @@ systems ke liye valid hai.
   User Svc LB    Order Svc LB    Payment Svc LB
 
 
-Lekin production me ye SPOF ban jaata hai — Gateway down hua to
-saari requests fail. Aur high traffic ke liye ise horizontally
-scale karna padta hai.
+
+Lekin production me ye SPOF ban jaata hai. Agar wo down
+ho gaya, to saari client requests fail ho jaayengi (chahe backend
+services healthy hon).
 
 Isliye production me multiple API Gateway instances deploy kiye
-jaate hain, unke aage ek Load Balancer ke saath.
+jaate hain, aur unke aage ek Load Balancer rakha jaata hai.
+
+LB generally L4 hota hai — kyunki API Gateway khud L7 hai (URL
+routing, SSL Termination etc  wo handle karta hai). LB ka
+kaam bas instances ke beech traffic distribute karna hai.
+
+Lekin ek caveat hai:
+
+    - Traditional L4 LB → Sirf TCP-level health check karta hai.
+                          Agar API Gateway andar se hang hai but
+                          port open hai, to L4 usse healthy maan
+                          lega.
+
+    - Modern L4 LB (AWS NLB) → HTTP health checks support karta hai
+                                — isliye health check ka ye problem
+                                solve ho jaata hai.
+
 
 
 ### PRODUCTION ARCHITECTURE
@@ -1818,6 +1856,40 @@ Benefits:
 
 
 
+------------------------------------------------------
+## QUESTION : API GATEWAY KAB UNNECESSARY HOTA HAI ?
+------------------------------------------------------
+
+1. MONOLITHIC ARCHITECTURE
+----------------------------
+
+   Isme sirf ek hi service hoti hai (multiple instances ke saath),
+   aur URL routing application ke andar hoti hai (Spring Boot
+   controllers). API Gateway ka koi kaam nahi bachta — kyunki
+   route karne ke liye multiple services hi nahi hain.
+
+   Is case me L7 LB kaafi hai — instances ke beech traffic
+   distribute karne, health checks, SSL Termination, aur
+   rate limiting ke liye.
+
+   LEKIN agar API versioning, authentication/authorization jaise
+   advanced features chahiye, to API Gateway ki zaroorat pad
+   sakti hai.
+
+
+2. MICROSERVICES + L7 LB (bina advanced features ki zaroorat)
+---------------------------------------------------------------
+
+   L7 LB khud URL routing, rate limiting, request/response
+   transformation, health checks, aur SSL Termination kar sakta
+   hai.
+
+   Agar authentication, API versioning jaise cross-cutting
+   concerns ki zaroorat nahi — to L7 LB hi kaafi hai.
+   Dedicated API Gateway unnecessary hai yahan.
+
+
+
 
 =====================================================================
 # QUESTION : CDN KYA HOTA HAI AUR YE KYA PROBLEM SOLVE KARTA HAI ?
@@ -1845,11 +1917,12 @@ wajah se network latency reduce hoti hai aur response faster
 milta hai.
 
 
-## QUESTION : CDN KO KAISE PATA CACHE KARNA HAI YA NAHI ?
-------------------------------------------------------------
+## QUESTION : CDN KO KAISE PATA CACHE KARNA HAI YA NAHI ? AUR CACHE KAB EXPIRE HOTA HAI ?
+--------------------------------------------------------------------------------------------
 
 CDN khud decide nahi karta. Origin Server se jo response aata hai,
-uske headers me hi specified hota hai ki usse cache karna hai ya nahi:
+uske headers me hi specified hota hai ki usse cache karna hai ya
+nahi, aur kitni der tak:
 
     Cache-Control: public, max-age=86400
         → 24 hours tak cache karo
@@ -1858,12 +1931,51 @@ uske headers me hi specified hota hai ki usse cache karna hai ya nahi:
         → Cache mat karo, har request Origin tak jaayegi
 
 
-### NOTE:
------------
+TTL (Time To Live) max-age ke according set hota hai. TTL expire
+hone ke baad:
 
-CDNs mostly static content cache karte hain. Lekin cacheable
-dynamic GET responses bhi cache ho sakte hain — agar Origin
-appropriate caching headers bhej raha ho.
+    → CDN cache entry remove ho jaati hai
+    → Next request → Cache Miss → Origin se fresh content fetch
+
+
+### NOTE:
+----------
+Agar immediately content update karna ho (TTL wait karne ke bina),
+to CDN manually bhi purge kar sakta hai (admin panel / API se).
+
+
+
+## QUESTION : IMAGE UPDATE HONE KE BAAD BHI CDN PURANI IMAGE KYUN DIKHA RAHA HAI ?
+------------------------------------------------------------------------------------
+
+Kyunki CDN ke paas wahi image cached hai — Origin par update hone
+ka CDN ko automatically pata nahi chalta. Jab tak TTL expire na ho
+ya manually purge na karo, purani image serve hoti rahegi.
+
+
+SOLUTION:
+
+1. Short TTL rakho (frequently updated content ke liye)
+2. Manually purge karo (critical content ke liye)
+3. Versioned URLs use karo (sabse common)
+
+       /images/product-101.jpg → /images/product-101-v2.jpg
+
+   Jab image update ho, uska naam/URL hi change kar do.
+   Isse naya URL CDN cache me milega hi nahi → Cache Miss →
+   Origin se fresh image fetch hogi.
+
+   Fayda: Purani image ke TTL expiry ka wait nahi karna padta,
+   aur manually purge karne ki bhi zaroorat nahi padti.
+
+
+
+## QUESTION : KYA CDN DYNAMIC APIs KO CACHE KAR SAKTA HAI ?
+-------------------------------------------------------------
+
+CDNs mostly static content cache karte hain. Lekin cacheable dynamic
+GET responses bhi cache ho sakte hain — agar data frequently change
+nahi hota aur Origin appropriate caching headers ke through allow kare.
 
 Example:
 
@@ -1917,3 +2029,4 @@ Without CDN:
 With CDN:
     First Request  → CDN Edge → Cache Miss → Origin → Cache & Return
     Subsequent     → CDN Edge → Cache Hit  → Direct return (Origin tak request nahi jaati)
+
