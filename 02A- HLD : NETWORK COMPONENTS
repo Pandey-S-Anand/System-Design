@@ -2030,3 +2030,154 @@ With CDN:
     First Request  → CDN Edge → Cache Miss → Origin → Cache & Return
     Subsequent     → CDN Edge → Cache Hit  → Direct return (Origin tak request nahi jaati)
 
+
+
+## QUESTION : CDN vs REDIS ?
+------------------------------
+
+CDN   → User ke nearby content cache karta hai (network latency
+        kam karne ke liye). TTL Cache-Control header ke max-age
+        attribute se set hota hai.
+
+Redis → Mostly database aur application ke beech hota hai, aur
+        database results (mostly GET responses) ko RAM me store
+        karta hai — taaki DB par kam load jaaye. TTL application
+        commands ke through define karta hai (SETEX / EXPIRE).
+
+
+
+
+===========================================
+## QUESTION : SERVICE DISCOVERY KYA HAI ?
+===========================================
+
+Service Discovery ek central registry hai jisme har service ke
+healthy instances ka IP:Port register hota hai.
+
+Har service instance start hote hi registry me apna naam
+register karta hai. Crash / shutdown par deregister ho jaata hai.
+
+
+### QUESTION : SERVICE DISCOVERY KI ZAROORAT KYUN PADTI HAI ?
+--------------------------------------------------------------
+
+Production systems me services cloud par run karti hain, aur unke
+multiple instances dynamically aate-jaate rehte hain — naya instance
+add hua, purana kill ho gaya, ya koi crash ho gaya.
+
+Isliye har instance ko locate karna mushkil ho jaata hai — kyunki
+IP aur Port change hote rehte hain, aur manually unhe maintain
+karna impractical hai.
+
+Is problem ko solve karne ke liye Service Discovery use hoti
+hai.
+
+
+### QUESTION : KAHAN USE HOTA HAI ?
+-------------------------------------
+
+1. SERVICE LB → Registry se query karke current healthy instances
+   ki list nikaalta hai, aur unme traffic distribute karta hai.
+
+2. API GATEWAY (agar usme LB capability ho) → URL routing ke baad
+   Service Discovery se healthy instances ka pata laga kar unme
+   traffic distribute kar sakta hai.
+
+
+### NOTE:
+----------
+
+Service-to-service HTTPS REST API calls bhi eventually
+target service ke LB ke through hi jaati hain — to Service
+Discovery wahan bhi indirectly use hoti hai.
+
+Calling service ko sirf target service ke LB ka URL pata hona
+chahiye (jaise order-service.company.com).
+
+
+EXAMPLES:
+
+    - Eureka (Netflix)
+    - Consul (HashiCorp)
+    - etcd
+
+
+
+===========================================
+## QUESTION : SIGNED URLS KYA HOTE HAIN ?
+===========================================
+
+Signed URL ek temporary URL hota hai jise use karke cloud storage
+(S3, GCS) me stored private files ko bina login access kiya ja
+sakta hai.
+
+Is URL me 3 cheezein hoti hain:
+
+    - File ka path (bucket + object key)
+    - Expiry time (kab tak valid)
+    - Cryptographic signature (proof ki URL legitimate hai)
+
+
+### USE CASE:
+---------------
+
+Cloud storage me files private hoti hain by default. Lekin
+kabhi-kabhi user ko specific file temporarily deni hoti hai:
+
+    - Bank statement PDF download
+    - KYC document upload / view
+    - Invoice / receipt PDF
+    - Private profile picture
+
+
+### QUESTION : SIGNED URL GENERATE KARNE KE APPROACHES ?
+----------------------------------------------------------
+
+#### APPROACH 1 : SYMMETRIC (S3 Pre-Signed URLs)
+-------------------------------------------------
+
+Application ke paas Secret Access Key hoti hai (AWS credentials).
+Wahi key Amazon S3 ke paas bhi stored hai (kyunki AWS ne hi generate
+ki thi jab account banaya).
+
+
+FLOW:
+
+1. User private file access karna chahta hai (jaise bank statement download).
+2. Backend Secret Key se sign karke signed URL generate karta hai.
+3. Backend ye signed URL user ko return karta hai.
+4. User signed URL par request bhejta hai → S3.
+5. S3 apni stored Secret Key se signature verify karta hai.
+
+        Valid   → File serve
+        Invalid → 403 Forbidden
+
+
+EXAMPLE:
+
+        https://bank-bucket.s3.amazonaws.com/statement-101.pdf
+        ?X-Amz-Expires=900
+        &X-Amz-Signature=ABC123XYZ...
+
+        User ye URL 15 min ke andar open karke file download kar
+        sakta hai. 15 min ke baad URL invalid → 403 Forbidden.
+
+
+
+#### APPROACH 2 : ASYMMETRIC (CloudFront Signed URLs)
+-------------------------------------------------------
+
+Application ke paas Private Key hoti hai.
+CloudFront ke paas corresponding Public Key hoti hai.
+
+
+FLOW:
+
+1. User private file access karna chahta hai.
+2. Backend Private Key se sign karke signed URL generate karta hai.
+3. Backend ye signed URL user ko return karta hai.
+4. User signed URL par request bhejta hai → CloudFront.
+5. CloudFront Public Key se signature verify karta hai.
+
+        Valid   → File serve
+        Invalid → 403 Forbidden
