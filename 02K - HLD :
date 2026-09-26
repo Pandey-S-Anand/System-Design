@@ -1,1 +1,95 @@
+================================
+# QUESTION : TIMEOUT KYA HAI ?
+================================
+
+Timeout ek maximum time limit hai jo caller side set karta hai 
+— client, service, load balancer, API gateway, ya database client.
+
+Agar is time limit ke andar target system se 
+koi bhi response nahi aata — na success, na failure —
+to caller wait karna band kar deta hai 
+aur us request ko apni side se failed maan leta hai.
+
+## IMPORTANT :
+---------------
+
+Timeout hone ka matlab ye nahi ki target system ne request process nahi ki.
+Timeout hone ke baad bhi ye possibility hoti hai ki target system ne request process kar li ho, 
+lekin response na de paaya ho — network issue, response bhejte waqt crash etc.
+Isliye Non-idempotent operations me timeout ke baad blindly retry nahi karte
+Production-grade systems me operations ko idempotent banate hain.
+
+
+
+## QUESTION : TIMEOUT KYUN ZAROORI HAI ?
+------------------------------------------
+
+Har incoming request ko process karne ke liye ek worker thread allocate hota hai (jaise Tomcat me).
+Maan lo ek worker thread ne kisi external API ko call kiya — jaise Payment Service, DB, ya koi downstream service.
+Agar us API call ke liye koi timeout configured nahi hai, aur target system se response hi nahi aa raha (slow, hung, ya network issue),
+to ye worker thread indefinitely block reh jayegi. Ab isi tarah aur requests aati hain, aur har ek apna worker thread block kar leti hai.
+Jaise-jaise aisi requests aati hain, thread pool ke threads khatam hone lagte hain. Jaise hi saare worker threads block ho jaate hain — jaise Tomcat me default 200 threads hote hain, 
+ya kisi bhi configured thread pool size tak — thread pool exhaust ho jaata hai.  Uske baad nayi requests ke paas process hone ke liye koi free thread nahi bachta.
+Wo ya to queue me wait karti hain, ya reject ho jaati hain.
+
+Thread pool exhaustion ki wajah se:
+
+### 1. BAD USER EXPERIENCE
+-----------------------------
+User ko slow response milta hai ya UI par infinite spinner dikhta hai — jaise "your request is being processed". 
+Infinite spinner dikhane se better hai fast error dena. User ko jaldi pata chalta hai ki kuch galat hua.
+
+
+### 2. RESOURCE BLOCKED
+--------------------------
+Blocked thread apne saath kai system resources (jaise memory, connection) hold karke rakhti hai. 
+Timeout ke baad ye sab free ho jaate hain.
+
+
+### 3. FAILURE DETECTION DIFFICULT
+------------------------------------
+Bina timeout ke koi exception throw nahi hoti, request bas hang reh jaati hai aur thread block ho jaata hai, lekin logs me koi error entry nahi aati, isliye problem chhupi rehti hai; 
+aur koi clear signal na hone ki wajah se root cause locate karna bhi mushkil ho jaata hai — pata nahi chalta kaunsi dependency (Payment Service, DB, downstream) slow hai,
+jisse debugging manual ho jaati hai aur thread dump lena padta hai.
+
+
+### 4. CASCADING FAILURE
+---------------------------
+Cascading Failure tab hota hai jab ek service slow ya fail hoti hai, aur ye failure upstream chain me propagate hoti jaati 
+hai — ek ke baad ek service fail hone lagti hai, aur eventually poora system down ho jaata hai.
+
+Example:
+
+Client → Service A → Service B → Service C
+
+Maan lo har service me 10 threads hain.
+
+- Client ne 10 requests bheji → Service A ke 10 threads busy (Service B ka wait)
+- Service B ke 10 threads busy (Service C ka wait)
+- Service C slow ho gayi → Service B ke saare 10 threads block
+- Service B blocked → Service A ke saare 10 threads bhi block
+- Ab 11th request aayi → Service A ke paas free thread nahi → fail
+
+Poora system hang
+
+Failure neeche se upar cascade hui — isliye naam Cascading Failure.
+
+
+
+## QUESTION : TIMEOUT KE TYPES ?
+----------------------------------
+
+1. CONNECTION TIMEOUT
+-----------------------
+
+- Connection Timeout tab hota hai jab client aur server ke beech TCP connection establish hone mein specified time se zyada lag jaye. 
+  Client ne SYN bheja, lekin SYN-ACK nahi aaya — could be server down, network issue, ya firewall ne silently drop kar diya. 
+  Is wajah se TCP connection establish nahi hoti.
+
+- Connection Timeout = TCP handshake fail = HTTP request bheji hi nahi gayi = target ne kuch nahi kiya = safe to retry.
+- Typical value 1–3 seconds hoti hai. 
+
+
+2. READ TIMEOUT (Socket Timeout)
+-----------------------------------
 
