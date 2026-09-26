@@ -82,14 +82,114 @@ Failure neeche se upar cascade hui — isliye naam Cascading Failure.
 1. CONNECTION TIMEOUT
 -----------------------
 
-- Connection Timeout tab hota hai jab client aur server ke beech TCP connection establish hone mein specified time se zyada lag jaye. 
-  Client ne SYN bheja, lekin SYN-ACK nahi aaya — could be server down, network issue, ya firewall ne silently drop kar diya. 
+- Client aur Server ke beech TCP connection establish hone mein agar specified time se zyada lag jaye, toh Connection Timeout hota hai.
+- Client ne SYN bheja, lekin SYN-ACK nahi aaya — could be server down, network issue, ya firewall ne silently drop kar diya. 
   Is wajah se TCP connection establish nahi hoti.
-
-- Connection Timeout = TCP handshake fail = HTTP request bheji hi nahi gayi = target ne kuch nahi kiya = safe to retry.
+- Iska matlab hai request target tak pahunchi hi nahi, isliye safe to retry. 
 - Typical value 1–3 seconds hoti hai. 
+- Error: ConnectTimeoutException
 
 
-2. READ TIMEOUT (Socket Timeout)
+### NOTE - CONNECTION REFUSED
+------------------------------
+
+- Connection Refused technically timeout nahi hai, lekin ye TCP connection phase me hota hai — isliye commonly Connection Timeout ke saath discuss karte hain. 
+  Isme server reachable tha (network level pe), lekin us particular port pe koi service listen nahi kar rahi thi, isliye server ne turant RST (Reset) packet bhej
+  diya aur connection immediately fail ho gaya — koi wait nahi hua.
+- Connection Timeout se main farak ye hai ki timeout me response hi nahi aata (caller ko wait karna padta hai, phir fail hota hai), 
+  jabki Connection Refused me RST turant aata hai (fast fail, no waiting).
+- Common reasons: galat port number, service crash ho gayi ho, ya firewall actively connection reject kar raha ho. 
+
+
+2. WRITE TIMEOUT 
+-----------------
+
+- Write Timeout tab hota hai jab client aur server ke beech TCP 3-way handshake complete ho jaata hai, 
+  TCP connection establish ho jaata hai. Agar HTTPS request bhejna hai to uske liye TLS handshake complete 
+  bhi karna padta hai. TLS handshake successfully complete hone ke baad encrypted channel establish ho jaata hai, 
+  aur client HTTP/ HTTPS request bhejna shuru karta hai — yaani write() call karta hai.
+  Agar ye write operation specified time ke andar complete nahi hota, to Write Timeout trigger hota hai.
+- Ye mostly tab hota hai jab payload bada ho — jaise file upload. Buffer full ho jaata hai aur write() call multiple 
+  chunks me data bhejta hai. Agar network slow ya server slow hai, to write() block ho jaata hai aur write timeout trigger hota hai.
+- Write timeout ke baad result indeterminate hota hai — request server tak pahunchi hi nahi, partially pahunchi, ya poori pahunch gayi
+  lekin client ko last data segment ka ACK nahi mila. Isliye non-idempotent operations me blindly retry nahi karte
+- Typical value usually Read Timeout ke barabar ya thoda kam.
+
+
+
+
+3. READ TIMEOUT (Socket Timeout)
 -----------------------------------
+
+- Read Timeout tab hota hai jab client aur server ke beech TCP 3-way handshake complete ho jaata hai, 
+  aur TCP connection establish ho jaata hai. Agar HTTPS request bhejni hai, to uske liye TLS handshake 
+  complete karna padta hai. TLS handshake successfully complete hone ke baad encrypted channel establish ho jaata hai.
+  Ab client HTTP/HTTPS request bhejta hai — yaani request server tak pahunch jaati hai.
+  Uske baad client response ka wait karta hai. Agar is response wait me specified time se zyada lag jaye,
+  to Read Timeout trigger hota hai.
+- Read timeout ke baad result indeterminate hota hai — request server tak pahunch chuki thi, aur process bhi ho chuki ho 
+  sakti hai. Sirf response nahi aaya. Isliye non-idempotent operations me blindly retry nahi karte .
+- Common reasons: Server slow, DB slow, Downstream service slow, Deadlock
+- Typical value 1–3 seconds hoti hai. 
+- Error: SocketTimeoutException
+
+
+
+4. REQUEST TIMEOUT
+--------------------
+
+- Total Request Timeout ek maximum allowed time hai jo ek poori request ko complete hone ke liye diya jaata hai.
+  Ye ek upper bound budget hai — isme sab kuch cover hota hai:
+
+  a) TCP connection establish karna (via TCP 3-way handshake)
+  b) TLS handshake karna (agar HTTPS request bhejni hai)
+  c) HTTP / HTTPS Request write karna
+  d) Response receive karna
+  e) Retries (agar request fail hui to)
+  f) Backoff delays (retries ke beech ka wait)
+
+- Total Request Timeout ki value teen cheezon ke basis par decide karte hain:
+
+  a) BUSINESS SLA KE BASIS PAR
+     > Business ne kaha: "Payment API ka response 3 second me aana chahiye." → Total Timeout = 3s.
+     > SLA se bada nahi rakh sakte. Warna SLA violate hoga — customer penalize karega, compliance issue aayega, regulatory audit me red flag.
+
+  b) P99 LATENCY KE BASIS PAR
+     > P99 = 100 requests me se 99 requests is time ke andar complete ho jaati hain. Sirf 1 request isse slow hoti hai.
+     > Yaani P99 = 800ms ka matlab: 99% requests 800ms ya us se kam me complete hoti hain.
+     > Total Request Timeout kabhi bhi P99 se kam nahi rakh sakte — warna legitimate slow requests bhi fail ho jaayengi
+     > Right value: P99 + thoda buffer ≈ 1.5–2x P99
+
+  c) RETRY BUDGET
+    > Jin bhi timeouts par tumne retries configure kiye, unke total cumulative time se kam nahi rakh sakte Request Timeout ki value.
+    > Agar 3 retries hain aur har attempt me ~1s lagta hai → Total Timeout kam se kam 3–4s hona chahiye — warna retries beech me hi cut ho jaayengi.
+
+-  Conflict hone par SLA jeetta hai. Chahe P99 1s ho, chahe retry budget 4s ho — agar SLA 3s hai to Total Timeout 3s hi rahega.
+
+
+
+5. SESSION TIMEOUT
+--------------------
+
+- Agar application HttpSession use kar rahi hai authentication/authorization ke liye, to hum define kar sakte hain ki wo HttpSession kitni der tak valid rahegi.
+  Configured timeout tak user koi request nahi bhejta, to Tomcat automatically HttpSession destroy kar deta hai — user ko dobara login karna padta hai.
+- Session timeout inactivity-based hota hai. Har request par timer reset hota hai. User active rahe to session expire nahi hogi.
+- Typical value: 30 min (HttpSession ka default)
+- Configure kaise (Spring Boot):
+  server.servlet.session.timeout=30m     ← Single server + Distributed dono me kaam karta hai
+  spring.session.timeout=30m             ← Optional; Spring Session specific override
+
+
+
+6. CONNECTION POOL BORROW TIMEOUT 
+-----------------------------------
+
+
+
+
+## QUESTION : TIMEOUT KE TYPES ?
+----------------------------------
+
+
+
 
