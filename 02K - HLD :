@@ -630,7 +630,7 @@ Total wait time: 1 + 2 + 4 + 8 = 15 seconds
    Attempt 2 → fail → wait random(0, 2s) = 1.7s
    Attempt 3 → fail → wait random(0, 4s) = 2.8s
 
-- Kab use: ✔✔ Production standard. Yehi use karo.
+- Kab use: ✔✔ Production standard.
 
 
 
