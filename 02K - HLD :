@@ -1035,3 +1035,306 @@ SETUP:
     (infinite spinner nahi, immediate response)
 
 20. NO CASCADING FAILURE — chain intact rehti hai
+
+
+
+
+======================================
+# QUESTION : RATE LIMITING KYA HAI ?
+======================================
+
+Rate Limiting ek mechanism hai jo kisi client ko ek defined time window me 
+limited number of requests hi bhejne deta hai, limit cross hote hi request 
+reject ho jaati hai (usually 429 Too Many Requests).
+
+
+## QUESTION : RATE LIMITING  KITNE TARIKON SE LAGA SAKTE HO ?
+--------------------------------------------------------------
+
+1. IP-BASED RATE LIMITING
+---------------------------
+
+Example : 5 req/min per IP
+
+Kisi bhi IP address se 1 minute ke window me maximum 5 requests allowed hain.
+
+
+### QUESTION : IP-BASED RATE LIMITING KAB USE KARTE HAIN ?
+-------------------------------------------------------------
+
+IP-based rate limiting un endpoints ke liye use karte hain jahan user ka authenticated identity available nahi hota —
+matlab humare paas user ko uniquely identify karne ke liye koi authenticated identifier (jaise user_id) nahi hota.
+Aise endpoints hote hain — Login, Register, Forgot Password, OTP Send, ya public/anonymous APIs.
+
+
+### QUESTION : IP-BASED RATE LIMITING KI LIMITATION ?
+--------------------------------------------------------
+
+#### QUESTION: PAT KYA HAI?
+------------------------------
+
+- Jab koi device — laptop, mobile ya TV — internet access karna chahti
+  hai, toh sabse pehle woh router se connect hoti hai.
+
+- Router device ko ek private IP address deta hai, jaise '192.168.1.5'.
+
+- Private IP sirf local network par valid hota hai. Internet par valid nahi hota.
+  Internet par hosted resources ko access karne ke liye public IP chahiye.
+
+- Device ke andar OS network connection ke liye ek source port bhi
+  assign karta hai, jaise '53000'.
+
+- Jab device internet par request bhejti hai, router uske private IP aur
+  private port ko apne public IP (jo ISP router ko provide karta hai,
+  jaise '49.205.10.20') aur public port mein translate karta hai. Isi
+  process ko PAT (Port Address Translation) kehte hain.
+
+- Router different connections/devices ko uniquely identify karne ke
+  liye different public ports use karta hai. Ye public ports wo khud
+  assign karta hai.
+
+- Agar router sirf different private IPs ko same public IP me convert kar
+  de aur port translation na kare, to jab destination se response aayega,
+  router different devices/connections ko uniquely identify nahi kar payega
+  kyunki sabhi devices ka same public IP hoga. Port translation isi problem
+  ko solve karta hai. Isi wajah se ghar ya office ke multiple devices same 
+  public IP share karke internet access kar paate hain, bina kisi confusion ke.
+
+
+Example :
+ 
+- Ghar/office mein 3 devices — teeno google.com access karna chahti hain:
+
+    Laptop : 192.168.1.5:53000
+    Phone  : 192.168.1.7:53000
+    TV     : 192.168.1.10:53000
+
+  Notice karo ki sabhi devices ka source port same hai, phir bhi ye uniquely 
+  identifiable hain kyunki unke private IP addresses different hain. Network 
+  connections ko IP address + port ke combination se identify kiya jaata hai.
+
+- Router ka public IP: 49.205.10.20
+
+- Router PAT perform karta hai:
+
+    192.168.1.5:53000   → 49.205.10.20:61000
+    192.168.1.7:53000   → 49.205.10.20:61001
+    192.168.1.10:53000  → 49.205.10.20:61002
+
+  Public IP same (49.205.10.20), but public ports different
+  isliye har device uniquely identify ho jaati hai.
+
+
+- PAT Table:
+
+    Public IP:Port        →  Private IP:Port
+    --------------------------------------------------
+    49.205.10.20:61000    →  192.168.1.5:53000   (Laptop)
+    49.205.10.20:61001    →  192.168.1.7:53000   (Phone)
+    49.205.10.20:61002    →  192.168.1.10:53000  (TV)
+
+
+- Google ko teeno requests same public IP se dikhti hain, but ports
+  different:
+
+    49.205.10.20:61000 → Laptop ki connection
+    49.205.10.20:61001 → Phone ki connection
+    49.205.10.20:61002 → TV ki connection
+
+- Google response bhejta hai (maan lo Laptop ke liye):
+
+    49.205.10.20:61000
+
+  Router PAT table check karta hai:
+
+    49.205.10.20:61000 → 192.168.1.5:53000 → Laptop
+
+Response Laptop ko forward ho jaata hai. ✅
+
+
+#### IMPORTANT:
+-----------------
+
+NAT = Sirf IP translation
+      Private IP → Public IP
+
+PAT = IP + Port dono translate
+      Private IP : Port → Public IP : Port
+
+
+1: PAT Issue 
+--------------
+
+Agar hum IP-based rate limiting laga dein (i.e. public IP par), to ek user apna
+limit cross karega, aur usi public IP ke peeche baithe baaki saare users bhi block
+ho jaayenge — kyunki sabka public IP same hai. Is wajah se wo baaki users bhi
+internet par hosted resources ko access nahi kar paayenge, chahe unhone kuch
+galat nahi kiya.
+
+Isi wajah se IP-based rate limiting ki limit thodi loose rakhte hain — taaki
+PAT ke peeche baithe genuine users impact na hon.
+
+
+
+2. IDENTIFIER BASED RATE LIMITING (Email / Mobile)
+-----------------------------------------------------
+
+Example:
+  → 5 req/min per Email
+  → 3 req/10min per Mobile
+
+Kisi bhi email/mobile se 1 minute (ya 10 min) ke window me maximum
+requests allowed hain — chahe request kisi bhi IP se aaye.
+
+
+### IDENTIFIER-BASED LIMIT KI ZARURAT KYUN HAI ?
+--------------------------------------------------
+
+Agar identifier-based rate limiting na ho, to attacker bulk emails/mobiles
+ka dump use karke different IPs se mass OTP requests bhej sakta hai —
+aise endpoints pe jo OTP-based verification use karte hain.
+Isse per-IP limit easily bypass ho jaati hai.
+
+  - Company ka paisa waste — SMS / Email gateway cost (10,000 OTP = bada bill)
+  - Victim user ko spam — phone me OTP messages ki barsaat
+
+Isi ko OTP Flooding attack kehte hain.
+
+Real-world: IRCTC, PhonePe, Paytm, WhatsApp — sabme OTP rate limiting hoti hai.
+
+
+### QUESTION : KAHAN USE KARTE HAIN ?
+---------------------------------------
+
+Aise endpoints pe jahan user apna claimed identifier deta hai —
+jaise Login, Register, Forgot Password, OTP Send.
+
+(Claimed isliye, kyunki user ne khud bataya hai ki wo kaun hai.
+Verify nahi hua hai.)
+
+Generally identifier-based limit ko on top of IP-based limit lagate hain:
+
+    /login
+      → 5 req/min per IP               ← Layer 1
+      → 5 req/min per Email/Mobile     ← Layer 2
+
+Ab chahe attacker 100 different IPs use kare, agar wo same email/mobile
+pe attack kar raha hai → identifier + IP based limit usse rok legi.
+
+
+### QUESTION : LIMITATION ?
+------------------------------
+
+Agar attacker ke paas bulk emails/mobiles ka dump ho (data breach se),
+to wo aise endpoints pe mass attack kar sakta hai — har request
+different email/mobile aur different IP se bhej kar:
+
+    Email-1  ← IP-1
+    Mobile-2 ← IP-2
+    Email-3  ← IP-3
+    ...
+
+To:
+  - Per-IP limit FAIL        (har request new IP)
+  - Per-Email limit FAIL     (har request new email)
+  - Per-Mobile limit FAIL    (har request new mobile)
+  - Saari layers bypass ho jaati hain
+
+
+Solution : Global Rate Limit + CAPTCHA
+----------------------------------------
+
+Jab individual identifier limits bypass ho jaayein, tab aggregate
+level pe rokna padta hai:
+
+  - Global Rate Limit → Total requests/min cross (jaise 1000/min)
+                        → CAPTCHA trigger
+  - CAPTCHA           → Bots/scripts ruk jaate hain, attack stop
+
+
+
+
+3. USER-BASED RATE LIMITING 
+------------------------------
+
+Example : /api/** → 100 requests/min per user
+
+Ek logged-in user 1 minute me maximum 100 API calls kar sakta hai.
+
+
+### QUESTION : KAHAN USE KARTE HAIN ?
+---------------------------------------
+
+Authenticated requests ke liye generally per-user rate limiting use karte hain.
+
+User ko uniquely identify karne ke liye hum JWT token se 'sub' claim (user ID)
+(verified identity - authentication ke baad mila, trusted hai) extract karte hain.
+Ye user ki stable identity hai — same user ka same sub hota hai, chahe kitne bhi 
+naye tokens issue hon.
+
+Isse har user ki API request count independently track hoti hai aur
+rate limit bhi individually enforce hoti hai.
+
+Generally:
+
+- Login/Register/OTP jaise unauthenticated endpoints pe hum
+  IP + Email/Mobile combo rate limiting lagate hain.
+
+- Login ke baad ke endpoints pe (yaani jo endpoints authenticated hain)
+  hum USER-BASED RATE LIMITING lagate hain — kyunki wahan user ko uniquely
+  identify karne wala authenticated attribute hamesha available hota hai,
+  jaise user_id (JWT sub claim se).
+
+Isliye user-based rate limiting "IP ka replacement" nahi hai —
+wo "IP ka complement" hai. Dono different phases ke liye hain.
+
+
+### BENIFIT:
+--------------
+User-based rate limiting NAT/PAT issue bhi solve kar deti hai —
+jo IP-based rate limiting me hota hai, kyunki ek public IP ke peeche
+multiple users ho sakte hain.
+
+
+
+4. API KEY BASED RATE LIMITING 
+-------------------------------
+
+Example: 1000 req/hour per API key
+
+1 hour me maximum 100 API calls kar sakta hai.
+
+
+### QUESTION : KAHAN USE KARTE HAIN ?
+---------------------------------------
+
+Partner APIs, B2B integrations, aur signup-based public APIs ke liye.
+Signup ke baad jab API key issue hoti hai, tab per API key limit lagate hain.
+API key verified identity hai — signup ke through issue hoti hai, isliye trusted hai.
+Attacker fake key nahi bhej sakta.
+
+
+### BENIFIT:
+--------------
+
+1: IP-independent — PAT problem solve ho jaata hai.
+   - Ek user apna limit cross kare → sirf uska API key block hoga.
+     Baaki users apne API keys ke saath normally use kar sakte hain.
+
+2: Revoke kar sakte ho agar abuse ho.
+
+
+### NOTE:
+---------
+
+Truly anonymous API me na koi API key hoti hai, na hi user ka koi identity — sirf IP bacha hai.
+
+Example: Public weather API.
+
+Solution: Loose IP limit (1000/hour per IP).
+
+Problem: PAT issue — NAT ke peeche ek user exceed kare to baaki sab users bhi block.
+Isliye limit loose rakhni padti hai.
+
+Perfect solution nahi hai.
+
