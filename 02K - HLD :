@@ -1711,8 +1711,8 @@ Sliding Window me window FIXED nahi hoti. Har request ke saath
 window aage slide hoti jaati hai.
 
 Sliding Window Log me hum har request ka timestamp store karte hain 
-(jaise Redis ke Sorted Set me). Jab bhi nayi request aati hai, to 
-current time ke hisaab se window slide hoti hai. Jo purane timestamps 
+(Redis Sorted Set (ZSET) use karte hain.). Jab bhi nayi request aati hai,
+to current time ke hisaab se window slide hoti hai. Jo purane timestamps 
 window se bahar ho gaye, unhe hata dete hain. Iske baad hum dekhte hain 
 ki ab new adjusted window me kitne total timestamps bache hue hain. 
 Agar un timestamps ka count allowed count se kam hai (jaise agar limit 
@@ -1727,18 +1727,39 @@ Matlab:
 Ye window HAR REQUEST par calculate hoti hai — current time ke hisaab se.
 
 
-## EXAMPLE :
+## KEY FORMAT :
+-----------------
+
+    ratelimit:{entity}:{entity_id}
+
+    entity    = user / ip / mobile / apikey etc.
+    entity_id = actual identifier (user_id, IP address, etc.)
+
+
+
+## STEP BY STEP FLOW
+------------------------
+
+### EXAMPLE :
 ---------------
 
-Limit = 5 requests / 60 sec
-windowSize = 60 sec
+   Limit = 5 requests / 60 sec per user (user_id se identify)
+
+   windowSize = 60 sec
+
+   entity     = user
+   entity_id  = user_id (jaise 101)
+
+   Key:
+   ratelimit:user:101
 
 Har request ke time window apne aap slide hoti hai.
 Window = [current_time - 60s, current_time]
 
 
-### REQUEST 1: 10:01:00
-────────────────────────
+
+### REQUEST 1 (user:101): 10:01:00
+─────────────────────────────────────
 
   Window = [10:01:00 - 60s, 10:01:00]
          = [10:00:00, 10:01:00]
@@ -1750,8 +1771,8 @@ Window = [current_time - 60s, current_time]
   Timestamps: [10:01:00]
 
 
-### REQUEST 2: 10:01:10
-─────────────────────────
+### REQUEST 2 (user:101): 10:01:10
+─────────────────────────────────────
 
   Window = [10:01:10 - 60s, 10:01:10]
          = [10:00:10, 10:01:10]
@@ -1763,8 +1784,8 @@ Window = [current_time - 60s, current_time]
   Timestamps: [10:01:00, 10:01:10]
 
 
-### REQUEST 3: 10:01:20
-─────────────────────────
+### REQUEST 3 (user:101) : 10:01:20
+─────────────────────────────────────
 
   Window = [10:01:20 - 60s, 10:01:20]
          = [10:00:20, 10:01:20]
@@ -1776,8 +1797,8 @@ Window = [current_time - 60s, current_time]
   Timestamps: [10:01:00, 10:01:10, 10:01:20]
 
 
-### REQUEST 4: 10:01:30
-─────────────────────────
+### REQUEST 4 (user:101) : 10:01:30
+─────────────────────────────────────
 
   Window = [10:01:30 - 60s, 10:01:30]
          = [10:00:30, 10:01:30]
@@ -1789,8 +1810,8 @@ Window = [current_time - 60s, current_time]
   Timestamps: [10:01:00, 10:01:10, 10:01:20, 10:01:30]
 
 
-### REQUEST 5: 10:01:40
-─────────────────────────
+### REQUEST 5 (user:101) : 10:01:40
+─────────────────────────────────────
 
   Window = [10:01:40 - 60s, 10:01:40]
          = [10:00:40, 10:01:40]
@@ -1804,8 +1825,8 @@ Window = [current_time - 60s, current_time]
   Count = 5 (limit reached)
 
 
-### REQUEST 6: 10:01:50   ⚠️ LIMIT CROSS
-──────────────────────────────────────────
+### REQUEST 6 (user:101) : 10:01:50   ⚠️ LIMIT CROSS
+────────────────────────────────────
 
   Window = [10:01:50 - 60s, 10:01:50]
          = [10:00:50, 10:01:50]
@@ -1825,8 +1846,8 @@ Window = [current_time - 60s, current_time]
         Count 5 hi raha → REJECT.
 
 
-### REQUEST 7: 10:02:10
-─────────────────────────
+### REQUEST 7 (user:101) : 10:02:10
+────────────────────────────────────
 
   Window = [10:02:10 - 60s, 10:02:10]
          = [10:01:10, 10:02:10]
@@ -1847,8 +1868,14 @@ Window = [current_time - 60s, current_time]
 
 
 
+### NOTE :
+-----------
 
-### QUESTION : DISTRIBUTED SYSTEM ME SLIDING WINDOW LOG ALGORITHM KAISE KAAM IMPLEMENT KARTE HAI ?
------------------------------------------------------------------------------------------------------
+Sliding Window Log me ZSET (Redis Sorted Set) ki har user ki key par TTL
+isliye lagate hain kyunki agar user gayab ho jaaye, to uska ZSET Redis me
+permanently padi rahegi — memory leak.
 
-
+TTL (EXPIRE) sirf user ki PEHLI request pe lagate hain — jab Redis ZSET me
+us user ki koi entry nahi hoti. Subsequent requests pe EXPIRE nahi lagate —
+simplicity aur efficiency ke liye i.e extra Redis call bachane ke liye
+sirf pehli request pe lagate hain.
