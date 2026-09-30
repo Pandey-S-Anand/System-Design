@@ -1479,8 +1479,139 @@ Window 2: 11:00 AM - 11:59 AM
   Fresh cycle
 
 
-### LIMITATION
------------------
+
+### QUESTION : DISTRIBUTED SYSTEM ME FIXED WINDOW COUNTER ALGORITHM KAISE KAAM KARTA HAI ?
+---------------------------------------------------------------------------------------------
+
+1. Client HTTP request bhejta hai, jo Load Balancer tak pahunchti hai.
+   LB request ko kisi ek App Instance par route karta hai.
+
+
+2. App Instance har window ke liye ek alag key banata hai. Jab user us
+   window me pehli baar request bhejta hai, tab us window ke liye key
+   create hoti hai aur Redis me store ho jaati hai.
+
+
+   #### KEY FORMAT :
+   ------------------
+
+   ratelimit:entity:{entity_id}:window:{window_id}
+
+   window_id = currentTime / windowSize (seconds me)
+
+
+   #### EXAMPLE :
+   ---------------
+
+   100 requests per hour per user (user_id se identify)
+
+   entity     = user
+   entity_id  = user_id (jaise 101)
+   window_id  = currentTime / 3600 (kyunki window size 3600 sec hai)
+
+   Final Key:
+   ratelimit:user:101:window:1720003245
+
+
+   #### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
+   -----------------------------------------------
+
+   Window fixed hoti hai, request ke time se start nahi hoti.
+
+   EXAMPLE:
+
+     Requirement: 100 requests / hour
+     First request aayi: 10:59 AM
+     → Ye request 10:00 AM - 11:00 AM wali window me jaayegi
+       (10:59 AM - 11:59 AM wali window me NAHI)
+
+
+   STEP 1: Time ko seconds me convert karo (00:00:00 se ab tak)
+
+     00:00:00  → 0 seconds
+     01:00:00  → 3600 seconds
+     .
+     .
+     .
+     10:00:00  → 36000 sec
+     10:59:00  → 39540 sec
+     11:00:00  → 39600 sec
+
+
+   STEP 2: Formula lagao
+
+     window_id = currentTime / windowSize (integer division)
+
+     10:59 AM pe:  window_id = 39540 / 3600 = 10.98 = 10
+     10:58 AM pe:  window_id = 39480 / 3600 = 10.96 = 10  ← same
+     11:00 AM pe:  window_id = 39600 / 3600 = 11.0  = 11  ← change
+
+
+   STEP 3: window_id ka matlab
+
+     window_id 0  → 00:00 - 00:59
+     window_id 1  → 01:00 - 01:59
+     ...
+     window_id 10 → 10:00 - 10:59   ← 10:59 AM yahan
+     window_id 11 → 11:00 - 11:59   ← 11:00 AM yahan
+
+   Isliye 10:59 AM → window_id = 10 → 10:00-11:00 wali window
+
+
+3. Key ke corresponding ek counter hota hai jo conceptually 0 se start
+   hota hai — but pehli request pe hi INCR usse 1 kar deta hai.
+   App Instance Redis ko ye command bhejta hai:
+
+       INCR ratelimit:user:101:window:1720003245
+
+   Redis counter ko +1 karke nayi incremented value return karta hai
+   (jaise count = 1 pehli request pe etc.).
+
+
+4. Counter ki maximum limit = no_of_requests_allowed
+   (jaise requirement 100 req/hour hai to limit = 100).
+
+
+5. Key create hone ke saath hi (i.e. us window ki pehli request pe,
+   jab INCR ka result 1 aata hai) us window ka TTL set kar dete hain:
+
+       EXPIRE key 3600
+
+   TTL = windowSize (jaise 100 req/hour ke liye windowSize = 1 hour).
+   Subsequent requests pe EXPIRE nahi chalta — warna TTL refresh hota
+   rahega aur key kabhi expire nahi hogi.
+
+
+6. App Instance Redis se mili count value ko limit se compare karta hai:
+
+       count <= 100  → ALLOW
+       count >  100  → REJECT (429 Too Many Requests)
+
+
+7. Allow hone par App Instance Database se actual data fetch karta hai,
+   aur finally response client ko return ho jaata hai.
+   Reject hone par Database touch bhi nahi hota.
+
+
+8. Jaise-jaise window me nayi requests aati hain, counter badhta
+   rehta hai. Jaise hi counter apni limit (no_of_requests_allowed)
+   reach kar leta hai, us window me aane wali further requests reject
+   ho jaati hain.
+
+
+9. Jaise hi window ka TTL expire hota hai, matlab window complete ho
+   gayi — us window ki key automatically Redis se delete ho jaati hai
+   (pichle window ki key auto-cleanup).
+
+
+10. Ab jab nayi window ke liye pehli request aati hai, to us nayi window
+    ke liye ek nayi key create hoti hai, aur counter phir se fresh start
+    karta hai (conceptually 0 se).
+
+
+
+### QUESTION : LIMITATIONS KYA HAI ?
+--------------------------------------
 
 1: BOUNDARY BURST PROBLEM 
 ---------------------------
@@ -1548,104 +1679,179 @@ implement hota hai.
 
 
 
-### QUESTION : FIXED WINDOW COUNTER — DISTRIBUTED ENVIRONMENT ME KAISE IMPLEMENT KARTE HAIN ?
-------------------------------------------------------------------------------------------------
+### QUESTION : KAHAN USE KARTE HAIN ?
+--------------------------------------
 
-### KEY FORMAT
-----------------
-
-ratelimit:entity:{entity_id}:window:{window_id}
-
-window_id = currentTime / windowSize (seconds me)
-
-
-### EXAMPLE
--------------
-
-100 requests per hour per user (user_id se identify)
-
-entity     = user
-entity_id  = user_id (jaise 101)
-window_id  = currentTime / 3600 (kyunki window size 3600 sec hai)
-
-Final Key:
-ratelimit:user:101:window:1720003245
-
-
-### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
------------------------------------------------
-
-Window fixed hoti hai, request ke time se start nahi hoti.
+Fixed Window generally billing aur daily limits ke liye best hai.
+Critical endpoints pe nahi use karta kyunki boundary burst problem hai.
 
 Example:
-  Requirement: 100 requests / hour
-  First request aayi: 10:59 AM
-  → Ye request 10:00 AM - 11:00 AM wali window me jaayegi
-    (10:59 AM - 11:59 AM wali window me NAHI)
 
+1. FREE TIER DAILY LIMITS
+   Limit: 5 PDF downloads/day per user
 
-#### QUESTION : KYUN ?
------------------------
+2. MONTHLY API QUOTA (Stripe/AWS type)
+   Limit: 10,000 calls/month per API key
 
-STEP 1: Time ko seconds me convert karo (00:00:00 se ab tak)
-  00:00:00  → 0 seconds
-  01:00:00  → 3600 seconds
-  .
-  .
-  .
-  10:00:00  → 36000 sec
-  10:59:00  → 39540 sec
-  11:00:00  → 39600 sec
+3. PASSWORD RESET LIMIT
+   Limit: 3 resets/day per user
 
-STEP 2: Formula lagao
-  window_id = currentTime / windowSize (integer division)
+4. DAILY EMAIL/SMS CAP
+   Limit: 10,000 emails/day per campaign
 
-  10:59 AM pe:  window_id = 39540 / 3600 = 10.98 = 10
-  10:58 AM pe:  window_id = 39480 / 3600 = 10.96 = 10  ← same
-  11:00 AM pe:  window_id = 39600 / 3600 = 11.0  = 11  ← change
-
-STEP 3: window_id ka matlab
-  window_id 0  → 00:00 - 00:59
-  window_id 1  → 01:00 - 01:59
-  ...
-  window_id 10 → 10:00 - 10:59   ← 10:59 AM yahan
-  window_id 11 → 11:00 - 11:59   ← 11:00 AM yahan
-
-Isliye 10:59 AM → window_id = 10 → 10:00-11:00 wali window
+5. INTERNAL SERVICE CALLS (Non-critical)
+   Limit: 1000 calls/hour per service
 
 
 
-#### FLOW :
--------------
+2. SLIDING WINDOW LOG
+-------------------------
 
-1. Har window ke liye ek alag key banti hai.
+Sliding Window me window FIXED nahi hoti. Har request ke saath 
+window aage slide hoti jaati hai.
 
-2. Jab user us window me pehli baar request bhejta hai, tab us window
-   ke liye key create hoti hai aur Redis me store ho jaati hai.
+Sliding Window Log me hum har request ka timestamp store karte hain 
+(jaise Redis ke Sorted Set me). Jab bhi nayi request aati hai, to 
+current time ke hisaab se window slide hoti hai. Jo purane timestamps 
+window se bahar ho gaye, unhe hata dete hain. Iske baad hum dekhte hain 
+ki ab new adjusted window me kitne total timestamps bache hue hain. 
+Agar un timestamps ka count allowed count se kam hai (jaise agar limit 
+hai 100 req/min, to allowed count = 100), to naye request ka timestamp 
+store karte hain aur use allow karte hain. Warna reject kar dete hain 
+(timestamp store nahi karte).
 
-3. Is key ke corresponding ek counter hota hai jo conceptually 0 se
-   start hota hai — but pehli request pe hi INCR usse 1 kar deta hai.
+Matlab:
 
-4. Counter ki maximum limit = no_of_requests_allowed
-   (jaise requirement 100 req/hour hai to limit = 100)
+    Window = [current_time - windowSize, current_time]
 
-5. Key create hone ke saath hi (i.e. us window ki pehli request pe)
-   us window ka TTL set kar dete hain — jo windowSize ke barabar
-   hota hai (jaise 100 req/hour ke liye windowSize = 1 hour).
+Ye window HAR REQUEST par calculate hoti hai — current time ke hisaab se.
 
-6. Jaise hi window ka TTL expire hota hai, matlab window complete
-   ho gayi, aur us window ki key automatically Redis se delete ho
-   jaati hai.
 
-7. Ab jab nayi window ke liye pehli request aati hai, to us nayi
-   window ke liye ek nayi key create hoti hai, aur counter phir se
-   fresh start karta hai (conceptually 0 se).
+## EXAMPLE :
+---------------
 
-9. Jaise-jaise window me nayi requests aati hain, counter increase
-   hota rehta hai.
+Limit = 5 requests / 60 sec
+windowSize = 60 sec
 
-10. Jaise hi counter apni limit (no_of_requests_allowed) reach kar
-    leta hai, us window me aane wali further requests reject ho
-    jaati hain (429 Too Many Requests).
+Har request ke time window apne aap slide hoti hai.
+Window = [current_time - 60s, current_time]
+
+
+### REQUEST 1: 10:01:00
+────────────────────────
+
+  Window = [10:01:00 - 60s, 10:01:00]
+         = [10:00:00, 10:01:00]
+
+  Window ke andar timestamps (before add): []
+  Count = 0 < 5 → ALLOW
+  Naya timestamp add karo: 10:01:00
+
+  Timestamps: [10:01:00]
+
+
+### REQUEST 2: 10:01:10
+─────────────────────────
+
+  Window = [10:01:10 - 60s, 10:01:10]
+         = [10:00:10, 10:01:10]
+
+  Window ke andar timestamps: [10:01:00]
+  Count = 1 < 5 → ALLOW
+  Naya timestamp add karo: 10:01:10
+
+  Timestamps: [10:01:00, 10:01:10]
+
+
+### REQUEST 3: 10:01:20
+─────────────────────────
+
+  Window = [10:01:20 - 60s, 10:01:20]
+         = [10:00:20, 10:01:20]
+
+  Window ke andar timestamps: [10:01:00, 10:01:10]
+  Count = 2 < 5 → ALLOW
+  Naya timestamp add karo: 10:01:20
+
+  Timestamps: [10:01:00, 10:01:10, 10:01:20]
+
+
+### REQUEST 4: 10:01:30
+─────────────────────────
+
+  Window = [10:01:30 - 60s, 10:01:30]
+         = [10:00:30, 10:01:30]
+
+  Window ke andar timestamps: [10:01:00, 10:01:10, 10:01:20]
+  Count = 3 < 5 → ALLOW
+  Naya timestamp add karo: 10:01:30
+
+  Timestamps: [10:01:00, 10:01:10, 10:01:20, 10:01:30]
+
+
+### REQUEST 5: 10:01:40
+─────────────────────────
+
+  Window = [10:01:40 - 60s, 10:01:40]
+         = [10:00:40, 10:01:40]
+
+  Window ke andar timestamps:
+    [10:01:00, 10:01:10, 10:01:20, 10:01:30]
+  Count = 4 < 5 → ALLOW
+  Naya timestamp add karo: 10:01:40
+
+  Timestamps: [10:01:00, 10:01:10, 10:01:20, 10:01:30, 10:01:40]
+  Count = 5 (limit reached)
+
+
+### REQUEST 6: 10:01:50   ⚠️ LIMIT CROSS
+──────────────────────────────────────────
+
+  Window = [10:01:50 - 60s, 10:01:50]
+         = [10:00:50, 10:01:50]
+
+  Window ke andar timestamps:
+    [10:01:00, 10:01:10, 10:01:20, 10:01:30, 10:01:40]
+  Count = 5
+
+  5 < 5? NO → REJECT (429 Too Many Requests)
+  Naya timestamp store NAHI karte
+
+  Timestamps: [10:01:00, 10:01:10, 10:01:20, 10:01:30, 10:01:40]
+  (unchanged)
+
+  Note: Last 60 sec me already 5 requests ho chuki thi,
+        aur koi timestamp window se bahar nahi gaya.
+        Count 5 hi raha → REJECT.
+
+
+### REQUEST 7: 10:02:10
+─────────────────────────
+
+  Window = [10:02:10 - 60s, 10:02:10]
+         = [10:01:10, 10:02:10]
+
+  Window ke andar timestamps:
+    [10:01:10, 10:01:20, 10:01:30, 10:01:40]
+
+  Count = 4 < 5 → ALLOW
+  Naya timestamp add karo: 10:02:10
+
+  Timestamps: [10:01:10, 10:01:20, 10:01:30, 10:01:40, 10:02:10]
+  Count = 5 (limit reached again)
+
+  Note: 10:01:00 ab window se bahar ho gaya
+        (kyunki 10:01:10 se pehle tha)
+        Isliye count 5 se 4 ho gaya — aur naya request ALLOW ho gaya.
+        Naya timestamp add hone ke baad count dubara 5 ho gaya.
+
+
+
+
+### QUESTION : SLIDING WINDOW LOG KAISE KAAM KARTA HAI ?
+----------------------------------------------------------
+
+1. Client HTTP request bhejta hai, jo Load Balancer tak pahunchti hai.
+   LB request ko kisi ek App Instance par route karta hai.
 
 
