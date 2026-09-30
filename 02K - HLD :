@@ -1848,10 +1848,7 @@ Window = [current_time - 60s, current_time]
 
 
 
-### QUESTION : SLIDING WINDOW LOG KAISE KAAM KARTA HAI ?
-----------------------------------------------------------
-
-1. Client HTTP request bhejta hai, jo Load Balancer tak pahunchti hai.
-   LB request ko kisi ek App Instance par route karta hai.
+### QUESTION : DISTRIBUTED SYSTEM ME SLIDING WINDOW LOG ALGORITHM KAISE KAAM IMPLEMENT KARTE HAI ?
+-----------------------------------------------------------------------------------------------------
 
 
