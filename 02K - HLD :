@@ -1047,7 +1047,7 @@ Rate Limiting ek mechanism hai jo kisi client ko ek defined time window me
 limited number of requests hi bhejne deta hai, limit cross hote hi request 
 reject ho jaati hai (usually 429 Too Many Requests).
 
-
+--------------------------------------------------------------
 ## QUESTION : RATE LIMITING  KITNE TARIKON SE LAGA SAKTE HO ?
 --------------------------------------------------------------
 
@@ -1337,4 +1337,315 @@ Problem: PAT issue — NAT ke peeche ek user exceed kare to baaki sab users bhi 
 Isliye limit loose rakhni padti hai.
 
 Perfect solution nahi hai.
+
+
+
+5. Device-Based RATE LIMITING 
+-------------------------------
+
+Example: Device-abc-123 → 10 req/min
+
+Device-abc-123 se 1 minute me maximum 10 API calls allowed hain.
+
+
+### QUESTION : DEVICE ID KAISE GENERATE HOTI HAI ?
+----------------------------------------------------
+
+Device ID hardware me hardcoded nahi hoti — app khud generate karti hai 
+pehli baar launch hone par, usse securely store kar leti hai, aur us 
+device se jo bhi request jaati hai, uske header me wahi same Device ID 
+bhejti hai.
+
+Lekin banking apps sirf app-generated ID pe depend nahi karti — wo 
+multiple signals combine karke device identity banati hain, jaise 
+app-generated ID, Device Fingerprint (screen resolution, OS version, 
+Hardware model), aur Behavior patterns (typing speed, tap patterns).
+
+Kyunki ek source spoofable hota hai, but multiple signals ka combination 
+spoof karna mushkil ho jaata hai.
+
+
+#### IMPORTANT:
+-----------------
+
+Har app ki apni Device ID hoti hai. Ye globally unique nahi hoti.
+
+SBI app    → Device ID: sbi-abc-123
+HDFC app   → Device ID: hdfc-xyz-789
+ICICI app  → Device ID: icici-pqr-456
+
+
+### QUESTION : KAHAN USE KARTE HAIN ?
+---------------------------------------
+
+Mostly mobile apps me — particularly banking apps me.
+
+Generally ise IP-based rate limiting ke upar ek additional layer ke 
+roop me use karte hain.
+
+- IP-based layer                     → DDoS aur basic abuse rokne ke liye
+- Device-based layer                 → Same device se aane wale abuse ko rokta hai
+- Identifier-based / User-based      → Same email/mobile ya same user_id pe 
+                                        target attack ko rokta hai
+
+Device-based aur Identifier-based — dono PAT problem solve karte hain, 
+kyunki dono IP ko ignore karte hain. Dono parallel layers hain, ek 
+doosre ka replacement nahi.
+
+
+### EXAMPLE — OTP BOMBING ATTACK
+---------------------------------
+
+Agar attacker different devices (hence different Device IDs) aur 
+different IPs (using VPN or device emulators) use karke same 
+email/mobile pe OTP bombing kare, to:
+
+- IP-based rate limiting bypass ho jaayegi (har request new IP se)
+- Device-based rate limiting bhi bypass ho jaayegi (har request new 
+  Device ID se)
+
+Is case me Identifier-based / User-based rate limiting help karti hai — 
+kyunki counter email/mobile ya user_id pe hota hai, IP ya Device ID pe 
+nahi. Chahe attacker 100 different devices aur 100 different IPs use 
+kare, same email/mobile pe limit cross hone par block ho jaayega.
+
+
+### LIMITATION
+-----------------
+
+1: DEVICE ID SPOOFABLE HAI
+------------------------------
+
+Rooted device me app ka local storage attacker ke control me hota hai.
+Device ID wahan store hoti hai, to attacker usse edit karke fresh 
+Device ID set kar sakta hai — jisse device limit bypass ho jaayegi.
+
+Isi wajah se production banking apps generally device-based rate 
+limiting ke saath-saath user-based ya identifier-based rate limiting 
+bhi lagate hain — taaki ek layer bypass ho bhi jaaye, to doosri 
+layer rok sake.
+
+
+2: DEVICE ID GLOBALLY UNIQUE NAHI HOTI
+-------------------------------------------
+
+Same device par har app ki apni Device ID hoti hai — globally unique 
+nahi. SBI app, HDFC app, ICICI app — sabki alag.
+
+Cross-app fraud detection iske through possible nahi.
+
+
+
+### BENIFIT - PAT problem solve
+--------------------------------
+
+Ek public IP ke peeche multiple users ho sakte hain (office PAT, ghar ka WiFi).
+
+IP-based me counter IP pe hota hai → ek user limit cross karega → usi IP ke 
+peeche baithe baaki sab bhi block.
+
+Device-based me counter Device ID pe hota hai → sirf wahi device block hoga, 
+baaki normally use kar sakti hain.
+
+
+
+---------------------------------------------
+## QUESTION : RATE LIMITING KE ALGORITHMS ?
+---------------------------------------------
+
+1. FIXED WINDOW COUNTER
+-------------------------
+
+Fixed Window Counter me time ko fixed-size windows me toda jaata hai, aur har window ka 
+apna independent counter hota hai. Jab bhi koi request aati hai, counter++ ho jaata hai. 
+Jab counter limit cross karta hai, to request reject ho jaati hai. Aur jab nayi window 
+start hoti hai, to counter reset ho jaata hai zero par.
+
+Example :
+
+Limit = 10,000 req/hr
+Window = 1 hour
+
+Window 1: 10:00 AM - 10:59 AM
+  Counter starts at 0
+  Request aayi → 1
+  Request aayi → 2
+  ...
+  Request aayi → 10,000
+  10,001st request → REJECT (429)
+
+Window 2: 11:00 AM - 11:59 AM
+  Counter reset → 0
+  Fresh cycle
+
+
+### LIMITATION
+-----------------
+
+1: BOUNDARY BURST PROBLEM 
+---------------------------
+
+Boundary Burst Problem tab hota hai jab attacker window ke end aur next window ke start ko target karta hai.
+Kyunki counter window change hone pe reset ho jaata hai, dono windows me limit independently allow ho jaati hai
+jisse short time me 2x limit process ho jaati hai.
+
+Iska seedha asar backend par padta hai. Agar tumhara backend 5,000 req/min handle karta hai, aur boundary burst 
+ke through 1 minute me 20,000 requests aa gayi — to backend crash ho jaayega.
+
+
+Example :
+
+Limit: 10,000 requests per hour
+
+WINDOW 1 (10:00 - 10:59):
+
+10:00 - 10:59:30  → 0 requests (attacker wait kar raha hai)
+10:59:30 - 10:59:59 → 10,000 requests (poora counter last 30 sec me khatam) → LIMIT FULL
+
+
+WINDOW 2 (11:00 - 11:59):
+
+11:00:00 → counter RESET → 0
+11:00:00 - 11:00:29 → 10,000 requests (poora counter last 30 sec me khatam) → LIMIT FULL
+
+
+Ab Dekho Timeline:
+
+WINDOW 1: 
+10:59:30 - 10:59:59 → 10,000 requests (30 sec me)
+
+WINDOW 2: 
+11:00:00 - 11:00:29 → 10,000 requests (30 sec me)
+
+Total: 1 minute me 20,000 requests
+Expected: 1 ghante me 10,000
+
+
+2: DISTRIBUTED COUNTER INCONSISTENCY 
+--------------------------------------
+
+Distributed system me ek service ke multiple instances hote hain, aur unke aage ek Load Balancer hota hai
+jo incoming requests ko un instances ke beech distribute karta hai. Agar har service instance apna local 
+counter rakhega, to total limit cross ho jayegi — kyunki har instance apne counter ko independently track
+karega, aur dusre instances ke counters ki usse koi jaankari nahi hogi.
+
+Limit = 10,000 requests/hour
+3 instances (LB ke peeche)
+
+Instance-1 → 10,000 requests (apna counter full)
+Instance-2 → 10,000 requests (apna counter full)
+Instance-3 → 10,000 requests (apna counter full)
+
+Total = 30,000 requests 🔥 (3x limit cross)
+
+
+### SOLUTION : SHARED COUNTER (REDIS)
+---------------------------------------
+
+Isliye distributed system me is algorithm ko implement karne ke liye 
+hum shared counter use karte hain — jo normally Redis ke through 
+implement hota hai.
+
+
+
+### QUESTION : FIXED WINDOW COUNTER — DISTRIBUTED ENVIRONMENT ME KAISE IMPLEMENT KARTE HAIN ?
+------------------------------------------------------------------------------------------------
+
+### KEY FORMAT
+----------------
+
+ratelimit:entity:{entity_id}:window:{window_id}
+
+window_id = currentTime / windowSize (seconds me)
+
+
+### EXAMPLE
+-------------
+
+100 requests per hour per user (user_id se identify)
+
+entity     = user
+entity_id  = user_id (jaise 101)
+window_id  = currentTime / 3600 (kyunki window size 3600 sec hai)
+
+Final Key:
+ratelimit:user:101:window:1720003245
+
+
+### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
+-----------------------------------------------
+
+Window fixed hoti hai, request ke time se start nahi hoti.
+
+Example:
+  Requirement: 100 requests / hour
+  First request aayi: 10:59 AM
+  → Ye request 10:00 AM - 11:00 AM wali window me jaayegi
+    (10:59 AM - 11:59 AM wali window me NAHI)
+
+
+#### QUESTION : KYUN ?
+-----------------------
+
+STEP 1: Time ko seconds me convert karo (00:00:00 se ab tak)
+  00:00:00  → 0 seconds
+  01:00:00  → 3600 seconds
+  .
+  .
+  .
+  10:00:00  → 36000 sec
+  10:59:00  → 39540 sec
+  11:00:00  → 39600 sec
+
+STEP 2: Formula lagao
+  window_id = currentTime / windowSize (integer division)
+
+  10:59 AM pe:  window_id = 39540 / 3600 = 10.98 = 10
+  10:58 AM pe:  window_id = 39480 / 3600 = 10.96 = 10  ← same
+  11:00 AM pe:  window_id = 39600 / 3600 = 11.0  = 11  ← change
+
+STEP 3: window_id ka matlab
+  window_id 0  → 00:00 - 00:59
+  window_id 1  → 01:00 - 01:59
+  ...
+  window_id 10 → 10:00 - 10:59   ← 10:59 AM yahan
+  window_id 11 → 11:00 - 11:59   ← 11:00 AM yahan
+
+Isliye 10:59 AM → window_id = 10 → 10:00-11:00 wali window
+
+
+
+#### FLOW :
+-------------
+
+1. Har window ke liye ek alag key banti hai.
+
+2. Jab user us window me pehli baar request bhejta hai, tab us window
+   ke liye key create hoti hai aur Redis me store ho jaati hai.
+
+3. Is key ke corresponding ek counter hota hai jo conceptually 0 se
+   start hota hai — but pehli request pe hi INCR usse 1 kar deta hai.
+
+4. Counter ki maximum limit = no_of_requests_allowed
+   (jaise requirement 100 req/hour hai to limit = 100)
+
+5. Key create hone ke saath hi (i.e. us window ki pehli request pe)
+   us window ka TTL set kar dete hain — jo windowSize ke barabar
+   hota hai (jaise 100 req/hour ke liye windowSize = 1 hour).
+
+6. Jaise hi window ka TTL expire hota hai, matlab window complete
+   ho gayi, aur us window ki key automatically Redis se delete ho
+   jaati hai.
+
+7. Ab jab nayi window ke liye pehli request aati hai, to us nayi
+   window ke liye ek nayi key create hoti hai, aur counter phir se
+   fresh start karta hai (conceptually 0 se).
+
+9. Jaise-jaise window me nayi requests aati hain, counter increase
+   hota rehta hai.
+
+10. Jaise hi counter apni limit (no_of_requests_allowed) reach kar
+    leta hai, us window me aane wali further requests reject ho
+    jaati hain (429 Too Many Requests).
+
 
