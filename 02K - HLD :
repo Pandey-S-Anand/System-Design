@@ -1487,9 +1487,9 @@ Window 2: 11:00 AM - 11:59 AM
    LB request ko kisi ek App Instance par route karta hai.
 
 
-2. App Instance har window ke liye ek alag key banata hai. Jab user us
-   window me pehli baar request bhejta hai, tab us window ke liye key
-   create hoti hai aur Redis me store ho jaati hai.
+2. User jo bhi request bhejta hai, wo kisi na kisi window ka part hota hai.
+   Aur jab user kisi window me pehli baar request bhejta hai, to 
+   Application Instance us window ke liye ek key create karta hai 
 
 
    #### KEY FORMAT :
@@ -1507,10 +1507,19 @@ Window 2: 11:00 AM - 11:59 AM
 
    entity     = user
    entity_id  = user_id (jaise 101)
-   window_id  = currentTime / 3600 (kyunki window size 3600 sec hai)
+   window size =  1 hr (3600 sec.)
 
-   Final Key:
-   ratelimit:user:101:window:1720003245
+   Consider karo ki is window me user (user_id = 101) ki pehli request
+   6:00 AM par aayi — yaani midnight (00:00:00) se 21,600 seconds baad.
+
+   Reference point: 
+   Day start = midnight (00:00:00) = 0 seconds
+   6:00 AM = 21,600 seconds since midnight
+
+   window_id  = 21,600 / 3600  = 6
+
+   Key:
+   ratelimit:user:101:window:6
 
 
    #### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
@@ -1558,31 +1567,52 @@ Window 2: 11:00 AM - 11:59 AM
    Isliye 10:59 AM → window_id = 10 → 10:00-11:00 wali window
 
 
-3. Key ke corresponding ek counter hota hai jo conceptually 0 se start
-   hota hai — but pehli request pe hi INCR usse 1 kar deta hai.
-   App Instance Redis ko ye command bhejta hai:
+3. Ab App Instance is window ke liye jo key banayi hai, usse lekar
+   Redis ke paas jaata hai, aur Redis ko INCR command bhejta hai.
 
-       INCR ratelimit:user:101:window:1720003245
-
-   Redis counter ko +1 karke nayi incremented value return karta hai
-   (jaise count = 1 pehli request pe etc.).
+       INCR ratelimit:user:101:window:6
 
 
-4. Counter ki maximum limit = no_of_requests_allowed
-   (jaise requirement 100 req/hour hai to limit = 100).
+4. Ab Redis ye dekhta hai:
+
+   - Kya ye key (ratelimit:user:101:window:6) already exist karti hai?
+
+   CASE 1: Key exist NAHI karti
+   ------------------------------
+
+   Matlab ye us window ki pehli request hai.
+   Redis key create karta hai aur key ke corresponding counter jo
+   conceptually 0 se start hota hai, usse 0 se 1 kar deta hai.
+   Redis App Instance ko return karta hai: 1
 
 
-5. Key create hone ke saath hi (i.e. us window ki pehli request pe,
-   jab INCR ka result 1 aata hai) us window ka TTL set kar dete hain:
 
-       EXPIRE key 3600
+   CASE 2: Key exist karti hai
+   -----------------------------
+
+   Matlab us window me pehle bhi requests aayi hain.
+   Redis existing counter ki value ko +1 karta hai.
+   Redis App Instance ko nayi incremented value return karta hai:
+   (jaise 5 thi, to 6 return karega)
+
+
+5. Agar wo us user ki us window me pehli request thi
+   (yaani jab INCR ka result 1 aata hai), to Application 
+   Instance us window ka TTL set kar deta hai:
+
+    EXPIRE key 3600
 
    TTL = windowSize (jaise 100 req/hour ke liye windowSize = 1 hour).
-   Subsequent requests pe EXPIRE nahi chalta — warna TTL refresh hota
-   rahega aur key kabhi expire nahi hogi.
+
+   Subsequent requests pe EXPIRE nahi chalega — warna TTL baar-baar
+   refresh hota rahega aur key kabhi expire hi nahi hogi.
 
 
-6. App Instance Redis se mili count value ko limit se compare karta hai:
+6. App Instance ko Redis se jo count value mili, usse limit se compare
+   karta hai.
+
+   Counter ki maximum limit = no_of_requests_allowed
+   (jaise requirement 100 req/hour hai to limit = 100).
 
        count <= 100  → ALLOW
        count >  100  → REJECT (429 Too Many Requests)
@@ -1710,14 +1740,14 @@ Example:
 Sliding Window me window FIXED nahi hoti. Har request ke saath 
 window aage slide hoti jaati hai.
 
-Sliding Window Log me hum har request ka timestamp store karte hain 
-(Redis Sorted Set (ZSET) use karte hain.). Jab bhi nayi request aati hai,
-to current time ke hisaab se window slide hoti hai. Jo purane timestamps 
-window se bahar ho gaye, unhe hata dete hain. Iske baad hum dekhte hain 
-ki ab new adjusted window me kitne total timestamps bache hue hain. 
-Agar un timestamps ka count allowed count se kam hai (jaise agar limit 
-hai 100 req/min, to allowed count = 100), to naye request ka timestamp 
-store karte hain aur use allow karte hain. Warna reject kar dete hain 
+Sliding Window Log me hum har request ka timestamp store karte hain.
+Isse implement karne ke liye Redis Sorted Set (ZSET) use karte hain.
+Jab bhi nayi request aati hai, to current time ke hisaab se window slide 
+hoti hai. Jo purane timestamps window se bahar ho gaye, unhe hata dete hain.
+Iske baad hum dekhte hain ki ab new adjusted window me kitne total timestamps 
+bache hue hain. Agar un timestamps ka count allowed count se kam hai 
+(jaise agar limit hai 100 req/min, to allowed count = 100), to naye request ka 
+timestamp store karte hain aur use allow karte hain. Warna reject kar dete hain 
 (timestamp store nahi karte).
 
 Matlab:
@@ -1879,3 +1909,212 @@ TTL (EXPIRE) sirf user ki PEHLI request pe lagate hain — jab Redis ZSET me
 us user ki koi entry nahi hoti. Subsequent requests pe EXPIRE nahi lagate —
 simplicity aur efficiency ke liye i.e extra Redis call bachane ke liye
 sirf pehli request pe lagate hain.
+
+
+
+
+### QUESTION : KAHAN USE KARTE HAIN ?
+--------------------------------------
+
+Sliding Window Log sirf tab use karte hain jab exact count mandatory ho,
+volume kam ho (per-user 5-10 req/min), aur memory constraint na ho.
+
+Ye memory heavy hai — har request ka timestamp Redis ZSET me store karta
+hai. High-volume system me Redis memory blow up ho jaayega.
+
+Isliye production me iska use selective hai — commonly nahi. Security-critical
+endpoints pe use karte hain, jahan exact count chahiye aur boundary burst
+acceptable nahi — jaise Login, Forgot Password, OTP.
+
+
+
+3. Sliding Window Counter
+----------------------------
+
+## QUESTION : KYUN ZAROORAT PADI ? 
+------------------------------------
+
+Fixed Window me boundary burst problem hai — window reset hone pe attacker 2x limit bypass kar sakta hai. 
+Sliding Window Log ne ye solve kiya, har request ka timestamp store karke. Lekin ye memory aur CPU heavy hai,
+high volume me Redis blow up ho jaata hai. Isliye Sliding Window Counter use karte hain.
+
+
+## QUESTION : SLIDING WINDOW COUNTER KAISE KAAM KARTA HAI ? 
+-------------------------------------------------------------
+
+1: Sliding Window Counter mein time ko Fixed Window Counter ki tarah fixed-size windows mein divide kiya jaata hai.
+
+2: Hum har user ke liye do counters maintain karte hain:
+    a). Previous Window Count: Previous fixed window mein user ki total requests ka count.
+    b) Current Window Count: Current fixed window ke start se lekar ab tak user ki total requests ka count.
+
+   Current Window = Woh fixed window jismein user ki current request aati hai. 
+                   Har request kisi na kisi fixed window ka part hoti hai, jaise 
+                   humne Fixed Window Counter mein dekha tha.
+
+3: Ab hum user ki current request ke liye actual sliding window calculate karte hain.
+   Sliding Window = [Current Time - Window Size, Current Time]
+
+4: Ab hum check karte hain ki actual sliding window ka kitna portion previous fixed window mein lie karta hai.
+
+    ** Previous Window Weight = Previous Window ka Sliding Window mein included time / Total Window Size
+    ** Previous Weighted Count = Previous Window Count × Previous Window Weight
+
+5: Ab hum estimate karte hain ki actual sliding window ke andar user ki total kitni requests aayi hain.
+     ** Estimated Count = Previous Weighted Count + Current Window Count
+
+6: Ab hum check karte hain:
+     ** Estimated Count + 1 <= Allowed Limit ?
+
+   - Agar condition satisfy hoti hai, toh request ALLOW kar denge aur Current Window Counter increment kar denge.
+   - Agar condition satisfy nahi hoti, toh request REJECT kar denge aur 429 Too Many Requests response return karenge.
+
+
+### IMPORTANT :
+-----------------
+
+Sliding Window Counter ka calculation APPROXIMATE hota hai, exact nahi, kyunki hum previous window
+mein har request ka individual timestamp store nahi karte. Hum sirf previous window ka total count
+maintain karte hain aur time ke according uska weighted portion estimate karte hain.
+
+
+### IMPLEMENTATION
+--------------------
+
+- Sliding Window Counter ko bhi Fixed Window Counter ki tarah similar way mein Redis ka use karke implement kar sakte hain.
+- Difference sirf itna hai ki Fixed Window Counter mein hum ek counter maintain karte hain, jabki Sliding Window Counter mein
+  hum har user ke liye Previous Window Count aur Current Window Count maintain karte hain.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### EXAMPLE :
+---------------
+
+Maan lo:
+
+- User ID: 101
+- Rate Limit: 100 requests/hour/user
+- Window Size: 1 hour = 3,600 seconds
+
+
+
+### STEP 1: ACTUAL SLIDING WINDOW CALCULATE KARNA
+---------------------------------------------------
+
+
+-
+New request ka time: 11:30 AM (midnight se 41,400 seconds)
+
+Ye request 11:00 AM – 12:00 PM wale fixed window mein aayegi.
+
+Current Fixed Window: 11:00 AM – 12:00 PM
+Previous Fixed Window: 10:00 AM – 11:00 AM
+
+Actual Sliding Window calculate karenge:
+
+Sliding Window = [Current Time - Window Size, Current Time]
+
+Sliding Window = 10:30 AM – 11:30 AM
+
+
+## STEP 2: PREVIOUS WINDOW KA RELEVANT PORTION CALCULATE KARNA
+-----------------------------------------------------------------
+
+Previous Window: 10:00 AM – 11:00 AM
+Current Window: 11:00 AM – 12:00 PM
+Sliding Window: 10:30 AM – 11:30 AM
+
+Actual sliding window ka 50% portion previous fixed window mein aur 50% portion current fixed window mein aata hai.
+
+
+
+## STEP 3: PREVIOUS FIXED WINDOW KA WEIGHTED COUNT CALCULATE KARNA
+---------------------------------------------------------------------
+
+- Hume previous fixed window mein user ki total requests ka count pata hai.
+  Maan lo previous fixed window mein 80 requests aayi thi.
+
+- Actual sliding window mein previous window ka sirf 50% portion included hai. 
+  Isliye previous count ka 50% consider karenge. Ise Previous Weighted Count kehte hain.
+
+- Previous Window Weight = Previous Window ka Sliding Window mein included time / Total Window Size
+                         = 30 minutes / 60 minutes
+                         = 0.5 (50%)
+
+  Previous Weighted Count = Previous Window Count × Previous Window Weight
+                          = 80 × 0.5
+                          = 40 requests
+
+
+## STEP 4: ESTIMATED COUNT CALCULATE KARNA
+--------------------------------------------
+
+- Maan lo current fixed window mein, yaani 11:00 AM se 11:30 AM tak, user ki 40 requests aa chuki hain.
+
+- Estimated Count = Previous Weighted Count + Current Window Count
+                  = 40 + 40
+                  = 80 requests
+
+
+## STEP 5: NEW REQUEST ALLOW YA REJECT KARNA
+----------------------------------------------
+
+Rate Limit = 100 requests/hour/user.
+
+Nayi request ko include karne ke liye check karenge:
+
+Estimated Count + 1 <= Allowed Limit
+
+80 + 1 <= 100
+
+Condition satisfy hoti hai, isliye request ALLOW kar denge aur Current Window ka Counter increment kar denge.
+
+Agar new request include karne par estimated count rate limit exceed karta hai, toh request REJECT kar denge aur 429 Too Many Requests response return karenge.
+
+
+
+
+
+
+
+
+
+
+
+
+## KEY FORMAT :
+----------------
+ 
+ratelimit:entity:{entity_id}:window:{window_id}
+
+window_id = currentTime / windowSize (seconds me)
+
+- entity    = user / ip / mobile / apikey etc.
+- entity_id = actual identifier (user_id, IP address, etc.)
+- window_id = currentTime / windowSize (seconds me)
+
+
+## EXAMPLE :
+------------
+
+Limit : 100 requests per hour per user (user_id se identify)
+
+entity     = user
+entity_id  = user_id (jaise 101)
+
+
