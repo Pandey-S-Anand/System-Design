@@ -1928,6 +1928,7 @@ acceptable nahi — jaise Login, Forgot Password, OTP.
 
 
 
+
 3. Sliding Window Counter
 ----------------------------
 
@@ -1945,7 +1946,7 @@ high volume me Redis blow up ho jaata hai. Isliye Sliding Window Counter use kar
 1: Sliding Window Counter mein time ko Fixed Window Counter ki tarah fixed-size windows mein divide kiya jaata hai.
 
 2: Hum har user ke liye do counters maintain karte hain:
-    a). Previous Window Count: Previous fixed window mein user ki total requests ka count.
+    a) Previous Window Count: Previous fixed window mein user ki total requests ka count.
     b) Current Window Count: Current fixed window ke start se lekar ab tak user ki total requests ka count.
 
    Current Window = Woh fixed window jismein user ki current request aati hai. 
@@ -1978,32 +1979,59 @@ mein har request ka individual timestamp store nahi karte. Hum sirf previous win
 maintain karte hain aur time ke according uska weighted portion estimate karte hain.
 
 
-### IMPLEMENTATION
---------------------
 
-- Sliding Window Counter ko bhi Fixed Window Counter ki tarah similar way mein Redis ka use karke implement kar sakte hain.
-- Difference sirf itna hai ki Fixed Window Counter mein hum ek counter maintain karte hain, jabki Sliding Window Counter mein
-  hum har user ke liye Previous Window Count aur Current Window Count maintain karte hain.
+## QUESTION : SLIDING WINDOW COUNTER KAISE IMPLEMENT KARTE HAI ?
+------------------------------------------------------------------
 
+- Sliding Window Counter bhi Fixed Window Counter ki tarah
+  similar way mein Redis use karke implement karte hain.
 
+- Difference sirf itna hai:
 
+    Fixed Window Counter    → 1 counter  (current window ka)
+    Sliding Window Counter  → 2 counters (current + previous window)
 
+- Baaki sab same:
 
-
-
-
-
-
-
-
-
+    - Window ID calculation same
+    - Key format same
+    - INCR pattern same
 
 
+### TTL — YAHAN EK IMPORTANT DIFFERENCE HAI
+---------------------------------------------
+
+Fixed Window Counter:
+
+    EXPIRE key windowSize
+    i.e TTL = 1 × windowSize
+
+    Kyunki sirf current counter chahiye.
+    Window khatam → key ka kaam khatam.
+
+
+Sliding Window Counter:
+
+    EXPIRE key (2 × windowSize)
+    i.e TTL = 2 × windowSize
+
+
+### KYUN 2x TTL RAKHTE HAIN?
+-----------------------------
+
+Kyunki immediate next window me jab hum Redis lookup karenge,
+to hume immediate previous window ka counter bhi chahiye hoga.
+
+Agar TTL = 1 × windowSize set kiya hota,
+to us user ki immediate previous window ki key tab tak expire ho chuki hoti
+jab hum immediate next window ke liye lookup karte.
+
+Isliye TTL = 2 × windowSize rakhna zaroori hai.
 
 
 
-### EXAMPLE :
----------------
+## EXAMPLE :
+-------------
 
 Maan lo:
 
@@ -2012,12 +2040,9 @@ Maan lo:
 - Window Size: 1 hour = 3,600 seconds
 
 
-
 ### STEP 1: ACTUAL SLIDING WINDOW CALCULATE KARNA
 ---------------------------------------------------
 
-
--
 New request ka time: 11:30 AM (midnight se 41,400 seconds)
 
 Ye request 11:00 AM – 12:00 PM wale fixed window mein aayegi.
