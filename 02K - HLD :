@@ -1930,7 +1930,7 @@ acceptable nahi — jaise Login, Forgot Password, OTP.
 
 
 3. Sliding Window Counter
-----------------------------
+---------------------------
 
 ## QUESTION : KYUN ZAROORAT PADI ? 
 ------------------------------------
@@ -1972,52 +1972,132 @@ high volume me Redis blow up ho jaata hai. Isliye Sliding Window Counter use kar
 
 
 ### IMPORTANT :
------------------
+----------------
 
 Sliding Window Counter ka calculation APPROXIMATE hota hai, exact nahi, kyunki hum previous window
 mein har request ka individual timestamp store nahi karte. Hum sirf previous window ka total count
 maintain karte hain aur time ke according uska weighted portion estimate karte hain.
 
 
+## EXAMPLE :
+-------------
+
+Maan lo:
+
+- User ID     : 101
+- Rate Limit  : 100 requests/hour/user
+- Window Size : 1 hour = 3,600 seconds
+
+
+### STEP 1: ACTUAL SLIDING WINDOW CALCULATE KARNA
+---------------------------------------------------
+
+Maan lo user (user_id = 101) ne 11:30 AM par request ki
+(midnight se 41,400 seconds).
+
+Ye request 11:00 AM – 12:00 PM wale fixed window mein aayegi.
+
+    Current Fixed Window  : 11:00 AM – 12:00 PM
+    Previous Fixed Window : 10:00 AM – 11:00 AM
+
+Actual Sliding Window calculate karenge:
+
+    Sliding Window = [Current Time - Window Size, Current Time]
+                   = [11:30 AM - 1 hour, 11:30 AM]
+                   = 10:30 AM – 11:30 AM
+
+
+### STEP 2: PREVIOUS WINDOW KA RELEVANT PORTION CALCULATE KARNA
+-----------------------------------------------------------------
+
+    Previous Window : 10:00 AM – 11:00 AM
+    Current Window  : 11:00 AM – 12:00 PM
+    Sliding Window  : 10:30 AM – 11:30 AM
+
+Actual sliding window ka 50% portion previous fixed window mein
+aur 50% portion current fixed window mein aata hai.
+
+
+### STEP 3: PREVIOUS FIXED WINDOW KA WEIGHTED COUNT CALCULATE KARNA
+---------------------------------------------------------------------
+
+- Hume previous fixed window mein user ki total requests ka count pata hai.
+  Maan lo previous fixed window mein 80 requests aayi thi.
+
+- Actual sliding window mein previous window ka sirf 50% portion
+  included hai. Isliye previous count ka 50% consider karenge.
+  Ise Previous Weighted Count kehte hain.
+
+    Previous Window Weight
+        = Previous Window ka Sliding Window mein included time / Total Window Size
+        = 30 minutes / 60 minutes
+        = 0.5 (50%)
+
+    Previous Weighted Count
+        = Previous Window Count × Previous Window Weight
+        = 80 × 0.5
+        = 40 requests
+
+
+### STEP 4: ESTIMATED COUNT CALCULATE KARNA
+---------------------------------------------
+
+- Maan lo current fixed window mein, yaani 11:00 AM se 11:30 AM tak,
+  user ki 40 requests aa chuki hain.
+
+    Estimated Count
+        = Previous Weighted Count + Current Window Count
+        = 40 + 40
+        = 80 requests
+
+
+### STEP 5: NEW REQUEST ALLOW YA REJECT KARNA
+-----------------------------------------------
+
+Rate Limit = 100 requests/hour/user.
+
+Nayi request ko include karne ke liye check karenge:
+
+    Estimated Count + 1 <= Allowed Limit
+    80 + 1             <= 100
+    81                 <= 100   →  TRUE ✅
+
+Condition satisfy hoti hai, isliye request ALLOW kar denge
+aur Current Window ka Counter increment kar denge.
+
+Agar new request include karne par estimated count rate limit
+exceed karta, toh request REJECT kar dete aur
+429 Too Many Requests response return karte.
+
+
 
 ## QUESTION : SLIDING WINDOW COUNTER KAISE IMPLEMENT KARTE HAI ?
 ------------------------------------------------------------------
 
-- Sliding Window Counter bhi Fixed Window Counter ki tarah
-  similar way mein Redis use karke implement karte hain.
+Sliding Window Counter bhi Fixed Window Counter ki tarah
+similar way mein Redis use karke implement karte hain.
 
-- Difference sirf itna hai:
+Do differences hain:
+
+1. COUNTERS
 
     Fixed Window Counter    → 1 counter  (current window ka)
     Sliding Window Counter  → 2 counters (current + previous window)
 
-- Baaki sab same:
+2. TTL
+
+    Fixed Window Counter    → TTL = 1 × windowSize
+    Sliding Window Counter  → TTL = 2 × windowSize
+
+Baaki sab same hai:
 
     - Window ID calculation same
     - Key format same
     - INCR pattern same
 
 
-### TTL — YAHAN EK IMPORTANT DIFFERENCE HAI
----------------------------------------------
-
-Fixed Window Counter:
-
-    EXPIRE key windowSize
-    i.e TTL = 1 × windowSize
-
-    Kyunki sirf current counter chahiye.
-    Window khatam → key ka kaam khatam.
-
-
-Sliding Window Counter:
-
-    EXPIRE key (2 × windowSize)
-    i.e TTL = 2 × windowSize
-
-
-### KYUN 2x TTL RAKHTE HAIN?
------------------------------
+### QUESTION : TTL 2x KYUN RAKHTE HAIN ?
+------------------------------------------
 
 Kyunki immediate next window me jab hum Redis lookup karenge,
 to hume immediate previous window ka counter bhi chahiye hoga.
@@ -2030,116 +2110,80 @@ Isliye TTL = 2 × windowSize rakhna zaroori hai.
 
 
 
-## EXAMPLE :
--------------
+## QUESTION : SLIDING WINDOW COUNTER KAB USE KARNA HAI ?
+----------------------------------------------------------
 
-Maan lo:
-
-- User ID: 101
-- Rate Limit: 100 requests/hour/user
-- Window Size: 1 hour = 3,600 seconds
+Sliding Window Counter tab use karte hain jab approximate count chalega — jaise general API rate limiting
+jahan thoda overcount ya undercount se koi farak nahi padta.
 
 
-### STEP 1: ACTUAL SLIDING WINDOW CALCULATE KARNA
+
+## QUESTION : SLIDING WINDOW COUNTER KI LIMITATIONS KYA HAI ?
+--------------------------------------------------------------
+
+- Ye approximate hai, exact nahi. Kyunki hum previous window ka distribution uniform assume karte hain,
+  jisse thoda overcount hota hai — safe direction me, but galat bhi hai.
+
+- Boundary burst 100% solve nahi hoti. Fixed Window se better hai (95% solve), but guarantee nahi hai,
+  extreme cases me thoda leak reh jaata hai.
+
+
+
+
+4. Token Bucket
+----------------
+
+## QUESTION : TOKEN BUCKET KAISE KAAM KARTA HAI ?
 ---------------------------------------------------
 
-New request ka time: 11:30 AM (midnight se 41,400 seconds)
+1: Fixed Window, Sliding Window Log, Sliding Window Counter — teeno request-count-based hain.
 
-Ye request 11:00 AM – 12:00 PM wale fixed window mein aayegi.
+2: Token Bucket ek alag approach use karta hai. Token Bucket me hum har user ke liye ek virtual 
+   bucket maintain karte hain jisme tokens hote hain.
 
-Current Fixed Window: 11:00 AM – 12:00 PM
-Previous Fixed Window: 10:00 AM – 11:00 AM
+3: Har incoming user request ko process karne ke liye 1 token chahiye.
 
-Actual Sliding Window calculate karenge:
+4: Isme 3 important cheezein hoti hain:
 
-Sliding Window = [Current Time - Window Size, Current Time]
+   a) Bucket Capacity:
+      - Bucket me maximum kitne tokens store ho sakte hain.
+      - Example: Capacity = 100 → ek saath max 100 requests allow hongi.
 
-Sliding Window = 10:30 AM – 11:30 AM
+   b) Available Tokens:
+      - Current time par bucket me kitne tokens available hain.
 
-
-## STEP 2: PREVIOUS WINDOW KA RELEVANT PORTION CALCULATE KARNA
------------------------------------------------------------------
-
-Previous Window: 10:00 AM – 11:00 AM
-Current Window: 11:00 AM – 12:00 PM
-Sliding Window: 10:30 AM – 11:30 AM
-
-Actual sliding window ka 50% portion previous fixed window mein aur 50% portion current fixed window mein aata hai.
+   c) Refill Rate:
+      - Bucket me kitne time me kitne naye tokens add honge.
+      - Example: Refill Rate = 10 tokens/sec, har second me 10 naye tokens add honge.
 
 
+      ## QUESTION : TOKEN REFILL KAISE HOTA HAI?
+      --------------------------------------------
 
-## STEP 3: PREVIOUS FIXED WINDOW KA WEIGHTED COUNT CALCULATE KARNA
----------------------------------------------------------------------
+       APPROACH 1: PERIODIC REFILL
+       ----------------------------
+       - Har X seconds me tokens add karo. Iske liye ek background job chahiye jo
+         scheduled time par certain naye tokens ko add kare.
 
-- Hume previous fixed window mein user ki total requests ka count pata hai.
-  Maan lo previous fixed window mein 80 requests aayi thi.
+       APPROACH 2: LAZY REFILL
+       ------------------------
+       - Jab request aati hai, tab calculate karo ki last refill ke baad kitna time guzra.
+         Us elapsed time ke basis par tokens add karo. Isme koi background job nahi chahiye.
+       - Ye approach production me use hoti hai.
+       - Formula:
+         Elapsed Time               = Current Time - Last Refill Time
+         Tokens To Add (max)        = Elapsed Time × Refill Rate
+         Tokens To Add (final)      = min(Bucket Capacity, Available Tokens + Tokens To Add (max))
 
-- Actual sliding window mein previous window ka sirf 50% portion included hai. 
-  Isliye previous count ka 50% consider karenge. Ise Previous Weighted Count kehte hain.
-
-- Previous Window Weight = Previous Window ka Sliding Window mein included time / Total Window Size
-                         = 30 minutes / 60 minutes
-                         = 0.5 (50%)
-
-  Previous Weighted Count = Previous Window Count × Previous Window Weight
-                          = 80 × 0.5
-                          = 40 requests
-
-
-## STEP 4: ESTIMATED COUNT CALCULATE KARNA
---------------------------------------------
-
-- Maan lo current fixed window mein, yaani 11:00 AM se 11:30 AM tak, user ki 40 requests aa chuki hain.
-
-- Estimated Count = Previous Weighted Count + Current Window Count
-                  = 40 + 40
-                  = 80 requests
+         Isse ensure hota hai ki bucket ki capacity exceed na ho.
 
 
-## STEP 5: NEW REQUEST ALLOW YA REJECT KARNA
-----------------------------------------------
+5: Agar bucket me token available hai, toh request ALLOW kar denge aur 1 token consume ho jayega.
 
-Rate Limit = 100 requests/hour/user.
-
-Nayi request ko include karne ke liye check karenge:
-
-Estimated Count + 1 <= Allowed Limit
-
-80 + 1 <= 100
-
-Condition satisfy hoti hai, isliye request ALLOW kar denge aur Current Window ka Counter increment kar denge.
-
-Agar new request include karne par estimated count rate limit exceed karta hai, toh request REJECT kar denge aur 429 Too Many Requests response return karenge.
+6: Agar bucket me token available nahi hai, toh request REJECT kar denge aur
+   429 Too Many Requests response return karenge.
 
 
-
-
-
-
-
-
-
-
-
-
-## KEY FORMAT :
-----------------
- 
-ratelimit:entity:{entity_id}:window:{window_id}
-
-window_id = currentTime / windowSize (seconds me)
-
-- entity    = user / ip / mobile / apikey etc.
-- entity_id = actual identifier (user_id, IP address, etc.)
-- window_id = currentTime / windowSize (seconds me)
-
-
-## EXAMPLE :
-------------
-
-Limit : 100 requests per hour per user (user_id se identify)
-
-entity     = user
-entity_id  = user_id (jaise 101)
-
+## QUESTION : DISTRIBUTED SYSTEM ME TOKEN BUCKET KAISE IMPLEMENT KARTE HAIN?
+------------------------------------------------------------------------------
 
