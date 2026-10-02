@@ -2136,10 +2136,7 @@ jahan thoda overcount ya undercount se koi farak nahi padta.
 ## QUESTION : TOKEN BUCKET KAISE KAAM KARTA HAI ?
 ---------------------------------------------------
 
-1: Fixed Window, Sliding Window Log, Sliding Window Counter — teeno request-count-based hain.
-
-2: Token Bucket ek alag approach use karta hai. Token Bucket me hum har user ke liye ek virtual 
-   bucket maintain karte hain jisme tokens hote hain.
+1: Token Bucket me hum har user ke liye ek virtual bucket maintain karte hain jisme tokens hote hain.
 
 3: Har incoming user request ko process karne ke liye 1 token chahiye.
 
@@ -2182,6 +2179,48 @@ jahan thoda overcount ya undercount se koi farak nahi padta.
 
 6: Agar bucket me token available nahi hai, toh request REJECT kar denge aur
    429 Too Many Requests response return karenge.
+
+
+
+## QUESTION : TOKEN BUCKET KI ZAROORAT PADI ?
+------------------------------------------------
+
+- Fixed Window, Sliding Window Log, Sliding Window Counter — teeno request-count-based hain.
+
+- Ye teeno normal burst allow nahi karte.
+
+  Example:
+  Limit = 10 req/min
+  → In teeno me 1 minute window me 10 se zyada requests allow nahi hongi.
+
+- Lekin real-world me legitimate burst allow karna hota hai.
+
+  Example:
+  User ne 5 minute tak koi request nahi bheji, phir ek saath 20 requests bheji.
+  → Strict count-based approach ise reject kar degi, chahe ye legitimate ho.
+
+- Token Bucket ye problem solve karta hai — Controlled burst allow karta hai.
+
+  Example:
+  - Bucket Capacity = 100 tokens
+  - Refill Rate = 10 tokens/min
+
+  User ne 5 min tak kuch nahi bheja → bucket me 100 tokens available hain.
+
+  Ab user 1 min me 100 requests bhejta hai:
+  → Sabhi 100 requests ALLOW ho jayengi (bucket me 100 tokens the).
+
+  Dhyaan do — limit 10 req/min thi, phir bhi 100 requests allow hui.
+  Isi ko controlled burst kehte hain.
+
+  Lekin ye controlled hai:
+  Agar wahi user 200 requests bhejta,
+  → pehli 100 ALLOW (tokens the),
+  → next 100 REJECT (bucket empty).
+
+  Matlab burst allow hota hai — but bucket capacity tak hi.
+  Isse backend par sudden unlimited load nahi padta.
+
 
 
 ## QUESTION : DISTRIBUTED SYSTEM ME TOKEN BUCKET KAISE IMPLEMENT KARTE HAIN?
