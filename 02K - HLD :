@@ -2360,13 +2360,21 @@ taaki burst limited rahe aur backend usse safely handle kar sake.
 1: SINGLE INSTANCE
 ---------------------
 
-- Agar service ka sirf ek instance hai, to Leaky Bucket ko implement karne ke
-  liye hum generally Queue (FIFO) with fixed capacity application ke andar hi
-  maintain karte hain. Java me iske liye BlockingQueue use karte hain
-  (jaise ArrayBlockingQueue with fixed capacity), jisme incoming requests
-  order mein store hoti hain.
+- Agar service ka sirf ek instance hai, toh Leaky Bucket implement karne ke liye application ke andar
+  fixed-capacity FIFO queue maintain kar sakte hain. Java mein iske liye ArrayBlockingQueue use karenge,
+  jisme incoming requests FIFO order mein store hoti hain.
 
-- Agar queue full ho aur nayi request aaye → us request ko REJECT kar diya jaata hai.
+- Request ko queue mein insert karne ke liye offer() method use karenge, kyunki yeh non-blocking operation hai.
+   offer() → Queue full hone par turant false return karta hai; producer thread block nahi hota.
+   put() → Queue full hone par space available hone tak producer thread block ho jaata hai.
+
+   ### IMPORTANT :
+   -----------------
+   ArrayBlockingQueue khud non-blocking queue nahi hai. Yeh ek bounded, thread-safe blocking queue hai.
+   Lekin offer() method use karne par producer thread queue full hone ki wajah se block nahi hota.
+
+- Agar queue full ho aur nayi request aaye, toh offer() false return karega aur application us request 
+  ko reject kar deti hai.
 
 - Ek scheduler fixed interval pe (jaise har 1 second) kisi job ko invoke karta hai.
   Job elapsed time aur defined leak rate ke basis par calculate karta hai ki
@@ -2444,5 +2452,52 @@ Important:
 
 
 ======================================
-# QUESTION : LOAD SHEDDING KYA HAI ?
+# QUESTION : BACKPRESSURE KYA HAI ?
 ======================================
+
+- Backpressure ek aisa mechanism hai jisme downstream service, apni processing capacity se zyada load aa jaane par, 
+  upstream service ko signal bhejti hai ki wo apni request bhejne ki speed kam kar de ya temporarily rok de. 
+  Isse downstream service overload hone se bachti hai.
+  
+- Maan lo Order Service, Payment Service ko 1,000 payment requests/sec bhej rahi hai, lekin Payment Service ki processing 
+  capacity sirf 500 requests/sec hai. Aise mein Payment Service, backpressure ke through Order Service ko requests bhejne 
+  ki speed kam karne ka signal de sakti hai, taaki Payment Service overload na ho. **Lekin yeh tabhi possible hai jab dono 
+  services ke beech communication mechanism backpressure support karta ho.
+
+
+## QUESTION: BACKPRESSURE KO AAM TAUR PAR KAISE IMPLEMENT KARTE HAIN? — BOUNDED NON BLOCKING QUEUE + REJECTION + RETRY-AFTER SIGNAL
+------------------------------------------------------------------------------------------------------------------------------------
+
+Service/applciation mein ek fixed-size FIFO queue maintain ki jaati hai, jaise 1,000 requests ki,
+jisme incoming requests temporarily buffer hoti hain. Jab queue full ho jaati hai, toh 
+nayi request ko turant reject karke `503 Service Unavailable` ya situation ke according
+`429 Too Many Requests` response diya ja sakta hai. Saath mein optional `Retry-After: 30` 
+header bhej sakte hain, jo client/producer ko 30 seconds baad retry karne ka signal deta hai,
+taaki service ko recover hone ka time mil sake.
+
+Agar request queue full hone ki wajah se definitely reject hui hai, toh woh process nahi hui;
+isliye us attempt se duplicate processing ka risk nahi hai. Lekin payment jaise critical operations
+mein retries ke dauran same Idempotency-Key use karna general safety practice hai.
+
+Java mein bounded queue ke liye 'ArrayBlockingQueue' use kar sakte hain. Request insert karne ke liye offer()
+method use karenge, kyunki yeh queue full hone par producer thread ko block nahi karta.
+
+* put() — queue full hone par thread wait karta hai.
+* offer() — queue full hone par turant false return karta hai.
+
+Agar offer() false return kare, toh application request reject karke appropriate HTTP error response bhej sakti hai.
+Isse system fail-fast karta hai aur producer thread unnecessarily block nahi hota.
+
+BlockingQueue<PaymentRequest> queue = new ArrayBlockingQueue<>(1000);
+
+boolean accepted = queue.offer(paymentRequest);
+
+if (!accepted) {
+    // Reject request with 503 Service Unavailable
+}
+
+
+### IMPORTANT : 
+---------------
+ArrayBlockingQueue application instance ki in-memory queue hoti hai. 
+Agar application ki 4 instances hain, toh har instance ki apni separate queue hoti  hai. 
