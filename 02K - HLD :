@@ -1039,6 +1039,7 @@ SETUP:
 
 
 
+
 ======================================
 # QUESTION : RATE LIMITING KYA HAI ?
 ======================================
@@ -1929,7 +1930,7 @@ acceptable nahi — jaise Login, Forgot Password, OTP.
 
 
 
-3. Sliding Window Counter
+3. SLIDING WINDOW COUNTER
 ---------------------------
 
 ## QUESTION : KYUN ZAROORAT PADI ? 
@@ -2130,7 +2131,7 @@ jahan thoda overcount ya undercount se koi farak nahi padta.
 
 
 
-4. Token Bucket
+4. TOKEN BUCKET
 ----------------
 
 ## QUESTION : TOKEN BUCKET KAISE KAAM KARTA HAI ?
@@ -2226,3 +2227,222 @@ jahan thoda overcount ya undercount se koi farak nahi padta.
 ## QUESTION : DISTRIBUTED SYSTEM ME TOKEN BUCKET KAISE IMPLEMENT KARTE HAIN?
 ------------------------------------------------------------------------------
 
+- Distributed system me Token Bucket ko Redis ki help se implement karte hain,
+  taaki sabhi application instances ek shared bucket state use karein.
+
+- Client HTTP request bhejta hai, jo Load Balancer tak pahunchti hai.
+  Load Balancer request ko kisi ek Application Instance par route karta hai.
+
+- Application me Bucket Capacity aur Refill Rate configured hote hain.
+  Example: Bucket Capacity = 5 tokens, Refill Rate = 1 token/second.
+
+- Application Instance user ki identity (jaise user_id = 101) ke basis par
+  Redis key construct karta hai.
+
+  KEY FORMAT:
+
+  ratelimit:token_bucket:{entity}:{entity_id}
+
+  Example:
+
+  ratelimit:token_bucket:user:101
+
+  Is key ke through application user 101 ki bucket identify karegi.
+
+  Har user ki bucket state Redis mein separately store hoti hai, aur us user
+  ki unique Redis key ke through identify ki jaati hai.
+
+  Har key ke against Redis me do values store hoti hain:
+
+  - tokens       → currently available tokens
+  - last_refill  → last refill timestamp
+
+- Application Redis se check karti hai ki ye key already exist karti hai ya nahi.
+
+  GET ratelimit:token_bucket:user:101
+
+
+- FIRST REQUEST: Agar Redis key exist nahi karti (GET ka response nil),
+  toh Application:
+
+     1: Tokens ko Bucket Capacity ke equal set karegi.
+     2: Last Refill Timestamp ko current time par set karegi.
+     3: Ek token consume karegi.
+     4: Key ke liye TTL set kiya ja sakta hai, taaki inactive users ki Redis keys 
+        automatically expire ho jaayein aur unnecessary keys memory occupy na karein. 
+        TTL ko har subsequent request par update karna optional hai.
+     5: Updated bucket state Redis me save karegi.
+     6: Request ALLOW kar degi.
+
+
+- NEXT REQUESTS: Application:
+
+     1: Last refill ke baad elapsed time ke basis par tokens refill calculate
+        karti hai, aur refill karti hai — lekin bucket capacity se zyada
+        tokens nahi ho sakte.
+
+        Note: Refill sirf tab hoga jab elapsed time, refill rate ki window
+        ko cross kar chuka ho.
+        Example: Agar limit 100 tokens/hour hai aur elapsed time 1 hour se
+        kam hai, to koi token refill nahi hoga.
+
+     2: Agar token available hai → Application ek token consume karke updated 
+        bucket state Redis mein save karegi. Agar required ho, toh key ka TTL
+        bhi update karegi. Uske baad request ALLOW ho jaayegi.
+
+     3: Agar token available nahi hai → request REJECT hogi with
+        429 Too Many Requests.
+
+
+
+## QUESTION : TOKEN BUCKET KAB USE KARNA HAI ?
+------------------------------------------------
+
+Token Bucket wahan use karo jahan legitimate burst aata hai, lekin sustained rate control karna hai,
+matlab traffic kabhi kam, kabhi ek saath bahut saari requests. Un bursts ko reject nahi karna hai,
+but overall ek cap maintain rahe taaki backend overload na ho — aur cap cross hone par requests reject ho jaayein.
+Example:
+
+1. Payment / Banking APIs 
+----------------------------
+
+Merchant normal din me configured rate limit ke andar rehta hai — i.e. wo limited number of payments hi karta hai,
+isliye uski bucket full rehti hai. Lekin bulk payout (salary, vendor payment, refunds) ke time ek saath hundreds of
+requests aati hain jo configured limit cross kar jaati hain. Token Bucket me jama tokens ek saath saari requests allow 
+kar dete hain — burst accommodate ho jaata hai. Cap (bucket capacity) cross hone par requests reject ho jaati hain, 
+jisse backend overload nahi hota.
+
+
+2. Flash Sale / Event Traffic
+-------------------------------
+Sale se pehle traffic bahut kam hota hai — isliye bucket full refill ho jaati hai. Sale start hote hi seconds me spike 
+aa jaata hai. Strict rate limiting lagayen to genuine users bhi block ho jaayenge. Token Bucket me jama tokens ek saath 
+bahut saari requests allow kar dete hain — spike accommodate ho jaata hai, but cap (bucket capacity) tak hi. Cap cross 
+hone par requests reject ho jaati hain, jisse backend crash nahi hota.
+
+
+
+### QUESTION : TOKEN BUCKET KI MAJOR LIMITATION KYA HAI ?
+----------------------------------------------------------
+
+Token Bucket ki sabse badi limitation ye hai ki wo burst ko fully allow karta hai. 
+Jab bucket full hota hai, to ek saath poori capacity jitni requests allow ho jaati 
+hain — jaise capacity 100 hai to 100 requests ek hi second me pass ho jaayengi. 
+Isse backend par sudden load spike aa jaata hai.
+Legitimate burst ke liye ye achha hai, lekin agar attacker jaan-bujh kar bucket full karke burst kare,
+to backend overload ho sakta hai. Isliye production me capacity chhoti rakhte hain,
+taaki burst limited rahe aur backend usse safely handle kar sake.
+
+
+
+
+5: LEAKY BUCKET
+-----------------
+
+- Leaky Bucket algorithm incoming requests ko ek FIXED RATE par process karta hai,
+  Requests chahe ek saath kitni bhi tezi se aayein, unhe downstream processing system
+  tak controlled rate par bheja jaata hai.
+- Isme hum ek bucket consider karte hain jiske niche ek hole hota hai.
+- Bucket ki BUCKET CAPACITY define karti hai ki maximum kitni requests bucket
+  mein wait kar sakti hain.
+     Example: Capacity = 100 → Maximum 100 requests queue mein wait kar sakti hain.
+- Bucket se requests ko ek CONTROLLED RATE par downstream processing system tak
+  bheja jaata hai. Is rate ko LEAK RATE kehte hain.
+     Example: Leak Rate = 2 requests/second → Bucket se har second 2 requests
+     process ki jaati hain.
+- Agar bucket full ho jaaye, toh new incoming requests ko REJECT kar diya jaata hai.
+
+
+
+## QUESTION : LEAKY BUCKET KO IMPLEMENT KAISE KARTE HAIN ?
+----------------------------------------------------------
+
+1: SINGLE INSTANCE
+---------------------
+
+- Agar service ka sirf ek instance hai, to Leaky Bucket ko implement karne ke
+  liye hum generally Queue (FIFO) with fixed capacity application ke andar hi
+  maintain karte hain. Java me iske liye BlockingQueue use karte hain
+  (jaise ArrayBlockingQueue with fixed capacity), jisme incoming requests
+  order mein store hoti hain.
+
+- Agar queue full ho aur nayi request aaye → us request ko REJECT kar diya jaata hai.
+
+- Ek scheduler fixed interval pe (jaise har 1 second) kisi job ko invoke karta hai.
+  Job elapsed time aur defined leak rate ke basis par calculate karta hai ki
+  queue se kitni requests nikaal kar process karni hain.
+
+- EXAMPLE :
+
+  Leak Rate = 10 requests per minute
+
+  1 minute = 60 seconds
+  Toh 60 seconds me 10 requests process karni hain.
+
+  Matlab approximately har 6 seconds me 1 request process honi chahiye.
+
+
+  TIMELINE :
+
+  t=1s    → scheduler chala, job invoke → process 0 request
+  t=2s    → scheduler chala, job invoke → process 0 request
+  t=3s    → scheduler chala, job invoke → process 0 request
+  t=4s    → scheduler chala, job invoke → process 0 request
+  t=5s    → scheduler chala, job invoke → process 0 request
+  t=6s    → scheduler chala, job invoke → process 1 request ✅
+  t=7s    → scheduler chala, job invoke → process 0 request
+  t=8s    → scheduler chala, job invoke → process 0 request
+  ...
+
+  t=60s   → total 10 requests process ho chuki hongi ✅
+
+
+2: DISTRIBUTED SYSTEM (MULTIPLE INSTANCE)
+------------------------------------------
+
+Shared queue maintain karne ke liye RabbitMQ ya Kafka jaise message brokers
+use kiye ja sakte hain.
+
+Service-specific LB requests ko application instances ke beech distribute karta
+hai. Ye Application instances (Producers) incoming requests ko shared queue me
+publish karte hain. Consumer(s) us queue ko listen/subscribe karte hain aur
+fixed leak rate pe messages consume karte hain.
+
+Consumer do tarah se process kar sakta hai:
+   a) Khud process kare
+   b) Downstream service ko delegate kare
+
+Agar downstream service ko bhej rahe hain, to leak rate us downstream service
+ki processing speed aur capacity dekh kar set karna hota hai. Warna overall
+load downstream service par overload ho jaayega.
+
+Important:
+   - Queue full ho → publish fail → 429 return
+
+
+## QUESTION: LEAKY BUCKET KI MAJOR LIMITATIONS KYA HAIN?
+------------------------------------------------------------
+
+1. Requests queue mein wait karti hain, jiski wajah se response time increase ho sakta hai. 
+   Ye real-time APIs ke liye problem ho sakta hai, jahan low response time chahiye hota hai.
+
+2. Agar bucket full ho jaaye, toh additional requests reject ho jaati hain, chahe traffic spike temporary hi kyon na ho.
+
+
+## QUESTION: LEAKY BUCKET KA USE KAHAN HOTA HAI?
+---------------------------------------------------
+
+1. Downstream Service Load Management:
+  -  Downstream service tak requests ko uski request-processing capacity ke according controlled rate par bhejne ke liye.
+  -  Example: Agar Payment Service sustainably 100 requests/second process kar sakti hai, toh requests ko approximately 100 requests/second ki rate se bhejna.
+
+2. Third-Party API Rate Control:
+  - Third-party API ko requests uski allowed rate ke according bhejna, taaki rate limit exceed na ho.
+
+
+
+
+
+======================================
+# QUESTION : LOAD SHEDDING KYA HAI ?
+======================================
