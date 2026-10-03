@@ -2501,3 +2501,11 @@ if (!accepted) {
 ---------------
 ArrayBlockingQueue application instance ki in-memory queue hoti hai. 
 Agar application ki 4 instances hain, toh har instance ki apni separate queue hoti  hai. 
+
+
+
+
+======================================
+# QUESTION : LOAD SHEDDING KYA HAI ?
+======================================
+
