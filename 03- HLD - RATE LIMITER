@@ -1,1 +1,70 @@
 
+
+Functional Requirements (kya karega system?) - Ye interveiwer se pucho 
+
+1: Rate limit kis basis par lagana hai?
+
+  Per IP? 
+  Per User (user_id / JWT sub)?
+  Per API Key?
+  Per Device ID?
+  Per Identifier ? like Mobile/ email etc. 
+  Per Endpoint?
+
+
+2: Rate limit kaha baita hoga? 
+
+    Khudke samjh ke liye - 
+
+a)  API Gateway Level
+    Gateway pe global rate limit (jaise 10K req/min per user across all services )
+    mat;ab user ki koi reuest aati hai humen define kar idya ki har user ki sirf 5 reqqest hi allow karo
+    no matter wo kis service pai jane wali requst hai....sirf total 5 reqist per min hi aani chchaiye
+    Fayda: 
+    Centralized rate limting ...har servi epai rate limit ka logci nahai likha padega.
+
+
+b) Har Service Level
+   Har service ka apna rate limiter hoga i.e har servic eko cod elikha oadega rate kimti ka .
+   service level paiu  hum dfiene akr sakt ehai ki us service pai user ki toal kitni reqat in a particular  window allowed hai.
+   ya phir servie ye bhi kar sakti hai wo apne har endpoint ke liye ek different rate limit enforce kar sakti hai.
+
+
+c) Hybrid — Dono (API Gateway Level + Har Service Level)
+   Gateway pe global rate limit (jaise 10K req/min per user across all services)
+   Service pe service-specific limit (jaise User Service: 100 req/min, Payment Service: 10 req/min)
+    ya phir service apane aandar rate limit poer endpot bhi confoigure akr sakti hai.
+
+  Generally hum Hybrid use karte hai. agr interveiwe bole you dedie to hum hbrid use kar sakt ehai.
+
+
+
+2: Rate limit ke rules hardcoded (Static Configuration) rahenge ya  runtime (Dynamic Configuration) pe configurable hone chahiye?
+  
+   Khudke samjh ke liye - 
+ 
+   Static Configuration:
+
+   Static Configuration ka matlab hai ki Rate limit ke rules code/config file (jaise application.yml seriv eke aanda rya PAI gateway ke aanda r) me likhe hue hain.
+
+   Nuksaan:
+   - Har change ke liye servie / Gateway restart restart — downtime 
+   
+   - Emergency me (jaise attack aa gaya) aur humein turant limit tighten karni ho to ppossibel nahai 
+      becasue pehel to hume chanege akr na padega (config file  mai) phur application/ API gateway ko restart karna
+      padega jisme samay lagega.
+   Fayda:
+    - Simple (aagr PAi gateway par hai  Sab services ke rules ek jagah — centralized management ka fayda nahi mil raha)
+    - Fast (koi DB call nahi)
+
+
+   Dynamic Configuration:
+
+   Rate limit ke rules DB me stored hote hain, aur application restart ke bina change ho sakte hain.
+
+
+
+   
+
+
+
