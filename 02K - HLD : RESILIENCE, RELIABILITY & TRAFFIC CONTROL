@@ -2335,8 +2335,8 @@ taaki burst limited rahe aur backend usse safely handle kar sake.
 
 
 
-### IMPORTANT : FAIL OPEN vs FAIL CLOSED
-------------------------------------------
+### QUESTION : RATE LIMITING MEIN FAIL OPEN vs FAIL CLOSED KYA HOTA HAI?
+----------------------------------------------------------------------------
 
 Suppose humne Rate Limiting implement ki hai aur jo rate-limiting algorithm
 hai (Fixed Window, Sliding Window Log, Sliding Window Counter, Token Bucket), 
@@ -2367,6 +2367,103 @@ state check/update karne ka koi tareeka nahi bacha. So is case me humare paas
    Redis down ho gaya. Request reject kar denge, taaki attacker rate limit bypass na kar sake.
 
 → Security / Protection important → Fail Closed
+
+
+
+### QUESTION :  DISTRIBUTED RATE LIMITING MEIN RACE CONDITION KO KAISE AVOID KAR SAKTE HAIN ?
+-----------------------------------------------------------------------------------------------
+
+Jab hum distributed system mein rate limiting implement karte hain, toh hum
+Fixed Window Counter, Sliding Window Log, Sliding Window Counter, ya
+Token Bucket jaise algorithms use kar sakte hain. Ye algorithms rate-limit 
+ka state maintain karne ke liye Redis jaise shared store ka use karte hain. 
+
+                 Load Balancer
+                /      |      \
+               ↓       ↓       ↓
+            App-1    App-2    App-3
+               \       |       /
+                \      |      /
+                   Redis
+
+
+Ab possibility hai ki different application instances se concurrent
+Redis requests aa sakti hain, jiske wajah se dono requests ke commands
+interleave ho sakte hain, jisse race condition aa sakti hai.
+
+Example :
+
+Maan lo same user ki do concurrent requests, almost simultaneously,
+do different application instances par aati hain.
+
+User-101 → Limit = 100 req/min
+Algorithm → Fixed Window Counter
+Request time → 9:50 AM
+Current request count = 99
+
+
+Dono requests same Redis key ko access karengi:
+
+Key:
+ratelimit:user:101:window:10
+
+
+Agar hum simple:
+
+GET → CHECK → UPDATE
+
+approach use karein, toh race condition ho sakti hai.
+
+
+#### REQUEST FLOW
+-------------------
+
+Request A → GET count = 99
+Request B → GET count = 99
+
+Request A → 99 < 100 → ALLOW
+Request B → 99 < 100 → ALLOW
+
+Request A → UPDATE → 100
+Request B → UPDATE → 101
+
+
+#### PROBLEM
+-------------
+
+Dono requests ne check ke time same value 99 read ki. Isliye dono requests ne independently decide kiya: 
+99 < 100 → Request allowed
+
+
+#### RESULT
+------------
+
+Actual limit     = 100
+Allowed requests = 101
+
+
+Yaani limit 100 hone ke baad bhi 101st request allow ho gayi,
+because dono requests ne same old value (99) read karke
+independently decision liya.
+
+Isi ko race condition kehte hain.
+
+
+#### SOLUTION - REDIS LUA SCRIPT :
+-----------------------------------
+
+Jab multiple concurrent requests same shared state par
+GET → CHECK → UPDATE jaise operations perform karti hain,
+toh race condition ho sakti hai.
+
+Isse avoid karne ke liye Redis Lua Script ka use kar sakte hain,
+jisme related operations ko ek hi atomic execution mein perform
+karwaya jaata hai.
+
+Lua Script ke execution ke dauran doosri Redis command interleave nahi kar sakti; 
+Redis pehle script ko complete karta hai, uske baad next command execute hoti hai.
+
+Isliye GET → CHECK → UPDATE ke beech race condition avoid ho jaati hai.
 
 
 
