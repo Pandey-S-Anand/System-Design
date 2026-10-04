@@ -2184,7 +2184,7 @@ jahan thoda overcount ya undercount se koi farak nahi padta.
 
 
 ## QUESTION : TOKEN BUCKET KI ZAROORAT PADI ?
-------------------------------------------------
+-----------------------------------------------
 
 - Fixed Window, Sliding Window Log, Sliding Window Counter — teeno request-count-based hain.
 
@@ -2332,6 +2332,42 @@ Isse backend par sudden load spike aa jaata hai.
 Legitimate burst ke liye ye achha hai, lekin agar attacker jaan-bujh kar bucket full karke burst kare,
 to backend overload ho sakta hai. Isliye production me capacity chhoti rakhte hain,
 taaki burst limited rahe aur backend usse safely handle kar sake.
+
+
+
+### IMPORTANT : FAIL OPEN vs FAIL CLOSED
+------------------------------------------
+
+Suppose humne Rate Limiting implement ki hai aur jo rate-limiting algorithm
+hai (Fixed Window, Sliding Window Log, Sliding Window Counter, Token Bucket), 
+uska rate-limit state Redis mein maintain ho raha hai.
+
+Ab agar Redis down ho gaya, toh Rate Limiting ka mechanism fail ho gaya kyunki 
+state check/update karne ka koi tareeka nahi bacha. So is case me humare paas 
+2 options hain:
+
+1: FAIL OPEN 
+--------------
+-  Redis down hone par request allow kar do.
+
+- Example:
+   Suppose ek normal product search API par rate limiting lagi hai. Redis down ho gaya. 
+   Request allow kar denge, taaki users ko service completely unavailable na lage.
+
+→ Availability important → Fail Open
+
+
+2: FAIL CLOSED
+----------------
+
+- Redis down hone par request reject kar do.
+
+- Example:
+  Suppose login / OTP / payment-related API par strict rate limiting lagi hai. 
+   Redis down ho gaya. Request reject kar denge, taaki attacker rate limit bypass na kar sake.
+
+→ Security / Protection important → Fail Closed
+
 
 
 
