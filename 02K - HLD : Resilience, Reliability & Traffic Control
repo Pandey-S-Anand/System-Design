@@ -2475,6 +2475,11 @@ nayi request ko turant reject karke `503 Service Unavailable` ya situation ke ac
 header bhej sakte hain, jo client/producer ko 30 seconds baad retry karne ka signal deta hai,
 taaki service ko recover hone ka time mil sake.
 
+Queue full hone par request reject karne ke saath, agar communication mechanism support karta hai,
+toh overloaded downstream service upstream service ko signal deti hai ki woh requests bhejne ki speed
+kam kare ya temporarily requests bhejna rok de. Isse downstream service overload hone se bachti hai aur 
+recover karne ka time milta hai.
+
 Agar request queue full hone ki wajah se definitely reject hui hai, toh woh process nahi hui;
 isliye us attempt se duplicate processing ka risk nahi hai. Lekin payment jaise critical operations
 mein retries ke dauran same Idempotency-Key use karna general safety practice hai.
@@ -2509,3 +2514,212 @@ Agar application ki 4 instances hain, toh har instance ki apni separate queue ho
 # QUESTION : LOAD SHEDDING KYA HAI ?
 ======================================
 
+Load Shedding ek mechanism hai jisme jab system par incoming traffic uski processing capacity
+se zyada ho jaata hai, toh system kuch requests ko intentionally reject kar deta hai, taaki 
+poora system overload hokar fail na ho jaaye. Iska main goal hai system ko stable rakhna aur
+critical requests ko process karte rehna.
+
+
+## QUESTION: LOAD SHEDDING KAISE IMPLEMENT KARTE HAIN?
+---------------------------------------------------------
+
+1. CONCURRENCY LIMIT 
+----------------------
+
+ Maan lo ek service ek time par maximum 500 requests concurrently process kar sakti hai, 
+ lekin upstream se 1,000 requests concurrently aa rahi hain. Agar saari 500 processing slots
+ occupied hain, toh additional requests reject kar di jaati hain. Isko implement karne ke 
+ liye Semaphore ya concurrency limiter use kar sakte hain.
+
+ ### Implementation using Java Semaphore:
+
+ Semaphore semaphore = new Semaphore(500); // maximum 500 concurrent requests ko permit karega.
+
+ if (!semaphore.tryAcquire()) { // Request aane par tryAcquire() se permit acquire karo.
+    // Permit available nahi hai -> Reject request: 503 Service Unavailable
+    return;
+ }
+
+ try {
+    processPayment();
+ } finally {
+    // Processing complete hone par release() se permit release karo.
+    semaphore.release();
+ }
+
+ ## NOTE :
+ ----------
+ Semaphore(500) ek application instance mein 500 concurrent requests limit karega. 
+ Agar service ki 4 instances hain, toh har instance ka separate semaphore hone par
+ total limit 2,000 tak ho sakti hai.
+
+
+
+2. QUEUE BASED 
+----------------
+
+Service/application mein ek fixed-size FIFO queue maintain ki jaati hai, jaise 1,000 requests ki, 
+jisme incoming requests temporarily buffer hoti hain. 
+
+- Queue mein space hai → request accept karke queue mein add kar do.
+- Queue full hai → new request ko reject kar do aur appropriate HTTP response, jaise 503 Service Unavailable, return kar do.
+
+Java mein bounded queue ke liye ArrayBlockingQueue use kar sakte hain. offer() method 
+queue full hone par producer thread ko block kiye bina false return karta hai.
+
+### NOTE: 
+----------
+Load Shedding aur Backpressure ko ek saath implement bhi kiya ja sakta hai. Jaise queue full hone par
+service excess requests ko reject kare aur saath hi upstream ko requests ki speed kam karne ka signal bhi de.
+
+
+
+3. PRIORITY BASED 
+------------------
+
+Is approach mein application mein request priorities define ki jaati hain aur system overload hone
+par low-priority requests ko reject kiya jaata hai, taaki critical requests ke liye resources available rahein.
+
+Maan lo ek e-commerce application mein:
+
+- Payment requests: high priority
+- Order status refresh: medium priority
+- Recommendations: low priority
+
+System overloaded hone par recommendations requests ko reject kar deta hai,
+taaki critical payment requests ke liye resources available rahein.
+
+
+
+
+=============================================
+# QUESTION : GRACEFUL DEGRADATION KYA HAI ?
+=============================================
+
+Graceful Degradation ek aisa approach hai jisme jab system ka koi non-critical component fail ho jaata hai,
+to poora application fail hone ke bajaye limited functionality ke saath kaam karta rehta hai
+yaani ek feature sacrifice karte hain, poora system nahi.
+
+Graceful Degradation kaam karne ke liye pehle ye clear karna padta hai ki
+kaunsa component critical hai aur kaunsa non-critical.
+
+Socho ek e-commerce application hai. Uske andar multiple services hain:
+
+- Product Service (critical — product dikhana zaroori hai)
+- Order Service (critical — order lena zaroori hai)
+- Recommendation Service (non-critical — "aapko ye bhi pasand aa sakta hai")
+- Review Service (non-critical — reviews dikhana)
+- Rewards Service (non-critical — points credit karna)
+
+Ab maan lo Recommendation Service crash ho gayi, ,toh user ko ye nahi bolna chahiye:
+
+❌ "Website unavailable"
+
+Instead:
+
+✅ Products dikhao
+✅ User ko purchase karne do
+❌ Recommendations mat dikhao
+
+Yaani non-critical feature ko sacrifice karke core functionality ko alive rakha.
+
+
+## QUESTION : KAISE IMPLEMENT KARTE HAI ?
+------------------------------------------
+
+1: FEATURE FLAG
+-----------------
+- Feature flags ek on/off switch ki tarah hote hain. Agar koi non-critical feature problem kar raha hai, 
+  toh hum us feature ko OFF kar sakte hain. Ye flag application configuration (application.properties etc.), 
+  DB, ya dedicated feature-flag system mein maintain ho sakta hai. Isse non-critical feature disable ho jaata hai, 
+  lekin baaki core functionality normally chalti rehti hai.
+
+- Example: Maan lo Recommendation Service mein problem aa gayi -> Feature flag OFF → recommendation feature disable -> Product browsing/order/payment normally chalte rahenge.
+
+
+2: TIMEOUT
+------------
+
+- Agar non-critical service response dene mein bahut time le rahi hai, toh hum connection aur read timeout 
+  configure kar sakte hain. Defined time ke andar response nahi aaya toh wait karna stop kar dete hain aur
+  appropriate fallback response de dete hain. Isse slow dependency ki wajah se poori user request unnecessarily block nahi hoti.
+
+- Example: Recommendation Service timeout → "Recommendations temporarily unavailable" → Products/order/payment functionality normally continue.
+
+
+3: CIRCUIT BREAKER
+--------------------
+
+- Agar non-critical service fail ho jaati hai, toh Circuit Breaker us service ko temporarily call karna band 
+  kar deta hai aur fallback response deta hai, jisse core system normally available rehta hai.
+
+
+4: ASYNC OFFLOADING 
+---------------------
+- Agar koi non-critical service temporarily unavailable hai, toh request ko synchronously process karne ke bajaye
+  queue mein daal sakte hain aur service available hone par baad mein process kar sakte hain.
+
+
+
+## QUESTION : FALLBACK KYA HAI ?
+---------------------------------
+- Fallback ka matlab hai — agar koi non-critical operation complete nahi ho paata, toh us operation ke response 
+  ki jagah ek default/preconfigured ya cached response diya jaata hai.
+
+- Agar operation critical hai, toh generally explicit error return karte hain, kyunki stale ya incorrect fallback 
+  data user ko galat decision lene par majboor kar sakta hai.
+
+- Example:
+  Recommendation Service fail -> Recommendation unavailable → Show popular products / previously cached recommendations to the user.
+
+  Payment / Balance Service fail -> Payment / Balance unavailable → Proper Error Response
+
+
+
+
+==========================================
+# QUESTION : BULKHEAD PATTERN KYA HAI ?
+==========================================
+
+Bulkhead Pattern ek aisa approach hai jisme service ke available thread pool ko alag-alag pools mein isolate kiya jaata hai,
+alag-alag downstream operations ke liye — taaki ek failing ya slow dependency calling service ke saare threads consume na kar sake.
+
+
+## QUESTION : BULKHEAD PATTERN KE BINA PROBLEM HOTI HAI ?
+------------------------------------------------------------
+- Suppose Order Service ke paas Tomcat thread pool me total 200 threads hain (default).
+- Ab maan lo Order Service Notification Service aur Payment Service dono ko internally call karti hai.
+- Order Service har request ke liye thread pool se ek-ek thread allocate karti hai — Payment call ke liye alag thread, Notification call ke liye alag thread. 
+- Maan lo Notification Service slow ho gayi.
+- Kyunki Payment Service up and running hai, Payment operation complete hone ke baad thread release ho jaata hai aur thread pool me wapas return ho jaata hai — matlab woh thread dobara use ho sakta hai. 
+- Lekin kyunki Notification Service slow hai, Notification call karne wali thread Notification Service ka response aane tak wait karti rehti hai — release nahi hoti.
+- Jaise-jaise Notification bhejne wali nayi requests aati hain, unke liye bhi thread pool se naye threads allocate hote rehte hain, aur ye threads bhi Notification Service ke response ka wait karte hue block ho jaate hain.
+- Dheere-dheere poora thread pool exhaust ho jaata hai. 
+- Ab aane wali Payment process karne wali requests ke liye koi thread bacha hi nahi — kyunki saare threads Notification Service ke wait me blocked hain. 
+- Isliye Payment operation bhi fail hone lagta hai. 
+- Yaani Notification Service ke slow hone ki wajah se Payment operation bhi affected ho jaata hai — yehi Cascading Effect hai.
+
+
+### SOLUTION — BULKHEAD PATTERN 
+---------------------------------
+
+Bulkhead Pattern me service ke available thread pool ko alag-alag pools me isolate kiya jaata hai — alag-alag downstream operations ke liye.
+
+Client → Order Service (200 Tomcat threads)
+              ↓
+    ┌─────────┼─────────┐
+    ↓         ↓         ↓
+ Pool A    Pool B    Pool C
+ (50)      (30)      (20)
+    ↓         ↓         ↓
+ Payment  Notification  Fraud
+
+
+- Pool A (50 threads) → sirf Payment Service calls ke liye
+- Pool B (30 threads) → sirf Notification Service calls ke liye
+- Pool C (20 threads) → sirf Fraud Service calls ke liye
+
+
+Ab agar Notification Service slow ho gayi, to sirf Pool B ke 30 threads block honge. 
+Pool A aur Pool C khali rahenge, isliye Payment aur Fraud calls normally chalti rahengi,
+aur Order Service zinda rehti hai. Bas ek dependency ka failure isolate ho jaata hai — doosri dependencies effect nahi hoti hai.
