@@ -1462,23 +1462,6 @@ apna independent counter hota hai. Jab bhi koi request aati hai, counter++ ho ja
 Jab counter limit cross karta hai, to request reject ho jaati hai. Aur jab nayi window 
 start hoti hai, to counter reset ho jaata hai zero par.
 
-Example :
-
-Limit = 10,000 req/hr
-Window = 1 hour
-
-Window 1: 10:00 AM - 10:59 AM
-  Counter starts at 0
-  Request aayi → 1
-  Request aayi → 2
-  ...
-  Request aayi → 10,000
-  10,001st request → REJECT (429)
-
-Window 2: 11:00 AM - 11:59 AM
-  Counter reset → 0
-  Fresh cycle
-
 
 
 ### QUESTION : DISTRIBUTED SYSTEM ME FIXED WINDOW COUNTER ALGORITHM KAISE KAAM KARTA HAI ?
@@ -1501,46 +1484,22 @@ Window 2: 11:00 AM - 11:59 AM
    window_id = currentTime / windowSize (seconds me)
 
 
-   #### EXAMPLE :
-   ---------------
+   #### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
+   -----------------------------------------------
 
-   100 requests per hour per user (user_id se identify)
-
+   Requirement: 100 requests per hour per user (user_id se identify)
    entity     = user
    entity_id  = user_id (jaise 101)
    window size =  1 hr (3600 sec.)
 
-   Consider karo ki is window me user (user_id = 101) ki pehli request
-   6:00 AM par aayi — yaani midnight (00:00:00) se 21,600 seconds baad.
-
-   Reference point: 
-   Day start = midnight (00:00:00) = 0 seconds
-   6:00 AM = 21,600 seconds since midnight
-
-   window_id  = 21,600 / 3600  = 6
-
-   Key:
-   ratelimit:user:101:window:6
-
-
-   #### QUESTION : WINDOW KAISE DECIDE HOTI HAI ?
-   -----------------------------------------------
+   Manlo user (101) ki request aayi: 10:59 AM
 
    Window fixed hoti hai, request ke time se start nahi hoti.
-
-   EXAMPLE:
-
-     Requirement: 100 requests / hour
-     First request aayi: 10:59 AM
-     → Ye request 10:00 AM - 11:00 AM wali window me jaayegi
-       (10:59 AM - 11:59 AM wali window me NAHI)
-
 
    STEP 1: Time ko seconds me convert karo (00:00:00 se ab tak)
 
      00:00:00  → 0 seconds
      01:00:00  → 3600 seconds
-     .
      .
      .
      10:00:00  → 36000 sec
@@ -1567,11 +1526,14 @@ Window 2: 11:00 AM - 11:59 AM
 
    Isliye 10:59 AM → window_id = 10 → 10:00-11:00 wali window
 
+   Hence, 
+   KEY: ratelimit:user:101:window:10
+
 
 3. Ab App Instance is window ke liye jo key banayi hai, usse lekar
    Redis ke paas jaata hai, aur Redis ko INCR command bhejta hai.
 
-       INCR ratelimit:user:101:window:6
+       INCR ratelimit:user:101:window:10
 
 
 4. Ab Redis ye dekhta hai:
