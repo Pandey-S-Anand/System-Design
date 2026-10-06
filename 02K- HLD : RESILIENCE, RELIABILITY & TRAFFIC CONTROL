@@ -2076,8 +2076,26 @@ Isliye TTL = 2 × windowSize rakhna zaroori hai.
 ## QUESTION : SLIDING WINDOW COUNTER KAB USE KARNA HAI ?
 ----------------------------------------------------------
 
-Sliding Window Counter tab use karte hain jab approximate count chalega — jaise general API rate limiting
-jahan thoda overcount ya undercount se koi farak nahi padta.
+Sliding Window Counter tab use karte hain jab approximate count
+chalega — jaise general API rate limiting jahan thoda overcount
+ya undercount se koi farak nahi padta.
+
+Undercount aur overcount wala issue is assumption se aata hai:
+"Previous window me requests uniformly distribute hui thi."
+
+Reality: Distribution non-uniform hoti hai. Isliye 2 cases:
+
+CASE 1: BURST ALLOW (OVER-COUNT)
+- Previous window ki zyada requests sliding window ke overlapping
+  portion me (previous window ke END me)
+- Is case me Algorithm rate limit se zyada allow → BURST
+
+CASE 2: UNDER-COUNT (LIMIT SE KAM ALLOW)
+- Previous window ki zyada requests overlapping portion se BAHAR
+  (previous window ke START me)
+- Is case me Algorithm rate limit se kam allow → jisse Legitimate
+  requests reject
+
 
 
 
