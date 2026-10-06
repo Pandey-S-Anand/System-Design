@@ -2,7 +2,8 @@
 
 Functional Requirements (kya karega system?) - Ye interveiwer se pucho 
 
-1: Rate limit kis basis par lagana hai?
+QUESTION: Rate limit kis basis par lagana hai?
+-------------------------------------------------
 
   Per IP? 
   Per User (user_id / JWT sub)?
@@ -12,21 +13,23 @@ Functional Requirements (kya karega system?) - Ye interveiwer se pucho
   Per Endpoint?
 
 
-2: Rate limit kaha baita hoga? 
 
-    Khudke samjh ke liye - 
+QUESTION: Rate limit kaha baita hoga? 
+-----------------------------------------
+
+  Khudke samjh ke liye - 
 
 a)  API Gateway Level
     Gateway pe global rate limit (jaise 10K req/min per user across all services )
-    mat;ab user ki koi reuest aati hai humen define kar idya ki har user ki sirf 5 reqqest hi allow karo
+    matlab user ki koi reuest aati hai humen define kar idya ki har user ki sirf 5 reqqest hi allow karo
     no matter wo kis service pai jane wali requst hai....sirf total 5 reqist per min hi aani chchaiye
     Fayda: 
     Centralized rate limting ...har servi epai rate limit ka logci nahai likha padega.
 
 
 b) Har Service Level
-   Har service ka apna rate limiter hoga i.e har servic eko cod elikha oadega rate kimti ka .
-   service level paiu  hum dfiene akr sakt ehai ki us service pai user ki toal kitni reqat in a particular  window allowed hai.
+   Har service ka apna rate limiter hoga i.e har service mai rate limiting ka code likhna padega .
+   service level pai  hum define kar sakte hai ki us service pai user ki total kitni request in a particular  window allowed hai.
    ya phir servie ye bhi kar sakti hai wo apne har endpoint ke liye ek different rate limit enforce kar sakti hai.
 
 
@@ -39,32 +42,389 @@ c) Hybrid — Dono (API Gateway Level + Har Service Level)
 
 
 
-2: Rate limit ke rules hardcoded (Static Configuration) rahenge ya  runtime (Dynamic Configuration) pe configurable hone chahiye?
-  
-   Khudke samjh ke liye - 
- 
-   Static Configuration:
+QUESTION: Rate limit ke rules hardcoded (Static) rahenge ya runtime pe configurable (Dynamic) hone chahiye?
+---------------------------------------------------------------------------------------------------------------
 
-   Static Configuration ka matlab hai ki Rate limit ke rules code/config file (jaise application.yml seriv eke aanda rya PAI gateway ke aanda r) me likhe hue hain.
-
-   Nuksaan:
-   - Har change ke liye servie / Gateway restart restart — downtime 
-   
-   - Emergency me (jaise attack aa gaya) aur humein turant limit tighten karni ho to ppossibel nahai 
-      becasue pehel to hume chanege akr na padega (config file  mai) phur application/ API gateway ko restart karna
-      padega jisme samay lagega.
-   Fayda:
-    - Simple (aagr PAi gateway par hai  Sab services ke rules ek jagah — centralized management ka fayda nahi mil raha)
-    - Fast (koi DB call nahi)
+Khudke samjh ke liye - 
 
 
-   Dynamic Configuration:
+1. STATIC CONFIGURATION
+-------------------------
 
-   Rate limit ke rules DB me stored hote hain, aur application restart ke bina change ho sakte hain.
+Rate limit ke rules code/config file me likhe hue hain
+(jaise service ke andar application.yml, ya API Gateway ke andar).
+
+FAYDA:
+  - Simple
+  - Fast (koi DB call nahi)
+
+NUKSAAN:
+  - Har change ke liye service/Gateway restart karna padta hai
+    → Downtime
+  - Emergency me (jaise attack aa gaya aur turant limit tighten
+    karni ho) possible nahi hai — pehle config file change karo,
+    phir application/API Gateway restart karo — isme time lagta hai
+
+
+2. DYNAMIC CONFIGURATION
+-------------------------
+
+
+Rate limit ke rules DB me stored hote hain
+(jaise: per user 100 requests/min).
+
+PROBLEM:
+
+Agar har request ko validate karne ke liye DB hit kiya jaye,
+to high-traffic environment me bahut zyada DB calls ho jaayengi,
+jisse Database overload hokar crash kar sakta hai.
+
+SOLUTION: LAYERED CACHE ARCHITECTURE
+
+    Local Cache  (Har instance ka apna local storage)
+         │
+    Distributed Cache (Redis)
+         │
+    Database (Source of truth)
 
 
 
-   
+CASE 1: FIRST-TIME RULE CONFIGURATION FLOW
+--------------------------------------------
+
+STEP 1: Admin UI → Rules Controller
+
+    POST /rules
+
+    Payload:
+      Rule 1: { scope: "payment-service", limit: 1000, window: 60s }
+      Rule 2: { scope: "payment-service-per-user", limit: 20, window: 60s }
+
+    Matlab:
+      Rule 1 → Payment Service pe aane wali TOTAL requests
+               1000 req/min se zyada nahi honi chahiye
+      Rule 2 → Payment Service pe per-user sirf
+               20 req/min allow honi chahiye
 
 
+STEP 2: Rules Controller → Validate → Rules Service
+
+    Rules Controller request validate karta hai
+    aur Rules Service ko forward karta hai.
+
+
+STEP 3: Rules Service → DB INSERT (dono rules)
+
+    DB:
+      id=1: { scope: "payment-service", limit: 1000, window: 60 }
+      id=2: { scope: "payment-service-per-user", limit: 20, window: 60 }
+
+
+STEP 4: Rules Service → Kafka Publish (do events)
+
+    Topic: "rule_event_topic"
+
+    Event 1:
+      { eventType: "RULE_CREATED", ruleId: 1, scope: "payment-service" }
+
+    Event 2:
+      { eventType: "RULE_CREATED", ruleId: 2, scope: "payment-service-per-user" }
+
+    ⚠️ IMPORTANT:
+    Event payload me sirf ruleId aur scope diya — actual rule content
+    (limit, window) nahi diya.
+
+    Kyun?
+    - Agar pura rule data event me bhejenge, to payload size bada ho jaega
+    - Jisse network bandwidth waste hogi
+
+
+STEP 5: Kafka → Deliver events to "rule_event_topic"
+
+    Alag-alag consumer groups is topic ko consume kar rahe hain:
+
+    Event 1 (ruleId: 1, scope: "payment-service"):
+      → API Gateway ke saare instances subscribe karte hain
+        (ye generic limit hai payment-service level pe)
+
+    Event 2 (ruleId: 2, scope: "payment-service-per-user"):
+      → Payment Service ke saare instances subscribe karte hain
+        (ye per-user level pe limit hai)
+
+    Note:
+    Dono consumer groups same topic se consume kar rahe hain,
+    lekin apne interest ke events filter karke process kar rahe hain:
+      - API Gateway sirf "payment-service" scope wale events
+      - Payment Service sirf "payment-service-per-user" wale
+
+
+STEP 6: Har Instance respective Event Consume Karta Hai
+
+    API Gateway Instance (Event 1 receive kiya):
+      - Local Cache check: "Kya rule:1 hai?"
+      - → NAHI (nayi rule hai)
+      - → No-op (kuch invalidate nahi)
+
+    Payment Service Instance (Event 2 receive kiya):
+      - Local Cache check: "Kya rule:2 hai?"
+      - → NAHI
+      - → No-op
+
+    ⚠️ Note:
+    Event me sirf ruleId tha, pura rule data nahi.
+    Isliye instance directly cache populate nahi kar sakta.
+    Usko DB se fetch karna padega — next request pe (lazily).
+
+
+STEP 7: First Request Aayi (User → Payment Service)
+
+    ─── API Gateway Level ───
+
+    a) Request API Gateway pe pahunchti hai
+    b) Gateway Local Cache check: "rule:1 hai?"
+    c) → MISS
+    d) Gateway Redis check: "rule:1 hai?"
+    e) → MISS
+    f) Gateway → DB Query: SELECT * FROM rules WHERE id=1
+    g) → Rule mila: { limit: 1000, window: 60 }
+    h) Gateway Redis me store (TTL: 5 min)
+    i) Gateway Local Cache me store (TTL: 60 sec)
+    j) Gateway total count check: payment-service pe 1000 req/min cross hua?
+    k) → Nahi → Request Payment Service ko forward
+
+    ─── Payment Service Level ───
+
+    l) Request Payment Service instance pe pahunchti hai
+    m) Instance Local Cache check: "rule:2 hai?"
+    n) → MISS
+    o) Instance Redis check: "rule:2 hai?"
+    p) → MISS
+    q) Service Instance → DB Query: SELECT * FROM rules WHERE id=2
+    r) → Rule mila: { limit: 20, window: 60 }
+    s) Instance Redis me store (TTL: 5 min)
+    t) Instance Local Cache me store (TTL: 60 sec)
+    u) Instance per-user count check: user ki 20 req/min cross hui?
+    v) → Nahi → Request process
+
+
+STEP 8: TTL Kyun Required Hai?
+
+    TTL event-based invalidation ka safety net hai.
+
+    Maan lo update ke dauran event miss ho gaya — kyunki:
+      • Instance down tha
+      • Network failure tha
+      • Consumer lag tha
+
+    To us instance ko pata hi nahi chalega ki rule update hua hai.
+
+    Ya phir admin ne directly DB update kiya instead of going
+    through Rules Controller and Rules Service —
+    to Kafka pe event publish hi nahi hua.
+
+    TTL ensure karta hai ki max defined TTL (e.g. 60 sec) me
+    cache entry expire ho jaye.
+
+    Cache entry expire hone ke baad, next request pe:
+      Local Cache MISS → Redis MISS → DB se fresh data fetch
+      → Redis populate → Local Cache populate → fresh rule se check
+
+    Isliye koi bhi instance agar update event receive nahi hua
+    (due to whatever reason), to purane rate limit rule ko
+    defined TTL expiry time se zyada use nahi kar sakta.
+
+    ⚠️ TTL ke bina kya hota:
+    Agar event miss ho jaye aur TTL bhi na ho, to us instance pe
+    purana rule indefinitely cached rahega.
+    Matlab customer ko galat limit enforce hoti rahegi —
+    jo production me bahut dangerous hai.
+
+
+STEP 9: Subsequent Requests
+
+    Ab dono caches populated hain:
+      - API Gateway: rule:1 cached (TTL 60 sec)
+      - Payment Service: rule:2 cached (TTL 60 sec)
+
+    Next request pe:
+      - Gateway Local Cache → HIT → No DB call
+      - Payment Service Local Cache → HIT → No DB call
+
+    Latency: ~1-2ms
+
+    TTL expire hone ke baad, phir wahi cache miss wala process repeat hoga.
+
+
+
+
+CASE 2: RULE UPDATE FLOW
+------------------------------
+
+SCENARIO:
+  Pehle se rule exist karta hai:
+    id=1: { scope: "payment-service", limit: 1000, window: 60 }
+    id=2: { scope: "payment-service-per-user", limit: 20, window: 60 }
+
+  Ab admin chahta hai:
+    id=1: 1000 → 500
+    id=2: 20   → 10
+
+
+STEP 1: Admin UI → Rules Controller
+
+    PUT /rules/1
+    Payload: { scope: "payment-service", limit: 500, window: 60s }
+
+    PUT /rules/2
+    Payload: { scope: "payment-service-per-user", limit: 10, window: 60s }
+
+
+STEP 2: Rules Controller → Validate → Rules Service
+
+    Rules Controller request validate karta hai
+    aur Rules Service ko forward karta hai.
+
+
+STEP 3: Rules Service → DB UPDATE (dono rules)
+
+    DB:
+      id=1: { scope: "payment-service", limit: 1000 → 500, window: 60 }
+      id=2: { scope: "payment-service-per-user", limit: 20 → 10, window: 60 }
+
+    ⚠️ Important:
+    DB me rule ID same rehta hai (primary key change nahi hoti),
+    sirf rule ka content (limit, window) update hota hai.
+
+
+STEP 4: Rules Service → Kafka Publish (do events)
+
+    Topic: "rule_event_topic"
+
+    Event 1:
+      { eventType: "RULE_UPDATED", ruleId: 1, scope: "payment-service" }
+
+    Event 2:
+      { eventType: "RULE_UPDATED", ruleId: 2, scope: "payment-service-per-user" }
+
+    ⚠️ IMPORTANT:
+    Update event me bhi sirf ruleId aur scope diya —
+    actual updated rule content (naya limit) nahi diya.
+
+
+STEP 5: Kafka → Deliver events to "rule_event_topic"
+
+    Alag-alag consumer groups is topic ko consume kar rahe hain:
+
+    Event 1 (ruleId: 1, scope: "payment-service"):
+      → API Gateway ke saare instances subscribe karte hain
+
+    Event 2 (ruleId: 2, scope: "payment-service-per-user"):
+      → Payment Service ke saare instances subscribe karte hain
+
+    Note:
+    Same as first-time flow — dono consumer groups same topic
+    se consume kar rahe hain, lekin apne interest ke events
+    filter karke process kar rahe hain.
+
+
+STEP 6: Har Instance respective Event Consume Karta Hai
+
+    API Gateway Instance (Event 1 receive kiya):
+      - Local Cache check: "Kya rule:1 cached hai?"
+      - → HAAN (purana value cached hai — limit: 1000)
+      - → Local Cache se rule:1 DELETE karo
+      - → Redis se bhi rule:1 DELETE karo
+      - → Kuch aur nahi karta (no re-populate)
+
+    Payment Service Instance (Event 2 receive kiya):
+      - Local Cache check: "Kya rule:2 cached hai?"
+      - → HAAN (purana value cached hai — limit: 20)
+      - → Local Cache se rule:2 DELETE karo
+      - → Redis se bhi rule:2 DELETE karo
+      - → Kuch aur nahi karta (no re-populate)
+
+    ⚠️ Note:
+    Event me sirf ruleId tha, naya value nahi.
+    Isliye instance directly cache populate nahi kar sakta.
+    Wo sirf purana value DELETE karta hai.
+    Fresh data DB se fetch hoga — next request pe (lazily).
+
+
+STEP 7: Next Request Aayi (User → Payment Service)
+
+    ─── API Gateway Level ───
+
+    a) Request API Gateway pe pahunchti hai
+    b) Gateway Local Cache check: "rule:1 hai?"
+    c) → MISS (kyunki delete kar diya tha)
+    d) Gateway Redis check: "rule:1 hai?"
+    e) → MISS (kyunki delete kar diya tha)
+    f) Gateway → DB Query: SELECT * FROM rules WHERE id=1
+    g) → Fresh rule mila: { limit: 500, window: 60 }
+    h) Gateway Redis me store (TTL: 5 min)
+    i) Gateway Local Cache me store (TTL: 60 sec)
+    j) Gateway total count check: payment-service pe 500 req/min cross hua?
+    k) → Nahi → Request Payment Service ko forward
+
+    ─── Payment Service Level ───
+
+    l) Request Payment Service instance pe pahunchti hai
+    m) Instance Local Cache check: "rule:2 hai?"
+    n) → MISS
+    o) Instance Redis check: "rule:2 hai?"
+    p) → MISS
+    q) Service Instance → DB Query: SELECT * FROM rules WHERE id=2
+    r) → Fresh rule mila: { limit: 10, window: 60 }
+    s) Instance Redis me store (TTL: 5 min)
+    t) Instance Local Cache me store (TTL: 60 sec)
+    u) Instance per-user count check: user ki 10 req/min cross hui?
+    v) → Nahi → Request process
+
+
+STEP 8: Subsequent Requests
+
+    Ab dono caches freshly populated hain (naye values ke saath):
+      - API Gateway: rule:1 cached (limit: 500, TTL 60 sec)
+      - Payment Service: rule:2 cached (limit: 10, TTL 60 sec)
+
+    Next request pe:
+      - Gateway Local Cache → HIT → No DB call
+      - Payment Service Local Cache → HIT → No DB call
+
+    Latency: ~1-2ms
+
+    TTL expire hone ke baad, phir wahi cache miss wala process repeat hoga.
+
+
+
+QUESTION : Rate limiting bilkul precise chahiye ya thoda loose chalega? Aur kya burst allow karna hai?
+-------------------------------------------------------------------------------------------------------------
+
+Isse hum decide kar sakte hain ki kaunsa algorithm use karna hai.
+
+Fixed Window Counter
+  → Exact per window rate limiting (window ke andar configured count
+    se zyada requests allow nahi hongi)
+  → Boundary burst problem
+
+Sliding Window Log
+  → Exact per window rate limiting in a rolling window
+  → No boundary burst problem
+  → Memory heavy
+
+Sliding Window Counter
+  → Approximate per window rate limiting
+  → Thoda burst allow ho jaata hai, ya kabhi rate limit se kam bhi
+    allow karta hai — depending on previous window me requests ka
+    distribution (sliding window ke overlapping portion me)
+  → Memory efficient
+
+Token Bucket
+  → Burst allow
+  → Rate limit bypass during burst
+
+Leaky Bucket
+  → Input side pe burst allow karta hai (queue me daal deta hai)
+  → Output side pe burst process nahi karta (fixed rate)
+  → Client ko lagega request accept hui, but actual processing delayed
 
