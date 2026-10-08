@@ -5,11 +5,11 @@ Functional Requirements (kya karega system?) - Ye interveiwer se pucho
 QUESTION: Rate limit kis basis par lagana hai?
 -------------------------------------------------
 
-  Per IP? 
-  Per User (user_id / JWT sub)?
+  Per IP?  - Anonymous/un-authenticated endpoints ke liye
+  Per User (user_id / JWT sub)? - Authenticated endpoints ke liye jaha pai humare paas use rki authenticated  indentity ho
   Per API Key?
-  Per Device ID?
-  Per Identifier ? like Mobile/ email etc. 
+  Per Device ID? - mostly banking apps mai 
+  Per Identifier ? like Mobile/ email etc.  - Login/OTP endpoints pe IP + identifier combo shai rehta hai also devic ebased rate limting bhi sahai hai.
   Per Endpoint?
 
 
@@ -397,8 +397,8 @@ STEP 8: Subsequent Requests
 
 
 
-QUESTION : Rate limiting bilkul precise chahiye ya thoda loose chalega? Aur kya burst allow karna hai?
--------------------------------------------------------------------------------------------------------------
+QUESTION : Rate limiting bilkul precise chahiye ya thoda loose chalega? Aur kya burst allow karna hai? 
+----------------------------------------------------------------------------------------------------------
 
 Isse hum decide kar sakte hain ki kaunsa algorithm use karna hai.
 
@@ -420,7 +420,7 @@ Sliding Window Counter
   → Memory efficient
 
 Token Bucket
-  → Burst allow
+  → Controlled Burst allow
   → Rate limit bypass during burst
 
 Leaky Bucket
@@ -428,3 +428,28 @@ Leaky Bucket
   → Output side pe burst process nahi karta (fixed rate)
   → Client ko lagega request accept hui, but actual processing delayed
 
+
+
+
+QUESTION: Limit CROSS hone par kya behavior — reject karo, queue me daalo, ya cached / default response do ?
+-----------------------------------------------------------------------------------------------------------------
+
+Options:
+
+Reject → 429 Too Many Requests (most common)
+
+Queue →  Baad me process hoga, nit etha tsabhi requests ko hum queue mai nahia daal sakte kuch ko immemdate process kar ana hot ahai like login reqest
+
+Degrade → Partial/cached response do
+
+
+
+QUESTION: Agar Rate Limiter (jo ki redis based algo us ekar raha ho) khud FAIL ho jaye to? 
+---------------------------------------------------------------------------------------------
+Options:
+
+Fail-open → Requests allow karo for  non-critical endpoints (search, feed)
+Fail-closed → Requests reject karo — critical endpoints (payment, login)
+
+Kyun important: Ye poore design ka critical decision hai. Banking me fail-closed chahiye,
+warna attacker Redis down karke rate limit bypass kar lega.
