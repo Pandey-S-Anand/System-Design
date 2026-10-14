@@ -613,233 +613,62 @@ XADD orders * userId 101 event "ORDER_CREATED"
 
 
 
+----------------------------------------------------------------
+## QUESTION : REDIS DISTRIBUTED SYSTEMS ME KAISE USE HOTA HAI?
+-----------------------------------------------------------------
+
+Distributed systems me ek service ke multiple instances ho sakte hain (load balancing ke liye). 
+Aise me Redis ko hum shared distributed cache ke roop me use kar sakte hain — taaki saare instances
+same cached data ko access kar sakein.
 
 
-===========================================
-## 6 : REDIS IN MICROSERVICES ARCHITECTURE
-===========================================
-
-Suppose humare paas 3 microservices hain:
-
-    - Product Service
-    - Order Service
-    - User Service
-
-
-Har microservice ki multiple instances hain, aur
-har service ke liye dedicated Load Balancer configured hai.
-
-User ki request pehle API Gateway tak aati hai.
-
-API Gateway request ko appropriate service ke Load Balancer
-tak route karta hai, aur Load Balancer request ko us service
-ki available instances ke beech distribute karta hai.
-
-And static content ke liye CDN bhi configured hai.
-
-Architecture conceptually kuch aisa dikh sakta hai:
-
-
-                                  User
-                                    |
-                                    v
-                                   DNS
-                                    |
-                                    v
-                           +-------------------+
-                           | Is Content Static?|
-                           +---------+---------+
-                                     |
-                          +----------+----------+
-                          |                     |
-                         YES                    NO
-                          |                     |
-                          v                     |
-                +------------------------+     |
-                | Is Content Available   |     |
-                |       in CDN?          |     |
-                +----------+-------------+     |
-                           |                   |
-                    +------+-------+           |
-                    |              |           |
-                   YES            NO           |
-                    |              |           |
-                    v              |           |
-             Return from CDN       |           |
-                                   |           |
-                                   +-----------+
-                                               |
-                                               |
-                                               v
-                                        +---------------+
-                                        |   API Gateway |
-                                        +-------+-------+
-                                                |
-                 +------------------------------+------------------------------+
-                 |                              |                              |
-                 v                              v                              v
-          +-------------+                +-------------+               +-------------+
-          | Product LB  |                |  Order LB   |               |   User LB   |
-          +------+------+                +------+------+               +------+------+
-                 |                              |                              |
-           +-----+-----+                  +-----+-----+                  +-----+-----+
-           |     |     |                  |     |     |                  |     |     |
-           v     v     v                  v     v     v                  v     v     v
-          P1    P2    P3                 O1    O2    O3                 U1    U2    U3
-           |     |     |                  |     |     |                  |     |     |
-           +-----+-----+                  +-----+-----+                  +-----+-----+
-                 |                              |                              |
-                 v                              v                              v
-          +-------------+                +-------------+               +-------------+
-          |Product Redis|                | Order Redis |               | User Redis  |
-          |    Cache    |                |    Cache    |               |    Cache    |
-          +------+------+                +------+------+               +------+------+
-                 |                              |                              |
-                 v                              v                              v
-          +-------------+                +-------------+               +-------------+
-          | Product DB  |                |  Order DB   |               |   User DB   |
-          +-------------+                +-------------+               +-------------+
-
-
----------------------------------------
-## REDIS AS A SHARED DISTRIBUTED CACHE
----------------------------------------
-
-Ek microservice ki multiple instances same external Redis Cache
-ko access kar sakti hain.
-
-For example, Product Service ki multiple instances hain:
-
-    P1, P2, P3
-
-In sab instances ke liye ek shared Redis Cache configured ho sakta hai.
+                    User
+                      |
+                      v
+                     DNS
+                      |
+                      v
+             Is Content Static?
+                      |
+            +---------+---------+
+            |                   |
+           YES                  NO
+            |                   |
+            v                   v
+          CDN             API Gateway
+                                |
+            +-------------------+-------------------+
+            |                   |                   |
+            v                   v                   v
+      Product LB           Order LB            User LB
+            |                   |                   |
+      +-----+-----+       +-----+-----+       +-----+-----+
+      |     |     |       |     |     |       |     |     |
+      v     v     v       v     v     v       v     v     v
+     P1    P2    P3      O1    O2    O3      U1    U2    U3
+      |     |     |       |     |     |       |     |     |
+      +-----+-----+       +-----+-----+       +-----+-----+
+            |                   |                   |
+            v                   v                   v
+      Product Redis       Order Redis        User Redis
+        (Shared)            (Shared)           (Shared)
+            |                   |                   |
+            v                   v                   v
+      Product DB            Order DB              User DB
 
 
 ## EXAMPLE
 -----------
 
-Suppose client request bhejta hai:
+Request 1: GET /products/101 → LB routes to P1
+ - P1 → Cache Key construct (product:101) → Redis check → Cache Miss  → DB fetch → Redis me store → Return
 
-    GET /products/101
+Request 2: Same request → LB routes to P3 (different instance)
+ - P3 → Cache Key construct (product:101) → Redis check → Cache HIT  → Return (DB hit nahi hua)
 
-
-Request API Gateway aur Product Load Balancer ke through
-Product Service ki kisi instance, for example P1, tak pahunchti hai.
-
-
-    Client
-       ↓
-    API Gateway
-       ↓
- Product Load Balancer
-       ↓
-      P1
-
-
-P1 request receive karne ke baad defined naming convention ke
-basis par Cache Key construct karti hai:
-
-    product:101
-
-
-P1 shared Redis Cache me is key ke corresponding data check karti hai.
-
-
-### CASE 1: CACHE HIT
----------------------
-
-Agar `product:101` ke corresponding data Cache me available hai:
-
-    P1
-     ↓
-Shared Redis Cache
-     ↓
-  Cache Hit
-     ↓
-Return Cached Data
-
-
-Is case me Database ko hit karne ki zarurat nahi padti.
-
-
-### CASE 2: CACHE MISS
-----------------------
-
-Agar `product:101` Cache me available nahi hai:
-
-    P1
-     ↓
-Shared Redis Cache
-     ↓
-  Cache Miss
-     ↓
-Product Database
-     ↓
-Fetch Product Data
-     ↓
-Store Data in Redis
-
-Application retrieved data ko usi Cache Key:
-
-    product:101
-
-ke against shared Redis Cache me store kar deti hai aur
-response client ko return kar deti hai.
-
-
-## NEXT REQUEST
-----------------
-
-Ab suppose same request dobara aati hai:
-
-    GET /products/101
-
-
-Is baar Load Balancer request ko kisi doosri instance,
-for example P3, tak route kar sakta hai.
-
-
-    Client
-       ↓
-Product Load Balancer
-       ↓
-      P3
-
-
-P3 bhi same defined naming convention ke basis par
-same Cache Key construct karegi:
-
-    product:101
-
-
-P3 shared Redis Cache me is key ko check karegi.
-
-Kyunki P1 pehle hi `product:101` ke corresponding data ko
-Redis me store kar chuki hai:
-
-    P3
-     ↓
-Shared Redis Cache
-     ↓
-  Cache Hit
-     ↓
-Return Cached Data
-
-
-Database ko dobara hit karne ki zarurat nahi padegi.
-
-
-## IMPORTANT
--------------
-
-Isliye Redis jaise external cache ko multiple service instances ke
-beech ek shared distributed cache ke roop me use kiya ja sakta hai.
-
-Ek instance dwara Cache me store kiya gaya data, doosri instances bhi
-same Cache Key ke through access kar sakti hain.
-
-Yahi Redis ko horizontally scaled applications me useful banata hai,
-kyunki multiple instances ek hi shared Cache layer ko use kar sakti hain.
+Key insight: P1 ne jo Redis me store kiya, wo P3 ko bhi mil gaya — kyunki Redis shared hai.
+Ek instance dwara Cache me store kiya gaya data, doosri instances bhi same Cache Key ke through 
+access kar sakti hain.
 
 
 
