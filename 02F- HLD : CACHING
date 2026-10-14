@@ -590,40 +590,33 @@ Distributed systems me ek service ke multiple instances ho sakte hain (load bala
 Aise me Redis ko hum shared distributed cache ke roop me use kar sakte hain — taaki saare instances
 same cached data ko access kar sakein.
 
-
-                    User
-                      |
-                      v
-                     DNS
-                      |
-                      v
-             Is Content Static?
-                      |
-            +---------+---------+
-            |                   |
-           YES                  NO
-            |                   |
-            v                   v
-          CDN             API Gateway
-                                |
-            +-------------------+-------------------+
-            |                   |                   |
-            v                   v                   v
-      Product LB           Order LB            User LB
-            |                   |                   |
-      +-----+-----+       +-----+-----+       +-----+-----+
-      |     |     |       |     |     |       |     |     |
-      v     v     v       v     v     v       v     v     v
-     P1    P2    P3      O1    O2    O3      U1    U2    U3
-      |     |     |       |     |     |       |     |     |
-      +-----+-----+       +-----+-----+       +-----+-----+
-            |                   |                   |
-            v                   v                   v
-      Product Redis       Order Redis        User Redis
-        (Shared)            (Shared)           (Shared)
-            |                   |                   |
-            v                   v                   v
-      Product DB            Order DB              User DB
+                          User
+                            ↓
+                           DNS
+                            ↓
+                    Is Content Static?
+                      ┌─────┴─────┐
+                     YES          NO
+                      ↓            ↓
+              Content CDN me?      |
+               ┌───┴───┐           |
+              YES      NO          |
+               ↓        ↓          |
+            Return    API ←────────┘
+            from      Gateway
+            CDN         ↓
+                  ┌─────┴─────┐
+                  ↓           ↓
+              Product LB   Order LB
+              /  |  \      /  |  \
+             ↓   ↓   ↓    ↓   ↓   ↓
+            P1  P2  P3   O1  O2  O3
+             \   |   /    \   |   /
+              └──┼──┘      └──┼──┘
+                 ↓             ↓
+            Product Redis  Order Redis     ← Shared Redis per service
+                 ↓             ↓
+            Product DB    Order DB
 
 
 ## EXAMPLE
