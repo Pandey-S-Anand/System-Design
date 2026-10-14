@@ -235,5 +235,26 @@ Is case me:
 - Saara data migrate nahi hota — sirf affected slots ka data move hota hai.
 
 
+HOT KEY Scenario
+-------------------
+
+Suppose kuch set of users hain jo same Redis node (manlo Node1) se belong karte hain (same slots range me aate hain).
+Har user ka rate limit 100 requests/min configured hai.
+Lekin ab wo saare users ek saath 10,000 requests/min bhejne lagte hain — yaani apne limit se 100x zyada.
+Yahan important point ye hai: 
+Application ko request reject karne se pehle Redis pe counter check karna hi padta hai:
+"Is user ka count 100 cross hua ya nahi?"
+
+Matlab reject karne ke liye bhi Redis call mandatory hai.
+To chahe request ultimately reject hi ho jaani thi — saari 10,000 requests Redis tak pahunch jayengi (counter check ke liye).
+Aur kyunki ye saare users same node pe hain, saari traffic ek hi node pe concentrate ho jaayegi.
+
+Result: Node1 overloaded, baaki nodes khaali baithe hain. Overall cluster capacity wasted.
+
+Solution:
+
+
+
+
 
 
