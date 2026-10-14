@@ -1,1 +1,239 @@
 
+Q1:Rate limiter check ka acceptable overhead kitna hai — overall request latency me? 
+Specifically:
+- Normal load pe kitna? — jaise p99 < 5ms?
+- Peak load pe thoda degrade chalega? — jaise p99 < 20ms?
+- Ya business side se koi hard SLA defined hai?
+
+Aur do edge cases bhi clarify karna chahta hoon:
+
+- Peak load pe — connection pool wait time badh sakta hai, to latency thodi badhegi. Acceptable hai?
+- Redis (counter store) down ho jaye — us failure mode me kya latency expectation hai? Fail-closed me near-zero hogi,
+  lekin fail-open me bhi ensure karna padega ki Redis connect attempt pe 500ms waste na ho — iske liye Circuit Breaker lagega."
+
+
+Apne smaajh ke liye
+
+
+Rate limiting mai multiple reasons se latency aa sakti hai like :
+
+Source 1: Rule Fetching Latency
+
+Agar dynamic config hai, to rules 3-layer architecture (Local Cache → Redis → DB) se fetch honge:
+
+Layer	Latency	              Kab Hit Hoga
+Local Cache	                ~0ms (nanoseconds)	99% requests (hot path)
+Redis	1-3ms	                TTL expire hone pe (cold path)
+DB	10-50ms	                Redis miss pe (rare)
+
+Key insight: Ye latency har request pe nahi lagti. Sirf TTL expire hone pe lagti hai.
+Matlab 60 sec me ek baar. Average latency me ye negligible ho jaati hai.
+
+
+Source 2: Counter Operation Latency (Redis Call)
+
+Har request pe Redis call karni padegi — INCR / GET — counter check aur update ke liye.
+Ye latency unavoidable hai distributed setup me, kyunki Multiple application instances hote hain
+and sabko same shared counter chahiye. Agar har instance apna local counter rakhe, to total limit
+cross ho jayegi (rate limit inconsistency)
+
+Isliye: Rate limiter check ki latency ek Redis round-trip (~1–3ms) se kam nahi ho sakti. 
+Ye teri minimum latency floor hai.
+
+### NOTE:
+----------
+
+Distributed rate limiter me Redis round-trip latency minimum 1-3ms hoti hai — ye avoidable nahi hai. 
+Kyunki shared counter Redis me hi rahega (sabhi instances same counter read/update karenge).
+Isliye < 2ms hard constraint practically possible nahi hai.
+Agar latency itni strict chahiye, to local counter use karna padega — har instance apna counter apni
+local memory me rakhega. Isse latency ~0ms ho jayegi, lekin trade-off hai: instances ke beech exact sync 
+nahi hoga, isliye rate limiting approximate ho jayegi — kuch instances over-allow karenge
+, kuch under-allow. Matlab consistency lose ho jayegi.
+
+
+Source 3: Connection Pool Wait Time
+
+- Manlo 200 application threads hain, lekin Redis connection pool sirf 50 connections ka hai.
+- Agar 50 application threads already Redis call kar rahe hain, to 51st application thread wait karega
+  connection available hone ka.
+- Ye wait time bhi latency me add hota hai. Peak load pe ye 5-20ms tak ja sakta hai.
+- Solution: Connection (Lettuce/Jedis), pool size tune karna.
+
+ 
+Source 4: Serialization/Deserialization
+
+- Rule DB se fetch hua — JSON format me hai. Usse Java object me convert karna padta hai (deserialize).
+- Rule update karte waqt - Java object → JSON banana → DB me store (Serialize)
+- Ye chhota hai (~0.1-0.5ms), lekin count karna zaroori hai.
+
+
+Source 4: Rate limiter fail hone par bhi latency introduce ho sakti hai 
+
+- Agar humne FR me fail-closed approach decide kiya tha, to Redis down hone par request immediately reject karni hai — us case me latency near-zero hogi. 
+
+- Lekin agar fail-open approach decide kiya tha, to hume ye ensure karna hoga ki latency almost zero rahe. 
+   Ye automatically nahi hoga — iske liye fail-fast implementation zaroori hai.
+
+- Agar bad design kiya (fail-open ke saath), to latency introduce ho sakti hai. Jaise maan lo application ne Redis ko request bheji TCP connection 
+  establish karne ki koshish ki — aur humne connection timeout 500ms configure kar diya. Ab Redis down hai, to application thread wait karega us
+  configured connection timeout tak, uske baad pata chalega ki Redis down hai. Ab is case me, although humne fail-open approach decide kiya tha, 
+  phir bhi 500ms per request ki latency introduce ho gayi — kyunki har request pe Redis connect karne ki koshish ho rahi hai, 
+  timeout ka wait ho raha hai, phir decision aa raha hai.
+
+- Isse bachne ke liye hume Circuit Breaker pattern use karna hoga. Circuit Breaker jaise hi Redis ko down detect karta hai, 
+  wo Redis calls ko band kar deta hai — bina Redis connect karne ki koshish kiye, immediately fail-open decision leta hai aur
+  request directly target system ko allow kar deta hai. Isse failure mode me bhi total latency ~0ms rahegi.
+
+
+
+
+Q2: Kitne concurrent users expect kar rahe hain peak pe ? Peak pe kitni RPS aayegi ?
+
+Khudke samajh ke liye
+
+Concurrent Users kya hai?
+
+- Wo users jo ek specific moment pe system se actively connected hain — unka session active hai aur wo requests bhej sakte hain.
+- Example:
+   10M registered users
+   but only 1M daily active users → Concurrent users (peak) = 100K
+
+
+RPS (Requests Per Second) kya hai?
+
+- Ek second me system pe kitni HTTP requests aa rahi hain — actual incoming traffic.
+- RPS = Concurrent Users × Average Requests per User per Second
+- Example:
+  Same concurrent users, different RPS possible:
+  => 100K concurrent users, har user 1 req/min → 1,666 RPS
+  => 100K concurrent users, har user 10 req/sec → 1M RPS
+  => 100K concurrent users, har user 0.1 req/sec → 10K RPS
+
+TRAP: Concurrent users se RPS directly nahi nikalta — average requests per user per second chahiye.
+
+RPS se pata chalega Redis Capacity  i.e single Redis chalega ya redis cluster chahiye request counter ke liye .
+
+NOTE:
+Hum do alag Redis ki baat kar rahe hain. agar hume dymaic configuration opt kiya hai rate limitng rule ske liye  to us e cas emai hum 3 layer architecture 
+use karenge so us wale Rules wale Redis pe load bahut kam hai becasue  rules rarely change hote hain, Isliye single node bhi chalega.
+Counter Redis pe har request hit karti hai — ye critical hai, iska load calculate karenge.
+
+
+RPS se Redis Capacity — Kaise Decide Karein
+
+Decision Formula
+
+Single Redis chalega ya Cluster?
+
+IF RPS <= 50,000  → Single Redis chalega ✅ 
+IF RPS > 50,000   → Cluster chahiye ❌
+
+Note: Counter pe minimum 1 GET + 1 UPDATE operation per request hota hai. Lekin ye dono operations mostly Lua script ke andar hote hain
+(race condition avoid karne ke liye). Isliye capacity calculation me 1 Lua script call = 1 Redis operation maan lo.
+
+Single Redis node capacity:
+- Conservative: 50K ops/sec (safe)
+- Actual: 80K-100K ops/sec tak handle kar sakta hai
+
+Case-wise Design :
+
+Case 1: Interviewer bole "10K RPS"
+
+10,000 RPS < 50,000 → Single Redis chalega ✅
+
+Design:
+- Single Redis master
+- 1 replica (HA ke liye — crash ho to promote ho jaye)
+- Total: 2 Redis nodes
+
+
+Case 2: Interviewer bole "100K RPS"
+
+100,000 RPS > 50,000 → Cluster chahiye 
+
+Design:
+- Kitne nodes? = 100K / 50K = 2 nodes
+- Headroom ke saath = 3 nodes (safe side)
+- Each master + 1 replica
+- Total: 6 Redis nodes (3 master + 3 replica)
+
+
+Case 3: Interviewer bole "1M RPS"
+
+1,000,000 RPS > 50,000 → Cluster chahiye 
+
+Design:
+- Kitne nodes? = 1M / 50K = 20 nodes
+- Headroom ke saath = 25 nodes (safe side)
+- Each master + 2 replicas
+- Total: 75 Redis nodes (25 master + 50 replica)
+
+
+Redis Cluster — Sharding Kaise Hoti Hai?
+-------------------------------------------
+
+Redis Cluster me sharding Hash Slots ke through hoti hai. Simple 3-step process.
+
+Assume: Cluster me 3 Redis nodes hain.
+
+Step 1: Har User Ka Hash Nikalo
+
+Har user_id ko hash function me daalte hain, jo ek unique number deta hai.
+
+user_id = 101  →  hash(101) = 5432
+user_id = 102  →  hash(102) = 12000
+user_id = 103  →  hash(103) = 8000
+
+
+Step 2: Hash Ko Slot Me Convert Karo
+
+Redis Cluster me 16384 slots hote hain (fixed number).
+
+slot = hash(user_id) % 16384
+
+user_id = 101 → 5432 % 16384 = 5432
+user_id = 102 → 12000 % 16384 = 12000
+user_id = 103 → 8000 % 16384 = 8000
+
+Ab har user ka ek slot number hai (0 se 16383 ke beech).
+
+
+Step 3: Slot Ko Node Se Map Karo
+
+Ye mapping Redis Cluster khud maintain karta hai:
+
+Node 1 → Slots : 0 - 5460
+Node 2 → Slots : 5461 - 10922
+Node 3 → Slots : 10923 - 16383
+
+Ab dekho user kahan jayega:
+
+user_id = 101 → slot 5432 → Node 1 ✅
+user_id = 102 → slot 12000 → Node 3 ✅
+user_id = 103 → slot 8000 → Node 2 ✅
+
+Result:
+
+- Har node apne allocated slots ke users ka counter maintain karta hai.
+- Load 3 nodes me distribute ho gaya.
+- Same user hamesha same node pe jayega — kyunki hash(user_id) same value dega → same slot → same node isliye har user ke liye Redis counter consistent rehta hai
+
+
+Node Add/Remove Karne Pe Kya Hota Hai?
+-----------------------------------------
+
+Agar 4th node add kiya, to slots dobara distribute honge:
+
+Node 1 → Slots : 0     - 4095      (pehle 0-5460 tha)
+Node 2 → Slots : 4096  - 8191      (pehle 5461-10922 tha)
+Node 3 → Slots : 8192  - 12287     (pehle 10923-16383 tha)
+Node 4 → Slots : 12288 - 16383     (naya)
+
+Is case me:
+- Sirf affected slots ka user data migrate hoga (jo slots impact hue hain).
+- Saara data migrate nahi hota — sirf affected slots ka data move hota hai.
+
+
+
+
