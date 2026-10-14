@@ -259,9 +259,9 @@ aur phir response return karti hai.
 
 
 
-===============================
-# QUESTION :  REDIS KYA HAI ? 
-===============================
+=======================================================
+# QUESTION : REDIS KYA HAI AUR KAISE KAAM KARTA HAI ? 
+=======================================================
 
 - Redis ek fast, in-memory data store hai jo primarily data ko RAM me store karta hai. 
   Ye Application aur Database ke beech ek fast-access data layer provide karta hai. 
@@ -673,154 +673,95 @@ access kar sakti hain.
 
 
 
+============================================
+# QUESTION : CACHE-ASIDE PATTERN KYA HAI ?
+============================================
 
-==========================
-## 7 : CACHE-ASIDE PATTERN
-==========================
-
-Cache use karne ke different patterns hote hain.
-
-Sabse commonly used pattern hai: Cache-Aside
-
-Isko Lazy Loading bhi kaha jata hai.
-
-Is pattern me:
-
-Application pehle Cache check karti hai.
-Agar data mil gaya → directly return.
-Agar data nahi mila → Database se fetch.
-Database se mila hua data Cache me store.
-Phir response return.
+- Cache use karne ke different patterns hote hain, jinme sabse commonly used pattern hai — Cache-Aside (ise Lazy Loading bhi kehte hain).
+- Is pattern me Application pehle Cache check karti hai:
+  1) Data mil gaya → directly return
+  2) Data nahi mila → Database se fetch → Cache me store → return
 
 
----------
-## FLOW:
----------
+----------
+## FLOW :
+----------
 
-    GET /products/101
-            ↓
-      productId = 101
-            ↓
-    Application constructs the Cache Key
-    using a predefined naming convention
-            ↓
-      "product:" + productId
-            ↓
-         product:101
-            ↓
-    Application checks the Cache using this key
-            ↓
-        Cache Hit?
-        │
-        ├── YES
-        │     ↓
-        │  Return Data
-        │
-        └── NO → Cache Miss
-                  ↓
-           Fetch Data from Database
-                  ↓
-           Application uses the same predefined
-           naming convention to construct the Cache Key
-                  ↓
-           "product:" + productId
-                ↓
-           product:101
-                ↓
-           Store Data in Cache
-                ↓
-           Return Response
+GET /products/101
+        ↓
+Application Construct Cache Key → "product:" + productId = product:101
+        ↓
+Application checks Cache
+        ↓
+   Cache Hit?
+   ┌────┴────┐
+  YES        NO
+   │         │
+   ▼         ▼
+Return   Application fetches from Database
+Data         │
+             ▼
+        Application Construct same Cache Key (product:101)
+             │
+             ▼
+        Application stores in Cache
+             │
+             ▼
+        Return Response
 
 
-----------------
+---------------
 ## IMPORTANT :
-----------------
+--------------
 
-Cache-Aside me Cache implementation khud Database se data fetch nahi karta.
-Cache Miss hone par Application Database se data fetch karti hai
-aur retrieved data ko Cache me store karti hai before returning
-the response.
+- Cache-Aside me Application ka role: Cache Miss hone par Application Database se data fetch karti hai,
+  aur retrieved data ko Cache me store karti hai before returning response. Cache implementation khud DB 
+  se data fetch nahi karta.
 
-Lekin kuch caching patterns / architectures me Cache implementation Cache Miss hone par Database se data fetch kar sakti hai.
-Is concept ko broadly Read-Through Cache kehte hain.
-
+- Read-Through Cache: Kuch patterns me Cache implementation khud Cache Miss hone par DB se data fetch karti 
+  hai — ise broadly Read-Through Cache kehte hain.
 
 
 
 
-====================
-## 8 : STALE DATA
-====================
+========================================
+# QUESTION : STALE DATA KYA HOTA HAI ?
+========================================
 
-Cache use karne ka ek important problem hai:
+Cache use karne ka ek important problem hai — Database aur Cache ke beech data inconsistent ho sakta hai.
 
-Database aur Cache ke beech data inconsistent ho sakta hai.
+## EXAMPLE :
+-------------
 
+Step 1: Pehli baar GET /products/101 aayi → Cache Miss → Application ne DB se data fetch karke Cache me store kiya:
+        Database / Cache:  product:101  →  price = ₹79,999
 
-Suppose pehli baar request aati hai:
+Step 2: Ab product ka price update hua:
 
-    GET /products/101
+       PUT /products/101
 
-Cache me data available nahi hai → Cache Miss.
-
-Application Database se data fetch karti hai aur Cache me
-store kar deti hai:
-
-    Database / Cache:
-
-    product:101
-    price = ₹79,999
+       Database:  product:101  →  price = ₹69,999
+       Cache:     product:101  →  price = ₹79,999  (purana data)
 
 
-Ab product ka price update hota hai:
-
-    PUT /products/101
-
-Database update ho jata hai:
-
-    Database:
-
-    product:101
-    price = ₹69,999
-
-
-Lekin Cache me purana data abhi bhi stored hai:
-
-    Cache:
-
-    product:101
-    price = ₹79,999
-
-
-Ab next request:
-
-    GET /products/101
-
-Cache Hit hone par user ko purana price ₹79,999 mil sakta hai.
-
-Is purane / outdated cached data ko Stale Data kehte hain.
+Step 3: Ab next request GET /products/101 pe Cache Hit hoga, aur user ko purana price ₹79,999 milega.
+        Is purane/outdated cached data ko Stale Data kehte hain.
 
 
 
 
+================================================
+# QUESTION : CACHE INVALIDATION KYA HOTA HAI ?
+================================================
 
-===========================
-## 9 : CACHE INVALIDATION
-===========================
+- Jab Database me data change hota hai, to Cache me stored corresponding outdated data ko
+  remove ya update karna — taaki Application stale data serve na kare.
 
-Cache Invalidation ka simple meaning hai:
-
-Jab Database me data change hota hai, to Cache me stored
-corresponding outdated data ko remove ya update karna,
-taaki application stale data serve na kare.
-
-Database me data successfully update hone ke baad,
-Application generally corresponding cache key ke saath
-do approaches use kar sakti hai:
+- Database update hone ke baad, Application generally 2 approaches use kar sakti hai:
 
 
-### 1. DELETE / INVALIDATE CACHE
------------------------------------
+1. DELETE / INVALIDATE CACHE
+-------------------------------
 
 Update Request
        |
