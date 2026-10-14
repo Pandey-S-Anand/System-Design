@@ -58,9 +58,9 @@ Suppose humare paas ek e-commerce application hai.
                   └────────────────┘                 └────────────────┘
 
 
-========================================================================
+======================================================================
 # QUESTION : CACHING KI ZARURAT KYA HAI ? - REPEATED DATABASE READS
-========================================================================
+======================================================================
 
 Product Service ke paas API hai:
 
@@ -215,9 +215,9 @@ Database load kam hone se Database Response Time reduce hota hai, jisse overall 
 
 
 
--------------------------------------------
-## QUESTION : : CACHE HIT vs CACHE MISS ?
--------------------------------------------
+------------------------------------------
+## QUESTION : CACHE HIT vs CACHE MISS ?
+------------------------------------------
 
 ### CACHE HIT : 
 ---------------
@@ -237,48 +237,20 @@ aur phir response return karti hai.
 
 
 
-==========================================
-## 4 : WHY IS CACHE FASTER THAN DATABASE ?
-==========================================
+----------------------------------------------------
+## QUESTION  : CACHE DATABASE SE TEZ KYUN HOTA HAI?
+----------------------------------------------------
 
-Caching ke commonly used implementations
-frequently accessed data ko fast-access memory (RAM)
-me store karte hain.
+- Cache implementations (jaise Redis) data ko primarily RAM me store karte hain jo ki
+  fast-access memory hai. Iske comparison me Database ka persistent storage disk (SSD/HDD)
+  par hota hai, jo RAM se significantly slower hai (Waise kuch cache implementations disk 
+  persistence bhi support karti hain — mainly data recovery/durability ke liye.)
 
-Cache se data retrieve karna generally fast hota hai,
-kyunki commonly used caching implementations jaise Redis
-data ko primarily RAM (memory) me store karti hain.
-
-Iske comparison me Database ka primary persistent storage
-generally SSD/HDD jaise disk storage par hota hai.
-
-Database apni performance improve karne ke liye internally
-frequently accessed data aur index pages ko apne Buffer Pool
-(RAM) me cache karta hai.
-
-Lekin Database query ko process karne me additional
-overhead ho sakta hai, jaise:
-
-    - Query processing
-    - Index / data lookup
-    - CPU computation
-    - Possible disk I/O
-
-Yaani:
-
-    Database:
-        Persistent Data → Disk (SSD / HDD)
-        Internal Cache  → RAM (Buffer Pool)
-
-    Cache:
-        Primary Working Storage → RAM
-
-        Normal cache reads/writes ke liye
-        primarily RAM use hoti hai.
-
-        Some cache implementations disk persistence
-        support kar sakti hain, mainly data recovery /
-        durability ke purpose se.
+- Database apni performance improve karne ke liye frequently accessed data aur index pages
+  ko apne Buffer Pool (RAM) me cache karta hai. Lekin agar required data Buffer Pool me nahi hai,
+  to Database use dobara disk se fetch karta hai — jisse additional I/O latency aati hai.
+  Saath hi, Database query process karne me additional overhead bhi hota hai — jaise CPU computation, 
+  aur Application ↔ DB network call.
 
 
 
