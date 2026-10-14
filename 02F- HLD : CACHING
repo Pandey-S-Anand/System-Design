@@ -66,7 +66,8 @@ Product Service ke paas API hai:
 
     GET /products/{product_id}
 
-Ab maan lo Product jsiki product_id 101 hai wo popular hai aur 1000 users same product request karte hain:
+Ab maan lo Product jiski product_id = 101 hai wo popular hai, aur 1000 users 
+same product request karte hain.
 
 1000 Requests  →  1000 Database Reads
 
@@ -80,6 +81,7 @@ frequently change nahi hoti.
 
 Frequently accessed data ke liye har baar Database ko hit karna unnecessarily expensive ho sakta hai 
 kyunki har DB request process karne me multiple resources consume hote hain:
+
 
 1. NETWORK COMMUNICATION
 -------------------------
@@ -131,8 +133,11 @@ data/index pages ko temporarily store karta hai.
 - Query process karte waqt required data pages aur index pages ko disk se RAM (Buffer Pool) me load kiya jaata hai, 
   uske baad us par query ke hisaab se operation perform kiye jaate hain.
 
-Note: Data/Index Pages, Buffer Pool, aur data access mechanism detail me DB module me cover kiya hai 
-yahan sirf cost pe focus kar rahe hain.
+### NOTE : 
+------------
+Data/Index Pages, Buffer Pool, aur data access mechanism detail me DB module 
+me cover kiya hai yahan sirf cost pe focus kar rahe hain.
+
 
 
 ### QUESTION: COST KYA HAI ?
@@ -236,10 +241,9 @@ aur phir response return karti hai.
 
 
 
-
-----------------------------------------------------
-## QUESTION  : CACHE DATABASE SE TEZ KYUN HOTA HAI?
-----------------------------------------------------
+=====================================================
+# QUESTION : CACHE DATABASE SE TEZ KYUN HOTA HAI ? 
+=====================================================
 
 - Cache implementations (jaise Redis) data ko primarily RAM me store karte hain jo ki
   fast-access memory hai. Iske comparison me Database ka persistent storage disk (SSD/HDD)
@@ -255,88 +259,52 @@ aur phir response return karti hai.
 
 
 
+===============================
+# QUESTION :  REDIS KYA HAI ? 
+===============================
 
-=======================
-## 5 : REDIS OVERVIEW
-=======================
+- Redis ek fast, in-memory data store hai jo primarily data ko RAM me store karta hai. 
+  Ye Application aur Database ke beech ek fast-access data layer provide karta hai. 
+  Durability/recovery ke liye Redis data ko disk par bhi persist karta hai.
 
-Redis ek fast, in-memory data store hai jo
-primarily data ko RAM (memory) me store karta hai.
-Ye Application aur Database ke beech
-ek fast-access data layer provide karta hai.
+- Generally, distributed systems me caching ke context me Redis ko Application aur Database
+  ke beech ek external, distributed Cache ke roop me use kiya ja sakta hai — jise multiple 
+  application instances access kar sakti hain.
 
-Redis ka primary working data RAM me hota hai,
-lekin Redis durability / recovery ke liye
-data ko disk par persist bhi kar sakta hai.
+- Redis fundamentally key-value data model provide karta hai.
 
-Caching ke context me Redis ko Application aur Database ke
-beech ek external, distributed Cache ke roop me use kiya ja sakta hai,
-jise multiple application instances access kar sakti hain.
+  Example:
 
+  Key:    product:101
 
------------------------
-##1 : KEY-VALUE MODEL
------------------------
-
-Redis fundamentally key-value data model provide karta hai.
-
-Example:
-
-    Key:
-        product:101
-
-    Value:
-        {
-            "id": 101,
-            "name": "iPhone",
-            "price": 79999
-        }
+  Value:  {
+           "id": 101,
+           "name": "iPhone",
+           "price": 79999
+          }
 
 
-Application:
-
-    GET product:101
-            ↓
-          Redis
-            ↓
-    Corresponding Value
+ Application → GET product:101  →  Redis  →  Corresponding Value
 
 
+----------------------------------------------------------------
+## QUESTION : REDIS KEY KAISE CREATE HOTI HAI APPLICATION ME ?
+----------------------------------------------------------------
 
-## QUESTION : REDIS KEY KAISE CREATE HOTI HAI ?
-------------------------------------------------
+Suppose request hai: GET /products/101
 
-Suppose request hai:
+Controller ko path variable milta hai: productId = 101
 
-    GET /products/101
+Application request se required identifier lekar apni predefined naming convention ke according Redis Key banati hai.
 
-Controller ko path variable milta hai:
-
-    productId = 101
-
-
-Example:
-
-    @GetMapping("/products/{productId}")
-
-Application request se required identifier lekar
-apni predefined naming convention ke according Redis Key banati hai.
-
-Example:
-
-    Redis Key = "product:" + productId
-
-Result:
-
-    product:101
+Redis Key = "product:" + productId
+Result    = product:101
 
 
-## QUESTION : KYA KOI FIXED CONVENTION HAI?
---------------------------------------------
+### IMPORTANT : 
+------------------
 
-Nahi. Redis key ka koi fixed format force nahi karta.
-
-Application / developer apni naming convention define karta hai.
+Redis key ka koi fixed format force nahi karta. Application/developer apni naming convention define karta hai.
 
 Common pattern:
 
@@ -349,39 +317,31 @@ Example:
     order:999
 
 
--------------------------
-##2: TTL (TIME TO LIVE)
--------------------------
 
-Redis keys ke saath TTL (Time To Live) set kiya ja sakta hai.
+------------------------------------------------
+## QUESTION : REDIS KEY MAI TTL KYA HOTA HAI ?
+------------------------------------------------
+
+Redis keys ke saath TTL (Time To Live) set kiya ja sakta hai matlab 
+ye define karte hain ki key maximum kitni der tak Redis me rahegi.
 
 Example:
 
-    product:101
-        ↓
-    TTL = 10 minutes
+product:101  →  TTL = 10 minutes
+
+TTL expire hone ke baad key Redis me available nahi rahegi. Agar usi key ke liye next request aaye, 
+to data Redis me nahi milega (Cache Miss). Application Database se fresh data retrieve karegi, usse 
+Redis me dobara cache karegi, phir se TTL set karegi, aur client ko response return karegi.
 
 
-TTL expire hone ke baad key available nahi rahegi.
 
-Agar usi key ke liye next request aaye,
-to data redis me available nahi hoga.
+-----------------------------------------------------
+## QUESTION: REDIS ME KAUNSE DATA TYPES HOTE HAIN?
+-----------------------------------------------------
 
-Application Database se fresh data retrieve karegi,
-usse Redis me dobara cache karegi,
-aur client ko response return karegi.
-
-
--------------------------
-## 3: REDIS DATA TYPES
--------------------------
-
-Redis ek key-value data store hai. Redis me jab hum Data Type bolte hain,
-practically hum Value ke data type / data structure ki baat kar rahe hote hain.
-
-Key khud String hoti hai, jabki Value alag-alag Redis data types ki ho
-sakti hai.
-
+Redis ek key-value data store hai. Jab hum Redis me "Data Type" bolte hain, to practically hum
+Value ke data type / data structure ki baat kar rahe hote hain — kyunki Key hamesha String hoti hai,
+jabki Value alag-alag Redis data types ki ho sakti hai.
 
 Redis ke commonly used Data Types:
 
@@ -397,8 +357,8 @@ Value:
 → Stream
 
 
-## 1: STRING
-------------
+1. STRING
+-----------
 
 String Redis ka simplest aur most commonly used data type hai.
 
@@ -428,8 +388,8 @@ Output:
 
 
 
-## 2: HASH
------------
+2. HASH
+----------
 
 Ek key ke corresponding multiple field-value pairs
 store karne ke liye use hota hai.
@@ -461,8 +421,8 @@ Output:
 
 
 
-## 3: LIST
------------
+3. LIST
+----------
 
 Ordered collection of values.
 
@@ -496,8 +456,8 @@ Yaani poori list retrieve karo.
 
 
 
-## 4: SET
-----------
+4. SET
+--------
 
 Unique values ka unordered collection.
 
@@ -528,7 +488,7 @@ SADD users:online "user101"
 
 
 
-## 5: SORTED SET (ZSET)
+5. SORTED SET (ZSET)
 -----------------------
 
 Unique values ko score ke saath store karta hai aur
@@ -570,8 +530,8 @@ Yaani poori sorted set retrieve karo.
 
 
 
-## 6: STREAM
--------------
+6. STREAM
+------------
 
 Ordered sequence of messages/events ko store karne ke liye
 use hota hai.
@@ -595,9 +555,10 @@ XADD orders * userId 101 event "ORDER_CREATED"
 → Stream me ek new event/message add karta hai
 
 
-------------------------------
-## 4: COMMON REDIS COMMANDS
--------------------------------
+
+-------------------------------------------------
+## QUESTION: REDIS ME COMMON COMMANDS KYA HAIN?
+-------------------------------------------------
 
 → SET
   Key ke corresponding value store karta hai
