@@ -968,20 +968,20 @@ liye different Cache Write Patterns use kiye jaate hain.
     → Cache update (product:101 = ₹69,999)   ← same key, nayi value
 
 
-## BENIFIT :
--------------
+## QUESTION: WRITE-THROUGH CACHE KE BENIFITS ? 
+------------------------------------------------
 - Next read request pe Cache Hit → latest data directly Cache se return.
 
 
-## USE CASE :
---------------
+## QUESTION: WRITE-THROUGH CACHE KA USE-CASE ?
+------------------------------------------------
 Write-Through useful ho sakta hai jab updated data ko
 immediately aur frequently read kiya jana expected ho,
 kyunki updated data pehle se Cache me available hota hai.
 
 
-## WRITE-THROUGH KI LIMITATIONS : 
----------------------------------
+## QUESTION: WRITE-THROUGH CACHE KI LIMITATIONS ? 
+---------------------------------------------------
 
 Write-Through me Database aur Cache dono ko update karna hota hai, 
 isliye failure scenarios handle karne padte hain.
@@ -1026,16 +1026,16 @@ rehta hai aur Cache ko temporary data ke roop me treat kiya jaata hai.
   i.e Database ko immediately update nahi kiya jata.
 
 
-## BENIFIT :
--------------
+## QUESTION: WRITE-BEHIND KE BENIFITS ? 
+-----------------------------------------
 
 Write-Behind ka main benefit ye hai ki client ko Database update complete hone ka wait nahi karna padta 
 isliye client ko jaldi response milta hai, jisse response time aur user experience better ho jaata hai.
 Ye high write workloads me useful hota hai. 
 
 
-## WRITE-BEHIND KI LIMITATIONS : 
----------------------------------
+## QUESTION: WRITE-BEHIND KE LIMITATIONS ? 
+-----------------------------------------
 
 Write-Behind me client ko immediately success response mil jaata hai, jabki Database update asynchronously 
 later hota hai. Agar Database update hone se pehle Cache fail ho jaye, to updated data Database me persist 
@@ -1056,17 +1056,16 @@ nahi hoga → data loss ka risk.
   store karti hai aur response return kiya jaata hai.
 
 
-## USE CASE :
---------------
+## QUESTION: WRITE-AROUND KA USE-CASE ? 
+-----------------------------------------
 
 Write-Around Cache useful hota hai jab data frequently update hota ho, lekin frequently read nahi hota. Aise case me har write ke
 baad Cache ko update karna unnecessary ho jaata hai. Isse Redis ki RAM bhi bachti hai — kyunki jo data baar-baar read nahi hota, 
 usko cache me rakhne ka koi fayda nahi.
 
 
-
-## LIMITATIONS OF WRITE-AROUND
---------------------------------
+## QUESTION: WRITE-AROUND KE LIMITATIONS ? 
+--------------------------------------------
 
 Write ke time Cache entry delete kar di jaati hai, isliye next read par Cache Miss hoga aur Application ko data DB se fetch karna padega 
 jo Cache se slower hai. Isliye write ke baad first read comparatively slower hoti hai.
