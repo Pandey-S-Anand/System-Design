@@ -260,30 +260,15 @@ aur phir response return karti hai.
 ## QUESTION : REDIS KEY KAISE CREATE HOTI HAI APPLICATION ME ?
 ----------------------------------------------------------------
 
-Suppose request hai: GET /products/101
+Redis key ka fixed format nahi hota; developer naming convention define karta hai.
 
-Controller ko path variable milta hai: productId = 101
+Common Pattern: <resource>:<identifier>
 
-Application request se required identifier lekar apni predefined naming convention ke according Redis Key banati hai.
+Example: GET /products/101 → productId = 101
 
-Redis Key = "product:" + productId
-Result    = product:101
+Application naming convention ke according key banati hai:
 
-
-### IMPORTANT : 
-------------------
-
-Redis key ka koi fixed format force nahi karta. Application/developer apni naming convention define karta hai.
-
-Common pattern:
-
-    <resource>:<identifier>
-
-Example:
-
-    product:101
-    user:50
-    order:999
+Redis Key = "product:" + productId → product:101
 
 
 
@@ -348,9 +333,9 @@ Value:
 ### COMMAND:
 -------------
 
-SET user:101 "Anurag"       → Key ke corresponding value store karta hai
+SET user:101 "Anurag"  → Key ke corresponding value store karta hai
 
-GET user:101               →  Key ke corresponding value retrieve karta hai
+GET user:101           →  Key ke corresponding value retrieve karta hai
 
 Output:
 "Anurag"
@@ -639,10 +624,15 @@ access kar sakti hain.
 # QUESTION : CACHE-ASIDE PATTERN KYA HAI ?
 ============================================
 
-- Cache use karne ke different patterns hote hain, jinme sabse commonly used pattern hai — Cache-Aside (ise Lazy Loading bhi kehte hain).
-- Is pattern me Application pehle Cache check karti hai:
-  1) Data mil gaya → directly return
-  2) Data nahi mila → Database se fetch → Cache me store → return
+- Cache-Aside ek read pattern hai.
+
+- Har request pe Application pehle Cache check karti hai
+  1: Data mila → directly return (No DB hit)
+  2: Data nahi mila → DB se fetch → Cache me store → return 
+
+- Cache-Aside me Cache Miss hone par Application DB se data fetch karke Cache me store karti hai before returning response i.e
+  Cache implementation khud DB se data fetch nahi karta. Iske ulta, kuch patterns me Cache implementation khud Cache Miss hone 
+  par DB se data fetch karti hai — ise broadly Read-Through Cache kehte hain.
 
 
 ----------
@@ -670,19 +660,6 @@ Data         │
              │
              ▼
         Return Response
-
-
----------------
-## IMPORTANT :
---------------
-
-- Cache-Aside me Application ka role: Cache Miss hone par Application Database se data fetch karti hai,
-  aur retrieved data ko Cache me store karti hai before returning response. Cache implementation khud DB 
-  se data fetch nahi karta.
-
-- Read-Through Cache: Kuch patterns me Cache implementation khud Cache Miss hone par DB se data fetch karti 
-  hai — ise broadly Read-Through Cache kehte hain.
-
 
 
 
@@ -716,489 +693,111 @@ Step 3: Ab next request GET /products/101 pe Cache Hit hoga, aur user ko purana 
 # QUESTION : CACHE INVALIDATION KYA HOTA HAI ?
 ================================================
 
-- Jab Database me data change hota hai, to Cache me stored corresponding outdated data ko
-  remove ya update karna — taaki Application stale data serve na kare.
-
-- Database update hone ke baad, Application generally 2 approaches use kar sakti hai:
-
+- Database update hone par Cache ke outdated data ko delete ya update karna,
+  taaki application stale data serve na kare. Iske 2 approaches hain:
 
 1. DELETE / INVALIDATE CACHE
--------------------------------
+-----------------------------
+- DB update → Corresponding cache key (`product:101`) ko delete kar do (`DEL product:101`).
+- Next read for the same key → Cache Miss → DB se latest data fetch → Cache repopulate.
 
-Update Request
-       |
-       v
-Update Data in Database
-       |
-       v
-DEL product:101
-
-
-Yaani corresponding cache entry ko delete kar diya jata hai.
-
-Next read par:
-
-Cache Miss
-    ↓
-Database se latest data fetch
-    ↓
-Cache me store
-    ↓
-Return Response
-
-
-### 2. UPDATE CACHE
----------------------
-
-Update Request
-       |
-       v
-Update the cached data
-corresponding to key `product:101`
-
-
-Yaani existing cache key ke corresponding outdated data ko
-latest data se replace kar diya jata hai.
-
-
-## IMPORTANT
--------------
-
-Cache-Aside pattern me commonly Database update ke baad
-corresponding cache entry ko delete kiya jata hai.
-
-Next read par Application Database se latest data fetch
-karti hai aur Cache ko dobara populate kar deti hai.
+2. UPDATE CACHE
+----------------
+- DB update → Corresponding cache key (`product:101`) ki existing value ko latest data se replace kar do.
 
 
 
+--------------------------------------------------------------------------------------------------------
+## QUESTION: AGAR CACHE INVALIDATION STALE DATA KO PREVENT KARTI HAI, TO TTL KI ZARURAT KYUN HOTI HAI?
+--------------------------------------------------------------------------------------------------------
 
-
-=============
-## 10 : TTL 
-=============
-
-TTL define karta hai ki:
-
-Ek cache entry maximum kitne time tak available rahegi.
-
-Maan lo hum Redis ko cache ke roop me use kar rahe hain.
-
-Suppose humne `product:101` ko cache me store kiya.
-
-Matlab Redis me conceptually:
-
-Key        → product:101
-
-
-Value      → {
-                "id": 101,
-                "name": "iPhone",
-                "price": 79999
-             }
-
-
-TTL        → 10 minutes
-
-
-Yahan TTL = 10 minutes ka matlab hai ki `product:101`
-aur uski corresponding value cache me store hone ke baad
-maximum 10 minutes tak available rahegi.
-
-
-TTL expire hone ke baad:
-
-    product:101
-        +
-    uski corresponding value
-
-Cache me available nahi rahegi.
-
-
-Agar uske baad same data ke liye request aati hai:
-
-    GET /products/101
-            ↓
-       Cache Miss
-            ↓
-       Database
-            ↓
-      Latest Data
-            ↓
-    Store Again in Cache
-            ↓
-      New TTL Starts
-
-
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-## QUESTION: AGAR DATABASE ME DATA UPDATE KARNE KE BAAD HUM CACHE KO INVALIDATE KAR RAHE HAIN, TO THEORETICALLY STALE DATA SERVE NAHI HONA CHAHIYE. PHIR TTL KI ZARURAT KYUN HAI?
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-TTL ek automatic expiration mechanism hai.
-
-Ye ensure karta hai ki Cache entry indefinitely Cache me
-na rahe.
-
+- TTL (Time To Live) ek automatic expiration mechanism hai jo cache entries ko specified time ke baad expire kar deta hai. 
 
 ## 1. CACHE INVALIDATION CAN FAIL
----------------------------------
+-----------------------------------
 
-Suppose Product data update hua:
+- DB update ke baad application Redis ko call karti hai cache invalidate karne ke liye. 
+  Lekin Redis node down/slow hone, network failure, request timeout ya application crash
+  ki wajah se invalidation fail ho sakti hai.
 
-    Update Request
-          ↓
-    Update Data in Database
-          ↓
-Application executes Cache
-Invalidation Logic
-          ↓
-    DEL product:101
+- Aise mein DB mein latest data (`price = ₹69,999`) update ho jaata hai, lekin Cache mein 
+  old data (`price = ₹79,999`) reh jaata hai. Agar TTL configured nahi hai, toh stale entry
+  indefinitely Cache mein reh sakti hai, jab tak koi subsequent operation use update ya delete na kare.
 
+- TTL = 10 minutes hone par entry expire ho jaayegi. Next read par Cache Miss hoga, aur application
+  DB se latest data fetch kar sakegi.
 
-Cache invalidation execute karte time:
-
-    - Redis unavailable ho sakta hai
-    - Network failure ho sakta hai
-    - Request timeout ho sakti hai
-    - Application crash ho sakta hai
+- TTL Cache Invalidation ka replacement nahi hai. Ye ek safety mechanism hai jo invalidation fail hone par 
+  stale data ko indefinitely Cache mein rehne se rokta hai.
 
 
-## RESULT:
------------
-
-Database successfully update ho gaya,
-lekin Cache invalidation successfully nahi hui.
-
-
-    Database:
-
-    product:101
-    price = ₹69,999
-
-
-Lekin Cache me abhi bhi:
-
-    product:101
-    price = ₹79,999
-
-
-Next request:
-
-    GET /products/101
-            ↓
-        Cache Hit
-            ↓
-    Stale / Old Data
-
-
-Agar Cache entry par TTL configured nahi hai, to user ko stale / outdated data milta rahega, 
-aur ye stale cache entry potentially indefinitely Cache me stored reh sakti hai.
-
-
-Lekin agar:
-
-    TTL = 10 minutes
-
-
-to even agar Cache invalidation fail ho jaye:
-
-    Database Updated
-          ↓
-    Cache Invalidation Failed
-          ↓
-    Stale Data remains in Cache
-          ↓
-    TTL Eventually Expires
-          ↓
-    Cache Entry Unavailable
-          ↓
-    Next Request → Cache Miss
-          ↓
-    Fetch Latest Data from Database
-          ↓
-    Store Again in Cache
-
-
-So:
-
-TTL Cache Invalidation ka replacement nahi hai.
-
-Cache Invalidation ka purpose data change hone par
-corresponding stale cache entry ko immediately remove
-karna hai.
-
-TTL ek safety mechanism provide karta hai, taaki agar
-Cache invalidation kisi reason se fail ho jaye, to stale
-data indefinitely Cache me na rahe.
-
-
-
-## 2. MEMORY MANAGEMENT
--------------------------
-
-Cache RAM use karta hai, aur RAM unlimited nahi hoti.
-
-Suppose application continuously different products cache kar rahi hai:
-
-product:1
-product:2
-product:3
-...
-product:10,000,000
-
-
-## Without TTL:
-----------------
-
-Ab maan lo inme se kai products ke liye future me kabhi koi read / GET request nahi aati, aur unka data bhi kabhi update nahi hota.
-
-Is case me unki corresponding cache entries ko explicitly invalidate karne ka koi trigger nahi hoga, aur ye entries unnecessarily cache ki RAM occupy karti rahengi.
-
-
-## TTL ke saath:
-----------------
-
-TTL expire hone ke baad cache entry automatically remove ho jaati hai, jisse woh unnecessarily RAM occupy nahi karti.
-
-
-So, TTL helps ensure ki cache entries,
-especially old / unused entries,
-indefinitely cache ki RAM occupy na karein.
-
-
-## 3. DATA MAY CHANGE WITHOUT THIS APPLICATION KNOWING
+## 2. DATA MAY CHANGE WITHOUT THIS APPLICATION KNOWING
 ------------------------------------------------------
 
-Suppose normally Product Service product data update karti hai product database mai:
+- Maan lo Product Service mein DB update/delete ke baad Cache invalidate karne ka logic hai. 
+  Lekin agar koi doosri service (e.g., Order Service) directly Product DB mein data update/delete 
+  kar de aur Cache invalidate na kare, toh Cache mein stale data reh sakta hai.
 
-Client
-   ↓
-Product Service
-   ↓
-Update Product Database
-   ↓
-Invalidate Product Cache
-   ↓
-DEL product:101
+- Aise case mein TTL ek safety net provide karta hai. TTL expire hone tak Cache se stale data mil sakta hai. 
+  Lekin TTL expire hone ke baad next request par Cache Miss hoga, application DB se latest data fetch karke 
+  Cache repopulate karegi, aur subsequent requests par client ko fresh data milega.
 
 
-Lekin kisi business requirement ki wajah se koi doosri service
-directly Product Database update kar sakti hai.
 
-Example:
+## 3. MEMORY MANAGEMENT
+-------------------------
 
-Order Service
-      ↓
-Product Database
-      ↓
-Update product:101
+Cache RAM use karta hai, aur RAM limited hoti hai.
 
+- Product Service continuously new products cache karti hai, lekin kuch entries future mein kabhi access nahi hoti, 
+  jisse woh unnecessarily RAM occupy karti rehti hain.
+- TTL aisi entries ko automatically expire karne mein help karta hai, taaki woh indefinitely RAM occupy na karein.
 
-Agar Order Service Product Redis Cache invalidate nahi karti,
-to situation ho sakti hai:
 
-Product Database:
+### IMPORTANT : REDIS RAM LIMIT vs TOTAL SERVER RAM
+-----------------------------------------------------
 
-product:101
-price = ₹69,999
+Total Server RAM ≠ Redis ki available RAM
 
+Suppose server ki Total RAM = 32 GB, jisme OS, Application, Database,
+aur Redis sab RAM share karte hain.
 
-Product Redis:
-
-product:101
-price = ₹79,999
-
-
-Yaani:
-
-Database → Latest Data
-
-Cache → Old / Stale Data
-
-
-Ab next request:
-
-GET /products/101
-       ↓
-Product Service
-       ↓
-Product Redis
-       ↓
-Cache Hit
-       ↓
-Return Old / Stale Data
-
-
-## HOW TTL HELPS
-----------------
-
-Suppose:
-
-product:101
-
-TTL = 10 minutes
-
-
-Agar Database update ke baad cache invalidation miss ho jaye,
-to stale data TTL expire hone tak Cache me available reh sakta hai.
-
-Lekin:
-
-TTL Expires
-      ↓
-Cache Entry Expires
-      ↓
-Next Request
-      ↓
-Cache Miss
-      ↓
-Fetch Latest Data from Database
-      ↓
-Store in Cache
-      ↓
-Return Fresh Data
-
-
-## IMPORTANT
-------------
-
-TTL stale data ko immediately correct nahi karta.
-
-Lekin agar kisi reason se cache invalidation miss ho jaye,
-to TTL ensure karta hai ki stale cache entry indefinitely
-Cache me na bani rahe.
-
-TTL expire hone ke baad next request Database se latest data
-fetch karke Cache ko update kar deti hai.
-
-
-
-
-
-==============================================
-## 11 : REDIS RAM LIMIT vs TOTAL SERVER RAM
-==============================================
-
-Server ki Total RAM aur Redis / Cache ke liye available
-memory same cheez nahi hoti.
-
-Suppose ek server ke paas:
-
-    Total Server RAM = 32 GB
-
-
-Us server par multiple processes run kar rahe hain:
-
-+----------------------------------+
-|            SERVER RAM            |
-|                                  |
-|  OS                  →  4 GB     |
-|  Application         →  6 GB     |
-|  Database            → 10 GB     |
-|  Redis / Cache       →  8 GB     |
-|  Other Processes     →  4 GB     |
-|                                  |
-+----------------------------------+
-
-              Total = 32 GB
-
-
-Yahan:
-
-    Total Server RAM = 32 GB
-
-Lekin Redis ke paas poori 32 GB RAM available nahi hai.
-
-Redis ke liye configuration ke through ek maximum memory
-limit set ki ja sakti hai.
-
-For example:
-
-    Redis Max Memory = 8 GB
-
-
-To jab hum bolte hain:
-
-    Cache Memory Full
-
-iska matlab zaruri nahi hai ki:
-
-    Entire Server RAM Full
-
-
-Iska matlab ye ho sakta hai ki Redis apni configured
-maximum memory limit tak pahunch gaya hai.
-
-Once Redis reaches its configured maximum memory limit,
-new data store karne ke liye configured eviction policy
-apply ho sakti hai.
-
-Conceptually:
-
-    Redis Memory Usage
-           ↓
-    Reaches Max Memory Limit
-           ↓
-    New Data Needs to Be Stored
-           ↓
-    Eviction Policy Decides
-    Which Existing Entry to Remove
-           ↓
-    Memory Freed
-           ↓
-    New Data Stored
-
-
-
-
-
-========================
-## 12 : CACHE EVICTION
-========================
-
-Cache Eviction ka meaning hai:
-
-Redis/Cache ki configured RAM limit reach hone par existing cache
-entries ko configured eviction policy ke according remove karna,
-taaki new data store karne ke liye space available ho sake.
-
-
-## WHY IS CACHE EVICTION NEEDED?
----------------------------------
-
-TTL expire hone par cache entries automatically remove ho sakti hain.
-
-Lekin ek situation aur ho sakti hai:
-
-TTL expire hone se pehle hi Redis ki configured RAM limit
-reach ho jaye.
-
-
-## Example:
+Redis ke liye ek configured limit hoti hai:
 
 Redis Max Memory = 8 GB
 
-Current Usage = 8 GB
+Jab Redis apni configured max memory (max allocated RAM for Redis) limit tak pahunch jaata hai,
+aur naya data store karna hota hai, to Redis ki configured eviction policy decide karti hai ki 
+existing entries me se kaunsi entry remove ki jaaye RAM se, taaki naye data ke liye space ban sake.
 
 
-Ab Application ek new entry store karna chahti hai:
-
-SET product:9999 {...}
 
 
-Lekin Redis ke paas new data store karne ke liye
-configured RAM limit ke andar sufficient space available nahi hai.
+=============================================
+# QUESTION : CACHE EVICTION KYA HOTA HAI ?
+=============================================
 
-Is situation me Redis ki configured Eviction Policy decide karti hai
-ki existing cache entries me se kaunsi entry remove ki jaye,
-taaki new data store karne ke liye space available ho sake.
+Cache ki configured RAM limit reach hone par, eviction policy ke according existing cache entries ko
+RAM se remove karna, taaki new data store karne ke liye RAM mein space available ho sake.
+
+---------------------------------------------------------
+## QUESTION : CACHE EVICTION KI ZARURAT KYUN PADTI HAI ? 
+---------------------------------------------------------
+
+- Suppose Service rapidly new entries Cache mein store kar rahi hai. Har entry ka TTL hai, lekin existing entries
+  ka TTL expire hokar RAM free hone se pehle hi new entries aati rehti hain, jisse Cache ki configured RAM limit
+  reach ho sakti hai.
+
+- Aise scenario mein Eviction Policy ke according existing cache entries remove ki jaati hain, taaki new entries
+  store karne ke liye RAM available ho sake.
 
 
-## GENERIC CACHE EVICTION STRATEGIES
----------------------------------------
+------------------------------------------------------------
+## QUESTION : GENERIC CACHE EVICTION STRATEGIES KONSI HAI ? 
+------------------------------------------------------------
 
-### 1. LRU — Least Recently Used
---------------------------------
+1. LRU — Least Recently Used
+------------------------------
 
 LRU me woh cache entry remove ki jaati hai
 jo sabse zyada time se access nahi hui hai.
@@ -1213,8 +812,8 @@ Memory full hone par agar `product:104` store karna ho,
 to LRU policy `product:103` ko evict kar sakti hai.
 
 
-### 2. LFU — Least Frequently Used
-----------------------------------
+2. LFU — Least Frequently Used
+--------------------------------
 
 LFU me woh cache entry remove ki jaati hai
 jise sabse kam number of times access kiya gaya hai.
@@ -1229,442 +828,248 @@ Memory full hone par agar `product:104` store karna ho,
 to LFU policy `product:103` ko evict kar sakti hai.
 
 
-### 3. FIFO — First In First Out
---------------------------------
+3. FIFO — First In First Out
+------------------------------
 
-FIFO me jo cache entry sabse pehle Cache me insert hui thi,
-use sabse pehle remove kiya jata hai.
+Jab Cache ki RAM limit reach ho jaati hai aur nayi entry store karni hoti hai, to sabhi available cache
+entries me se jo entry sabse pehle (oldest) Cache me insert hui thi, use remove kiya jaata hai.
 
 Example:
 
-Insertion Order:
-
-A → B → C
+Insertion Order:  A → B → C
 
 Memory full hone par `D` insert karne ke liye:
 
 A → Evicted
 
-Result:
-
-B → C → D
+Result:  B → C → D
 
 
-### 4. RANDOM EVICTION
----------------------
+4. RANDOM EVICTION
+--------------------
 
 Is approach me Cache randomly kisi existing
 cache entry ko remove kar sakta hai.
 
 
 
-## REDIS CACHE EVICTION STRATEGIES
----------------------------------------
+------------------------------------------------------------------
+## QUESTION : REDIS SPECIFIC CACHE EVICTION STRATEGIES KYA HAI ? 
+------------------------------------------------------------------
 
-Ab Redis isi generic cache eviction policies ko apne specific eviction policies ke through implement karta hai. 
+Redis generic cache eviction policies ko apne specific eviction policies ke through implement karta hai. 
+Jab Redis configured maxmemory limit reach karta hai, to selected eviction policy ke according keys evict 
+ki ja sakti hain.
 
-Jab Redis configured maxmemory limit reach karta hai, to selected eviction policy ke according keys evict ki ja sakti hain.
+  
+                          REDIS CACHE EVICTION POLICIES
+                                         │
+          ┌──────────────────────────────┼──────────────────────────────┐
+          │                              │                              │
+      ALLKEYS                        VOLATILE                      noeviction
+   (Saari keys eligible)      (Sirf TTL wali keys eligible)
+          │                              │
+   ┌──────┼──────┐                 ┌──────┼──────┬─────────┐
+   │      │      │                 │      │      │         │
+  LRU    LFU   RANDOM             LRU    LFU   RANDOM     TTL
+   │      │      │                 │      │      │         │
+allkeys- allkeys- allkeys-    volatile- volatile- volatile- volatile-
+  lru     lfu    random          lru      lfu     random     ttl
+ 
 
-
-                    REDIS EVICTION POLICIES
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-         LRU                 LFU                RANDOM
-          │                   │                   │
-     ┌────┴────┐         ┌────┴────┐         ┌────┴────┐
-     │         │         │         │         │         │
-  allkeys   volatile  allkeys   volatile  allkeys   volatile
-
-
-          ┌──────────────────────────────────┐
-          │    ADDITIONAL REDIS POLICIES     │
-          └────────────────┬─────────────────┘
-                           │
-                 ┌─────────┴─────────┐
-                 │                   │
-            volatile-ttl         noeviction
-
-
-                         FIFO
-                          │
-                          ▼
-          Not directly supported by Redis
+### NOTE : FIFO → Redis directly support nahi karta.
 
 
-## EXAMPLE:
--------------
 
-Suppose Redis me ye 4 cache entries hain:
+-----------------------------------------------------------------------
+## QUESTION : KAUNSI REDIS KEYS CACHE EVICTION KE LIYE ELIGIBLE HAIN?
+-----------------------------------------------------------------------
 
-product:101 → TTL = 10 min
-product:102 → TTL = 20 min
-product:103 → No TTL
-product:104 → No TTL
+Redis keys ko do groups me consider karta hai:
 
+a) allkeys
+   → Redis ki saari keys eviction ke liye eligible hain,
+     chahe unke saath TTL configured ho ya nahi.
 
-Redis ki configured `maxmemory` limit reach ho gayi hai.
-
-Ab ek nayi entry store karni hai:
-
-product:105
-
-Memory free karne ke liye Redis ko existing cache entries me se kisi entry ko evict karna hoga.
-
-Lekin yahan ek important question hai:
-
-Eviction policy kin keys par apply hogi?
-
-Redis keys ko broadly do groups me consider karta hai:
-
-
-### 1. ALLKEYS
----------------
-
-`allkeys` ka matlab:
-
-Redis ki **saari keys** eviction ke liye eligible hain,
-chahe unke saath TTL configured ho ya nahi.
-
-Hamare example me:
-
-Eligible Keys:
-
-product:101
-product:102
-product:103
-product:104
-
+b) volatile
+   → Sirf woh keys eviction ke liye eligible hain
+     jin par TTL configured hai.
 
 Ab configured eviction algorithm decide karega
 ki in eligible keys me se kaunsi key remove karni hai.
 
-Examples:
 
-allkeys-lru
-→ All keys me se Least Recently Used key remove karo.
+-------------------------------------------------------------------
+### QUESTION: REDIS ME KAUNSE CACHE EVICTION ALGORITHMS HOTE HAIN?
+-------------------------------------------------------------------
 
-allkeys-lfu
-→ All keys me se Least Frequently Used key remove karo.
-
-allkeys-random
-→ All keys me se randomly kisi ek key ko remove karo.
-
-
-
-### 2. VOLATILE
-----------------
-
-`volatile` ka matlab:
-
-Sirf woh keys eviction ke liye eligible hain
-jin par TTL configured hai.
-
-Hamare example me:
-
-Eligible Keys:
-
-product:101
-product:102
+1. noeviction — Configured maxmemory limit reach hone pe koi eviction nahi hoti. 
+                Incoming Redis write operation reject kar di jaati hai aur error 
+                return hota hai.
+2. allkeys-lru — Saari keys me se woh key remove ki jaati hai jo sabse zyada time se access nahi hui.
+3. allkeys-lfu — Saari keys me se woh key remove ki jaati hai jise sabse kam number of times access kiya gaya.
+4. allkeys-random — Saari keys me se randomly koi ek key remove ki jaati hai.
+5. volatile-lru — Sirf TTL wali keys me se woh key remove ki jaati hai jo sabse zyada time se access nahi hui.
+6. volatile-lfu — Sirf TTL wali keys me se woh key remove ki jaati hai jise sabse kam number of times access kiya gaya.
+7. volatile-random — Sirf TTL wali keys me se randomly koi ek key remove ki jaati hai.
+8. volatile-ttl — Sirf TTL wali keys me se wo key evict ki jaati hai jiski remaining TTL sabse kam hai (jo sabse jaldi expire hone wali hai).
 
 
-`product:103` aur `product:104` eviction candidates nahi hain,
-kyunki inke paas TTL nahi hai.
-
-Ab configured eviction algorithm eligible keys me se
-kaunsi key remove hogi, ye decide karega.
-
-Examples:
-
-volatile-lru
-→ TTL wali keys me se Least Recently Used key remove karo.
-
-volatile-lfu
-→ TTL wali keys me se Least Frequently Used key remove karo.
-
-volatile-random
-→ TTL wali keys me se randomly kisi ek key ko remove karo.
-
-
-### 3. ADDITIONAL REDIS EVICTION POLICIES
-------------------------------------------
-
-## 3.1 VOLATILE-TTL
---------------------
-
-`volatile-ttl` policy me sirf TTL configured keys
-eviction ke liye eligible hoti hain.
-
-No-TTL keys eviction candidates nahi hoti.
-
-Eligible keys me se Redis generally us key ko evict karne
-ki preference deta hai jiski remaining TTL sabse kam hai,
-yaani jo sabse jaldi expire hone wali hai.
-
-Example:
-
-product:101 → TTL = 10 min
-product:102 → TTL = 20 min
-
-volatile-ttl ke case me remaining TTL matter karegi, original TTL nahi.
-
-Redis `product:101` ko eviction ke liye select kar sakta hai,
-kyunki uski remaining TTL comparatively kam hai.
-
-
-## 3.2 NO EVICTION
---------------------
-
-noeviction policy me Redis, configured maxmemory limit reach hone ke baad existing keys ko automatically evict nahi karta.
-
-Agar new data store karne ke liye additional memory required ho, to Redis write operation ko reject kar deta hai aur error return karta hai.
-
-
-## IMPORTANT :
+### IMPORTANT
 ---------------
 
-volatile policies me sirf TTL wali keys eviction candidates hoti hain.
+Cache eviction ke liye key eligibility aur eviction algorithm — dono Redis ki global configuration me define hote hain,
+maxmemory-policy property ke through. Ye kisi individual key pe define nahi hoti.
 
-Agar Redis memory full hone par sufficient eligible TTL keys
-available nahi hain, to Redis required memory free nahi kar
-paayega aur write operation fail ho sakta hai.
-
-
-
-
-
-============================
-## 13 : CACHE WRITE PATTERNS
-============================
-
-Abhi tak humne mainly read path dekha.
-
-## EXAMPLE:
--------------
-
-GET /products/101
-     ↓
- Controller 
-     ↓
-  Service
-     ↓
-   Cache
-     ↓
-Cache Hit?
- ├── YES → Return Data
- │
- └── NO
-      ↓
-    Database
-      ↓
- Store in Cache
-      ↓
- Return Data
+maxmemory-policy allkeys-lru      → Saari keys eligible, LRU algo. se evict
+maxmemory-policy allkeys-lfu      → Saari keys eligible, LFU algo. se evict
+maxmemory-policy allkeys-random   → Saari keys eligible, random algo. se evict
+maxmemory-policy volatile-lru     → Sirf TTL wali keys eligible, LRU algo. se evict
+maxmemory-policy volatile-lfu     → Sirf TTL wali keys eligible, LFU algo. se evict
+maxmemory-policy volatile-random  → Sirf TTL wali keys eligible, random algo. se evict
+maxmemory-policy volatile-ttl     → Sirf TTL wali keys eligible, shortest remaining TTL se evict
+maxmemory-policy noeviction       → Koi eviction nahi, write reject
 
 
-Lekin real problem write ke time aati hai.
+### NOTE :
+-----------
+Volatile policies me sirf TTL wali keys eviction candidates hoti hain. Agar memory full hone par
+sufficient eligible TTL keys available nahi hain, to Redis required memory free nahi kar paayega
+aur write operation fail ho sakta hai.
 
-Suppose currently:
 
-Database:
 
-productId:101
-price = ₹79,999
 
-Aur Cache me bhi:
+==================================================
+# QUESTION: CACHE WRITE PATTERNS KYA HOTE HAIN?
+==================================================
 
-productId:101
-price = ₹79,999
-
-Ab product ka price update hota hai:
-
-PUT /products/101
-
-New Price = ₹69,999
-
-Ab question:
-
-Database aur Cache ko kis order me update karein?
-
-Isi problem ko handle karne ke liye different Cache Write Patterns use kiye jaate hain.
+Abhi tak humne mainly read path dekha (jaise Cache-Aside pattern). Lekin real problem write ke time aati hai
+jab data update hota hai, to Database aur Cache ko kis order me update karein? Isi problem ko handle karne ke
+liye different Cache Write Patterns use kiye jaate hain.
 
 -------------------------
 1. WRITE-THROUGH CACHE
 -------------------------
 
-Write-Through Cache me Database update ke saath
-corresponding Cache entry ko bhi latest data se update
-kar diya jata hai.
+- Write-Through me Database update ke saath-saath corresponding Cache key ke
+  against data ko bhi latest value se update kar diya jaata hai.
+  Yahan corresponding Cache entry ko invalidate (i.e. delete) nahi karte 
+  usi existing cache key ke against nayi value se update karte hain.
 
-Isliye next read request par:
+## EXAMPLE :
+-------------
 
-Cache Hit
-    ↓
-Latest Data directly Cache se return
+   Cache me:     product:101  →  price = ₹79,999
+   Update aaya:  PUT /products/101 (new price = ₹69,999)
+
+   Write-Through:
+    → DB update (price = ₹69,999)
+    → Cache update (product:101 = ₹69,999)   ← same key, nayi value
 
 
+## BENIFIT :
+-------------
+- Next read request pe Cache Hit → latest data directly Cache se return.
+
+
+## USE CASE :
+--------------
 Write-Through useful ho sakta hai jab updated data ko
 immediately aur frequently read kiya jana expected ho,
 kyunki updated data pehle se Cache me available hota hai.
 
 
-## LIMITATIONS OF WRITE-THROUGH
--------------------------------
+## WRITE-THROUGH KI LIMITATIONS : 
+---------------------------------
 
-Write-Through me Database aur Cache dono ko update karna hota hai,
+Write-Through me Database aur Cache dono ko update karna hota hai, 
 isliye failure scenarios handle karne padte hain.
+
 
 ### CASE 1: DATABASE UPDATE SUCCESS, CACHE UPDATE FAILS
 --------------------------------------------------------
 
-Database successfully update ho gaya, lekin Cache update fail ho gaya.
-
-Is case me Cache purana data return kar sakta hai,
-yaani stale data temporarily serve ho sakta hai.
-
-Agar Cache entry ke saath TTL configured hai, to TTL expire hone ke
-baad next request Database se latest data fetch karke Cache ko
-update kar deti hai.
+Database successfully update ho gaya, lekin Cache update fail ho gaya. Is wajah se Cache abhi bhi purana 
+data return karega — matlab stale data temporarily serve hoga. Lekin agar Cache entry ke saath TTL configured hai,
+to TTL expire hone ke baad next request Database se latest data fetch karke Cache ko update kar degi aur stale data 
+automatically refresh ho jaayega.
 
 
 ### CASE 2: CACHE UPDATE SUCCESS, DATABASE UPDATE FAILS
 --------------------------------------------------------
 
-Ye comparatively more problematic scenario hai.
-
-Cache me new data store ho gaya, lekin Database update fail ho gaya.
-
-Isliye temporarily users ko Cache se updated data mil sakta hai.
-
-Lekin TTL expire hone ke baad Cache Miss hoga aur Database se
-purana data dobara fetch hoke Cache me store ho jayega.
-
-Iske baad subsequent requests me users ko old data milna
-shuru ho jayega.
-
-Yaani jo updated data temporarily Cache me available tha,
-woh Database me successfully persist nahi hua aur eventually
-lost ho gaya.
+Cache me naya data store ho gaya, lekin Database update fail ho gaya. Isliye initially, 
+jab tak Cache ka TTL expire nahi hua hai, tab tak temporarily users ko updated data mil 
+sakta hai. Lekin TTL expire hone ke baad subsequent requests par Cache Miss hoga, aur 
+Database se purana data fetch hoke Cache me store ho jaayega — jisse subsequent requests
+me users ko old data milna shuru ho jaayega. Matlab jo updated data Cache me temporarily 
+tha, wo Database me persist nahi hua → eventually lost.
 
 
-## IMPORTANT
-------------
+#### IMPORTANT :
+----------------
+Practical systems me Cache-Aside (read flow) + Cache Invalidation ko commonly use karte hain  kyunki ye
+implement aur maintain karne me simple hai, aur commonly preferred approach hai. Database source of truth
+rehta hai aur Cache ko temporary data ke roop me treat kiya jaata hai.
 
-Isliye practical systems me Database aur Cache ke update order,
-failure handling, retry mechanisms, etc. carefully design karne padte hain.
-
-Normal application caching use cases me Cache-Aside + Invalidation
-aksar simpler aur commonly preferred approach hoti hai, kyunki
-Database source of truth rehta hai aur Cache ko temporary
-data ke roop me treat kiya jata hai.
 
 
 -------------------------------------
 2. WRITE-BEHIND / WRITE-BACK CACHE
 -------------------------------------
 
-Ab tak humne dekha:
-
-Write-Through
-→ Database me data update karne ke saath-saath
-  Cache me bhi latest data update kiya jata hai.
-
-
-Lekin Write-Behind me approach different hoti hai.
-
-Jab data update karne ki request aati hai, to Application
-pehle updated data ko Cache me store karti hai aur client ko
-success response return kar deti hai.Uske baad Database me data 
-ko asynchronously update kiya jata hai.
-
-## NOTE:
----------
-Database ko immediately update nahi kiya jata.
+- Write-Through me Database update ke saath-saath Cache bhi latest data se update kiya jaata hai.
+- Lekin Write-Behind me approach different hai: Jab data update karne ki request aati hai, to 
+  Application pehle updated data ko Cache me store karti hai aur client ko turant success response
+  return kar deti hai. Uske baad Database me data ko asynchronously update kiya jaata hai.
+  i.e Database ko immediately update nahi kiya jata.
 
 
-## WHY USE WRITE-BEHIND?
--------------------------
+## BENIFIT :
+-------------
 
-Write-Behind ka main benefit ye hai ki client ko Database
-update complete hone ka wait nahi karna padta.
-
-Isliye client ko jaldi response mil sakta hai, jisse
-response time aur user experience better ho sakta hai.
-
-Ye high write workloads me useful ho sakta hai, kyunki
-Database update asynchronously baad me perform kiya ja sakta hai.
+Write-Behind ka main benefit ye hai ki client ko Database update complete hone ka wait nahi karna padta 
+isliye client ko jaldi response milta hai, jisse response time aur user experience better ho jaata hai.
+Ye high write workloads me useful hota hai. 
 
 
-## LIMITATIONS OF WRITE-BEHIND
---------------------------------
+## WRITE-BEHIND KI LIMITATIONS : 
+---------------------------------
 
-Write-Behind me Cache update hone ke baad client ko
-immediately success response mil sakta hai, jabki Database
-update asynchronously later hota hai.
+Write-Behind me client ko immediately success response mil jaata hai, jabki Database update asynchronously 
+later hota hai. Agar Database update hone se pehle Cache fail ho jaye, to updated data Database me persist 
+nahi hoga → data loss ka risk.
 
-Agar Database update hone se pehle Cache fail ho jaye,
-to updated data Database me persist nahi ho payega.
 
-Isliye Write-Behind me data loss ka risk ho sakta hai.
 
 
 -------------------------
 3. WRITE-AROUND CACHE
 -------------------------
 
-Ab tak humne dekha:
-
-Write-Through
-→ Database update ke saath-saath
-  Cache me bhi latest data update kiya jata hai.
-
-
-Write-Behind / Write-Back
-→ Updated data pehle Cache me store kiya jata hai.
-→ Database update baad me asynchronously hota hai.
+- Write-Through → Database update ke saath-saath Cache me bhi latest data update kiya jaata hai.
+- Write-Behind / Write-Back → Updated data pehle Cache me store kiya jaata hai, Database update baad me asynchronously hota hai.
+- Write-Around ka main idea ye hai ki write request ke case me new data directly Database me write/update kiya jaata hai, aur agar 
+  corresponding data pehle se Cache me present hai, to stale data avoid karne ke liye us Cache entry ko delete kar diya jaata hai.
+- Ab same data ke liye next read request par Cache Miss hoga. Is case me Application latest data Database se fetch karke Cache me 
+  store karti hai aur response return kiya jaata hai.
 
 
+## USE CASE :
+--------------
 
-Write-Around ka main idea ye hai ki write request ke case me
-new data directly Database me write / update kiya jata hai.
+Write-Around Cache useful hota hai jab data frequently update hota ho, lekin frequently read nahi hota. Aise case me har write ke
+baad Cache ko update karna unnecessary ho jaata hai. Isse Redis ki RAM bhi bachti hai — kyunki jo data baar-baar read nahi hota, 
+usko cache me rakhne ka koi fayda nahi.
 
-Agar corresponding data pehle se Cache me present hai,
-to stale data avoid karne ke liye us Cache entry ko
-invalidate / delete kiya jata hai.
-
-Is approach me mainly write path me Cache ko bypass kiya jata hai.
-Yaani updated data ko directly Cache me populate nahi kiya jata.
-
-Ab same data ke liye next read request par Cache Miss hoga.
-
-Is case me latest data Database se fetch karke Cache me
-store kiya ja sakta hai aur response return kiya jata hai.
-
-
-## WHY USE WRITE-AROUND CACHE ?
---------------------------------
-
-Write-Around Cache useful ho sakta hai jab data frequently
-update hota ho, lekin frequently read nahi hota.
-
-Aise case me har write ke baad Cache ko update karna
-unnecessary ho sakta hai.
 
 
 ## LIMITATIONS OF WRITE-AROUND
 --------------------------------
 
-Write operation ke baad updated data Cache me available nahi hota,
-kyunki write ke time corresponding Cache entry invalidate/delete
-kar di gayi thi.
-
-Isliye subsequent read request par Cache Miss hota hai.
-
-Application ko latest data Database se fetch karna padta hai,
-jo Cache se data retrieve karne ke comparison me relatively
-slower ho sakta hai.
-
-Isliye write ke baad first read comparatively slower ho sakti hai.
+Write ke time Cache entry delete kar di jaati hai, isliye next read par Cache Miss hoga aur Application ko data DB se fetch karna padega 
+jo Cache se slower hai. Isliye write ke baad first read comparatively slower hoti hai.
 
 
 
