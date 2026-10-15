@@ -1074,91 +1074,45 @@ jo Cache se slower hai. Isliye write ke baad first read comparatively slower hot
 
 
 
-===========================================
-## 14 : CACHE STAMPEDE / THUNDERING HERD
-===========================================
+==========================================
+# QUESTION: CACHE STAMPEDE KYA HOTA HAI?
+==========================================
 
-Abhi tak humne dekha ki agar requested data Cache me available hai, to application directly Cache se data return kar deti hai. 
-Lekin agar requested data Cache me available nahi hai, yani Cache Miss hota hai, to application Database se data fetch karti hai,
-use Cache me store karti hai, aur phir response return karti hai.
-
-Normally ye flow perfectly fine hai.
-
------------------------------
-## CACHE STAMPEDE KYA HAI?
------------------------------
-
-Cache Stampede, jise Thundering Herd bhi kaha jata hai, tab hota hai jab koi popular cached data 
-unavailable ho jata hai aur uske turant baad usi data ke liye bahut saari concurrent requests 
-ek saath aati hain. Ye requests Cache Miss encounter karti hain aur same data 
-ko fetch karne ke liye ek saath Database ya kisi backend system ko hit karne lagti hain.
+Cache Stampede (ise Thundering Herd bhi kehte hain) tab hota hai jab koi popular cached data unavailable ho jaata hai, 
+aur uske turant baad usi data ke liye bahut saari concurrent requests ek saath aa jaati hain. Ye saari requests Cache 
+Miss encounter karti hain, aur same data fetch karne ke liye ek saath Database ko hit karne lagti hain.
 
 Suppose ek popular product cache me stored hai:
 
-    Key:
-        product:101
+Key:    product:101
+Value:  { "id": 101, "name": "iPhone", "price": 79999 }
+TTL:    10 minutes
 
-    Value:
-        {
-            "id": 101,
-            "name": "iPhone",
-            "price": 79999
-        }
-
-TTL = 10 minutes
-
-TTL expire hone ke baad `product:101` Cache se remove ho jata hai.
-
-Exactly usi time Product:101 ke liye 10,000 concurrent
-requests aa jaati hain.
-
-Sab requests Cache check karti hain aur unhe:
-
-    Cache Miss
-
-milta hai.
-
-Ab ye saari 10,000 concurrent requests independently same product data ke liye Database ya backend system ko hit karne lagti hain.
-Isse Database par ek sudden load spike aa sakta hai, jiske kaaran Database overload ho sakta hai, response time increase ho sakta hai, 
-aur overall application performance impact ho sakti hai.
+TTL expire hone ke baad product:101 Cache se remove ho jaata hai. Exactly usi time usi product ke liye 10,000 concurrent 
+requests aa jaati hain.  Sab ko Cache Miss milta hai, aur ab ye saari requests independently Database ko hit karne lagti hain.
+Isse Database par sudden load spike → Database overload ho sakta hai → response time increase → overall application performance impact.
 
 
-----------------------------------
-## REASONS BEHIND CACHE STAMPEDE
-----------------------------------
+
+---------------------------------------------------------------
+## QUESTION: CACHE STAMPEDE KE KYA-KYA REASONS HO SAKTE HAIN?
+---------------------------------------------------------------
 
 Popular cache entry unavailable hone ke common reasons:
 
-##1. TTL EXPIRY
-----------------
+1. TTL Expiry — Popular cache key ka TTL expire ho jaata hai.
+2. Cache Eviction — Memory pressure ke kaaran eviction policy popular cache entry ko remove kar deti hai.
+3. Cache Invalidation — Data update hone par popular cache entry delete kar di jaati hai.
+4. Cache Restart / Failure — Cache server restart, fail, ya temporarily unavailable ho jaata hai.
 
-   Popular cache key ka TTL expire ho jata hai.
-
-##2. CACHE EVICTION
---------------------
-
-   Memory pressure ke kaaran eviction policy popular cache entry
-   ko remove kar sakti hai.
-
-##3. CACHE INVALIDATION
-------------------------
-
-   Data update hone par popular cache entry invalidate ya delete
-   ki ja sakti hai.
-
-##4. CACHE RESTART OR FAILURE
-------------------------------
-
-   Cache server restart, fail ya temporarily unavailable ho sakta hai.
-
-## 5. CACHE FLUSH
--------------------
-
-   Cache ki multiple ya saari entries remove ho sakti hain.
+In sab cases me, cache entry unavailable hone ke turant baad usi data ke liye bahut saari 
+concurrent requests aa jaati hain → Cache Stampede.
 
 
-## CACHE STAMPEDE SOLUTIONS :
-------------------------------
+
+----------------------------------------------------
+## QUESTION: CACHE STAMPEDE KE SOLUTIONS kYA HAI ?
+----------------------------------------------------
 
 → Locking / Request Coalescing
 
