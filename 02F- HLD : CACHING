@@ -1181,51 +1181,51 @@ synchronized (lock) {
 2. MULTIPLE SERVICE INSTANCES — DISTRIBUTED LOCK
 ---------------------------------------------------
 
+                         Requests
+                            |
+                            v
+                 +----------------------+
+                 |   Service Load       |
+                 |      Balancer        |
+                 +----------+-----------+
+                            |
+              +-------------+-------------+
+              |             |             |
+              v             v             v
+         +---------+   +---------+   +---------+
+         | Service |   | Service |   | Service |
+         | Instance|   | Instance|   | Instance|
+         |    1    |   |    2    |   |    3    |
+         +----+----+   +----+----+   +----+----+
+              |             |             |
+              +-------------+-------------+
+                            |
+                            v
+                 +----------------------+
+                 |        Redis         |
+                 |----------------------|
+                 | Shared Distributed   |
+                 |    Cache + Lock     |
+                 +----------+-----------+
+                            |
+                            v
+                 +----------------------+
+                 |       Database       |
+                 +----------------------+
+
+
 ### QUESTION: MULTIPLE INSTANCES KE BEECH LOCAL LOCK USE KARNE SE KYA PROBLEM HAI?
 ------------------------------------------------------------------------------------
 
-Agar Service horizontally scaled hai — matlab multiple instances run kar rahi hai, aur in instances ke
-beech requests distribute karne ke liye ek Service Load Balancer configured hai — to is case me local lock 
-kaam nahi karega. Kyunki har instance apna local lock independently acquire karti hai, aur local lock sirf
-same application instance ke threads ko coordinate karta hai — doosre instances ke threads ko nahi.
-Isliye multiple service instances ke beech coordination ke liye Distributed Lock ki zarurat hoti hai.
-
-
-### QUESTION: MULTIPLE SERVICE INSTANCES ME REDIS DISTRIBUTED LOCK SE CACHE STAMPEDE KAISE HANDLE KARTE HAIN?
----------------------------------------------------------------------------------------------------------------
+- Agar Service horizontally scaled hai — matlab multiple instances run kar rahi hai, aur in instances ke
+  beech requests distribute karne ke liye ek Service Load Balancer configured hai — to is case me local lock 
+  kaam nahi karega. Kyunki har instance apna local lock independently acquire karti hai, aur local lock sirf
+  same application instance ke threads ko coordinate karta hai — doosre instances ke threads ko nahi.
 
 - Distributed system me hume aisa lock chahiye jo sabhi service instances ke beech shared ho. 
-  Is coordination ke liye  commonly Redis-based Distributed Lock use kiya ja sakta hai.
+  Is coordination ke liye commonly Redis-based Distributed Lock use kiya ja sakta hai.
 
 - Goal: Sirf ek instance → DB hit kare → Cache populate kare → Baaki instances wait karein
-
-                    Requests
-                        │
-                        ▼
-              ┌──────────────────┐
-              │   Service LB     │
-              └────────┬─────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-     ┌─────────┐  ┌─────────┐  ┌─────────┐
-     │Instance │  │Instance │  │Instance │
-     │   1     │  │   2     │  │   3     │
-     └────┬────┘  └────┬────┘  └────┬────┘
-          │            │            │
-          └────────────┼────────────┘
-                       │
-                       ▼
-              ┌──────────────────┐
-              │  Redis (Shared   │
-              │  Distributed     │
-              │  Cache + Lock)   │
-              └────────┬─────────┘
-                       │
-                       ▼
-              ┌──────────────────┐
-              │     Database     │
-              └──────────────────┘
 
 
 
@@ -1348,90 +1348,39 @@ j) Finally, Request 1 lock release karti hai by deleting the lock key:
 2. STALE-WHILE-REVALIDATE 
 ----------------------------
 
-Ye bhi ek approach hai jo popular cache entry ke expire hone ke
-baad Cache Stampede ko prevent karne ke liye use ki ja sakti hai.
+- Ye bhi ek approach hai jo popular cache entry expire hone ke baad Cache Stampede prevent karne ke liye use ki jaati hai.
 
-Basically normal caching scenario me har cache key ke saath ek TTL
-(Time To Live) associated hota hai.
+- Normal caching me har cache key ke saath ek TTL associated hota hai. TTL expire hone ke baad key Redis se remove ho jaati hai. 
+  Agar usi waqt us data ke liye bahut saari concurrent requests aa jaayein, to sabko Cache Miss milta hai aur sab DB ko hit karne 
+  lagti hain → Cache Stampede.
 
-TTL expire hone ke baad corresponding key Redis se remove ho jaati hai.
+- Stale-While-Revalidate approach me hum cache entry ki lifetime ko logically do periods me divide karte hain — Fresh Time aur Stale Time. 
+  Conceptually: 
+   Redis TTL = Fresh Time + Stale Time
 
-Agar usi time us key ke corresponding data ke liye bahut saari concurrent requests aati hain,
-to sabko Cache Miss mil sakta hai aur multiple requests backend /
-Database ko hit kar sakti hain.
+- Fresh Time ke dauran data fresh maana jaata hai. Stale Time ke dauran data technically stale hota hai (Application ke perspective se) 
+  lekin Redis ke perspective se ye Cache Hit hai, kyunki Redis ke liye ye ek normal cache entry hai jiska TTL abhi expire nahi hua.
+  Redis ko ye nahi pata ki Application is data ko "stale" maan rahi hai — Redis sirf itna jaanta hai ki key abhi exist karti hai → Cache Hit return karta hai.
+  Isliye Application ko stale data Redis se mil jaata hai, aur wo usse temporarily client ko serve kar deti hai .
 
+- Example:
 
-Stale-While-Revalidate approach me hum cache entry ki lifetime ko
-logically do periods me divide karte hain:
+   Database me product:101 ka price = ₹79,999 hai. Isse Redis me cache karte hain, aur decide karte hain:
 
-    1. Fresh Time
-    2. Stale Time
+   Fresh Time = 10 minutes
+   Stale Time = 5 minutes
 
+   Redis TTL = Fresh + Stale = 15 minutes
 
-Example:
+   Timeline (Suppose data 10:00 AM pe store hua redis mai):
 
-Database me:
-
-    product:101
-    price = ₹79,999
-
-
-Hum is data ko Redis me cache karte hain.
-
-Ab hum decide karte hain:
-
-    Fresh Time = 10 minutes
-    Stale Time = 5 minutes
+    10:00 → 10:10   →  Fresh Data
+    10:10 → 10:15   →  Stale Data (Redis me available, temporarily serve allowed)
+    After 10:15     →  Redis TTL expire → Cache key removed
 
 
-Matlab:
 
-First 10 minutes tak data ko fresh maana jayega.
-
-Uske baad next 5 minutes tak data technically stale hoga,
-lekin temporarily client ko serve karna allowed hoga.
-
-
-So cache entry ko total:
-
-10 min Fresh
-      +
-5 min Stale
---------------
-15 minutes
-
-tak Redis me available rakhna hoga.
-
-Conceptually:
-
-Redis TTL = Fresh Time + Stale Time
-
-Yahan:
-
-    Redis TTL = 15 minutes
-
-
-## TIMELINE:
--------------
-
-Suppose data 10:00 AM par Redis me store hua.
-
-
-    10:00 → 10:10
-
-    Data = Fresh
-
-
-    10:10 → 10:15
-
-    Data = Stale, but still available in Redis
-    and temporarily serve kiya ja sakta hai.
-
-
-    After 10:15
-
-    Redis TTL expire ho sakta hai aur cache key
-    Redis se remove ho jaayegi.
+  
 
 
 ## REDIS KO KAISE PATA CHALEGA KI DATA STALE HAI?
