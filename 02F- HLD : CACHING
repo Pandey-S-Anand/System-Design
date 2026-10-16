@@ -1538,177 +1538,62 @@ do common approaches use ki ja sakti hain:
 2. Bloom Filter
 
 
-## 1: NEGATIVE CACHING
------------------------
+1. NEGATIVE CACHING
+---------------------
 
-Negative Caching ka basic idea hai:
+Agar requested data Database me exist nahi karta, to us NOT_FOUND result
+ko bhi temporarily Cache me store kar do.
 
-Agar requested data Database me exist nahi karta,
-to us `NOT_FOUND` result ko bhi temporarily Cache me
-store kar sakte hain.
+Request → Redis (Cache Miss) → DB → Not Found
+                                      ↓
+                          Store NOT_FOUND in Redis (TTL = 5 min)
+                                      ↓
+                                  Return 404
 
-
-Normal Cache-Aside me Cache actual data store karta hai:
-
-product:101
-      ↓
-{
-   id: 101,
-   name: "iPhone",
-   price: 70000
-}
+Subsequent requests me, same non-existent product ke liye dobara request aayi to Negative Cache Hit hoga 
+aur NOT_FOUND return hoga aur DB query nahi hogi. Isse DB load reduce hota hai.
 
 
-Lekin maan lo request aati hai:
+### QUESTION: TTL KYUN ZAROORI HAI ?
+--------------------------------------
 
-GET /products/999999
+1: Agar future me wo data Database me create ho jaaye — lekin Cache invalidation fail ho gaya — to TTL expire hone ke baad 
+   next request DB se fresh data fetch karke Cache update kar degi. TTL ke bina, NOT_FOUND entry indefinitely Cache me reh 
+   sakti hai — matlab actual data exist hone ke baad bhi user ko NOT_FOUND milta rahega.
 
-Aur `product:999999` Database me exist nahi karta.
-
-
-### FIRST REQUEST
-------------------
-
-Request
-   ↓
-Redis → Cache Miss
-   ↓
-Database
-   ↓
-Product Not Found
-   ↓
-Store NOT_FOUND in Redis
-   ↓
-Return 404
+2: Bahut saari NOT_FOUND entries Redis memory unnecessarily occupy karengi. TTL se auto-cleanup ho jaata hai.
 
 
-REDIS ME:
+## QUESTION: NEGATIVE CACHING KI LIMITATION KYA HAI ?
+------------------------------------------------------
 
-product:999999 → NOT_FOUND
+Negative Caching tab effective hai jab same non-existent ID repeatedly request ki ja rahi ho.
+Lekin agar continuously different non-existent IDs ke liye requests aa rahi hain, to har new ID 
+ki first request DB tak jaayegi — Negative Caching alone sufficient nahi hoti. Aise cases me 
+Bloom Filter use kiya ja sakta hai.
 
-TTL = 5 minutes
-
-
-### SUBSEQUENT REQUESTS
--------------------------
-
-Agar same non-existent product ke liye dobara request aaye:
-
-GET /products/999999
-        ↓
-Redis
-        ↓
-Negative Cache Hit
-        ↓
-NOT_FOUND
-        ↓
-Return 404
-
-
-Is baar Database query nahi hogi.
-
-Is tarah repeatedly non-existent data ke liye aane wali
-requests Database tak nahi pahunchengi aur unnecessary
-Database load reduce ho jayega.
-
-
-### TTL KYUN USE KARTE HAIN?
-----------------------------
-
-Negative Cache entry ke saath TTL rakhne ke kuch reasons hain:
-
-
-1. Agar future me `product_id:999999` Database me create ho jaye
-   aur Cache invalidation fail ho jaye, to Redis me purani
-   `NOT_FOUND` entry stale ho sakti hai.
-
-   Lekin TTL expire hone ke baad:
-
-   NOT_FOUND Entry Expires
-           ↓
-   Next Request → Cache Miss
-           ↓
-   Latest Data Database se Fetch
-           ↓
-   Cache me Populate
-           ↓
-   Correct Data Return
-
-   Agar TTL na ho, to invalidation fail hone par `NOT_FOUND`
-   entry indefinitely Cache me reh sakti hai aur actual product
-   exist hone ke baad bhi Client ko `NOT_FOUND` milta rahega.
-
-
-2. Agar data kisi doosri service, batch job ya direct Database
-   operation ke through create ho aur us process me Cache
-   invalidation na ho, to Redis me stale `NOT_FOUND` entry reh sakti hai.
-
-   TTL expire hone ke baad entry remove ho jayegi aur next request
-   Database se correct data fetch karke Cache ko update kar degi.
-
-   TTL na ho to actual data Database me available hone ke bawajood,
-   user ko repeatedly stale `NOT_FOUND` response mil sakta hai.
-
-
-3. Random ya invalid IDs ke liye bahut saari `NOT_FOUND` entries
-   Cache me indefinitely store nahi rahengi aur unnecessary
-   Redis memory usage avoid hoga.
-
-
-## NEGATIVE CACHING KI LIMITATION
-----------------------------------
-
-Negative Caching tab effective hoti hai jab same non-existent ID repeatedly request ki ja rahi ho.
-
-Lekin agar continuously different non-existent IDs
-ke liye requests aa rahi hon, to har new ID ke liye:
-
-Redis → Cache Miss
-        ↓
-Database
-        ↓
-NOT_FOUND
-        ↓
-Store Negative Cache
-
-Is case me har new non-existent ID ki first request
-Database tak ja sakti hai.
-
-Isliye aise scenarios me Negative Caching alone
-sufficient nahi hoti.
-
-Aise cases me Bloom Filter use kiya ja sakta hai.
 
 
 
 ## 2 : BLOOM FILTER
 ---------------------
 
+- Bloom Filter ek probabilistic data structure hai jo quickly check karta hai ki koi item 
+  definitely exist nahi karta ya possibly exist kar sakta hai.
 
-## BLOOM FILTER KYA HAI?
-------------------------
+- Ye sirf do tarah ke answers deta hai:
 
-Bloom Filter ek **probabilistic data structure** hai jo quickly check karne ke liye use hota hai 
-ki koi item definitely exist nahi karta ya possibly exist kar sakta hai.
+  a) Definitely NOT Present → 100% sure ki item exist nahi karta.
+  b) Possibly Present → Item exist kar sakta hai, lekin 100% guarantee nahi hoti. Is case me cache ya Database se further verify karna padta hai.
 
-Bloom Filter sirf do tarah ke answers deta hai:
-
-Definitely NOT Present → 100% sure ki item exist nahi karta.
-
-Possibly Present → Item exist kar sakta hai, lekin 100% guarantee nahi hoti. Is case me Redis ya Database se further check karna padta hai.
-
-Simple rule:
-
-Agar Bloom Filter "NO" bole, to definitely NO.
-Agar Bloom Filter "YES" bole, to maybe YES.
+- Simple rule:
+   -> Agar Bloom Filter "NO" bole → Definitely NO.
+   -> Agar Bloom Filter "YES" bole → Maybe YES.
 
 
-Isliye Bloom Filter ko **final source of truth** nahi maana ja sakta.
 
-
----------------------------------------------------
-## BLOOM FILTER INTERNALLY KAISE KAAM KARTA HAI?
----------------------------------------------------
+### QUESTION: BLOOM FILTER INTERNALLY KAISE KAAM KARTA HAI?
+--------------------------------------------------------------
 
 High level par Bloom Filter mainly do cheezon ka use karta hai:
 
