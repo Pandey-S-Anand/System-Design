@@ -1114,57 +1114,38 @@ concurrent requests aa jaati hain → Cache Stampede.
 ## QUESTION: CACHE STAMPEDE KE SOLUTIONS kYA HAI ?
 ----------------------------------------------------
 
-→ Locking / Request Coalescing
-
-→ Stale-While-Revalidate / Serve Stale While Refreshing
-
-
----------------------------------
-## LOCKING / REQUEST COALESCING  
+1. LOCKING / REQUEST COALESCING  
 ---------------------------------
 
-## CORE IDEA
--------------
+### CORE IDEA
+---------------
 
-Single Cache Entry Expiration ki wajah se hone wale Cache Stampede ko prevent karne ka core idea ye hai ki same cache key ke liye 
-multiple concurrent Cache Misses hone par sab requests independently Database ko hit na karein.
+Same cache key ke liye multiple concurrent Cache Misses hone par sab requests independently Database ko hit na karein.
 Ideally, sirf ek request Database se data fetch karke Cache ko populate kare, aur baaki requests us result ka wait karein. 
 Cache populate hone ke baad, woh requests Cache se data retrieve kar sakein.
 
 
-#1 : SINGLE SERVICE INSTANCE — LOCAL LOCK
+1. SINGLE SERVICE INSTANCE — LOCAL LOCK
 -------------------------------------------
 
-Agar Product Service ka sirf ek instance hai aur sab requests isi instance par aa rahi hain, to Cache Stampede handle karne ke liye local lock use kiya ja sakta hai.
+- Agar Service ka sirf ek instance hai aur saari requests usi instance par aa rahi hain, to Cache Stampede
+  handle karne ke liye local lock use kiya ja sakta hai (Java me synchronized block/method).
 
-Java me ise synchronized block / method ya kisi similar locking mechanism se implement kar sakte hain.
+- Hum DB se data fetch karne wala logic ko Cache Miss ke case me ek synchronized method/block me likh dete hain.
+  Ek time pe sirf ek thread synchronized block me execute karta hai; baaki threads wait karte hain.
 
+- Jab Cache Stampede hota hai, to bahut saari requests (hence threads) Cache Miss encounter karti hain aur sabhi
+  threads local lock acquire karne ki koshish karte hain, taaki DB se data fetch kar sakein. Lekin sirf ek thread
+  hi local lock acquire kar pata hai.
 
-        Multiple Requests
-               │
-       ┌───────┼────────┐
-       ↓       ↓        ↓
-      R1      R2       R3
-       │       │        │
-       └───────┼────────┘
-               ↓
-         Product Service
-               ↓
-          Local Lock
+- Jis thread ko synchronized block access karne ka mauka milta hai, wo DB se data fetch karta hai aur Cache populate
+  karta hai. Uske baad wo thread local lock release kar deta hai. Ab baaki requests (jo wait kar rahi thi) me se kisi 
+  ek ko synchronized block access karne ka mauka milta hai.
 
-Har request sabse pehle Redis Cache ko check karegi.
-
-Agar requested data Cache me available hai, to request directly data return kar degi aur lock ki koi zarurat nahi hogi.
-
-Lekin agar Cache Miss hota hai, to request synchronized block me enter karne ke liye local lock acquire karne ki koshish karegi.
-
-Ek time par sirf ek thread synchronized block ke andar execute kar sakta hai. Baaki threads lock available hone tak wait karte hain.
-
-Jo thread pehle lock acquire karta hai, wo Cache ko dobara check karta hai. Agar data ab bhi Cache me available nahi hai, to wo Database se data fetch karke Redis Cache me store kar deta hai.
-
-Uske baad lock release ho jata hai. Waiting threads ek-ek karke lock acquire karti hain aur Cache ko dobara check karti hain. 
-
-Kyunki pehli request already data Cache me store kar chuki hoti hai, unhe Database ko dobara hit karne ki zarurat nahi padti.
+- Hum DB access karne se pehle ek aur baar check karte hain ki Redis me data exist karta hai ya nahi. Kyunki jo bahar
+  wala Redis lookup tha, wo already saari concurrent requests ne pass kar liya tha (sabko Cache Miss mila tha). Ab pehli 
+  request ne already Cache populate kar diya hai — to agar ye second Cache check na ho, to subsequent requests bhi DB call
+  karne lagengi. Isliye DB access karne se pehle ek aur Redis lookup (second Cache check) zaroori hota hai.
 
 
 ## Conceptually:
@@ -1178,7 +1159,6 @@ if (data != null) {
 }
 
 synchronized (lock) {
-
     // Check Cache Again
     data = redis.get(key);
 
@@ -1196,444 +1176,177 @@ synchronized (lock) {
 }
 
 
-## WHY CACHE KO DOBARA CHECK KARTE HAIN SYNCHRONISED BLOCK KE AANDAR ?
-------------------------------------------------------------------------
-
-Suppose R1, R2 aur R3 tino requests ko initially Cache Miss milta hai.
-
-Synchronized block ke bahar wala first Cache check har incoming request ke liye hota hai. Iska purpose ye check karna hai ki requested data already Cache me available hai ya nahi. 
-Agar Cache Hit mil jata hai, to request directly data return kar deti hai aur lock acquire karne ki zarurat nahi padti.
-
-Lekin agar Cache Miss hota hai, to request synchronized block ka lock acquire karne ki koshish karti hai.
-
-R1 pehle local lock acquire kar leta hai, jabki R2 aur R3 lock available hone ka wait karte hain.
-
-R1 Database se data fetch karke Redis Cache me store kar deta hai aur synchronized block se exit karte hi lock release ho jata hai.
-
-Ab jab R2 lock acquire karta hai, tab synchronized block ke andar wala second Cache check important hota hai. R2 jab pehli baar Cache check kar rahi thi, tab data available nahi tha. Lekin lock ka wait karne ke dauran R1 Database se data fetch karke Cache populate kar chuki hoti hai.
-
-Isliye R2 dobara Cache check karti hai aur use data mil jata hai. Database hit karne ki zarurat nahi padti. Same process R3 ke saath bhi hota hai.
-
-Isi second Cache check ki wajah se lock ke liye wait kar rahi multiple requests same data ke liye baar-baar Database ko hit karne se bachti hain.
 
 
+2. MULTIPLE SERVICE INSTANCES — DISTRIBUTED LOCK
+---------------------------------------------------
 
-#2 : MULTIPLE SERVICE INSTANCES — DISTRIBUTED LOCK
---------------------------------------------------
+### QUESTION: MULTIPLE INSTANCES KE BEECH LOCAL LOCK USE KARNE SE KYA PROBLEM HAI?
+------------------------------------------------------------------------------------
 
-Product Service horizontally scaled hai aur multiple instances
-par run kar rahi hai. In instances ke beech requests distribute
-karne ke liye ek Service Load Balancer configured hai.
-
-Architecture conceptually kuch aisa hai:
-
-                   Load Balancer
-                        |
-    +-------------+--------------------------+-------------+          
-    |             |             |            |             |  
-    v             v             v            v             v 
-    P1            P2            P3           P4            P5 
-    |             |             |            |             |  
-    +-------------+-------------+------------+-------------+
-                        |
-                        v
-                      Redis
-                        |
-                        v
-                    Product DB
-
-Load Balancer incoming requests ko different Product Service
-instances ke across distribute karega.
-
-Har request eventually kisi na kisi Product Service instance
-tak pahunchti hai, aur woh instance pehle Redis Cache check
-karti hai.
+Agar Service horizontally scaled hai — matlab multiple instances run kar rahi hai, aur in instances ke
+beech requests distribute karne ke liye ek Service Load Balancer configured hai — to is case me local lock 
+kaam nahi karega. Kyunki har instance apna local lock independently acquire karti hai, aur local lock sirf
+same application instance ke threads ko coordinate karta hai — doosre instances ke threads ko nahi.
+Isliye multiple service instances ke beech coordination ke liye Distributed Lock ki zarurat hoti hai.
 
 
-## PROBLEM WITH LOCAL LOCK IN MULTIPLE INSTANCES
-------------------------------------------------
+### QUESTION: MULTIPLE SERVICE INSTANCES ME REDIS DISTRIBUTED LOCK SE CACHE STAMPEDE KAISE HANDLE KARTE HAIN?
+---------------------------------------------------------------------------------------------------------------
 
-Suppose same `product:101` ke liye requests different
-instances par pahunchti hain:
+- Distributed system me hume aisa lock chahiye jo sabhi service instances ke beech shared ho. 
+  Is coordination ke liye  commonly Redis-based Distributed Lock use kiya ja sakta hai.
 
-    Request 1 → P1
-    Request 2 → P2
-    Request 3 → P3
+- Goal: Sirf ek instance → DB hit kare → Cache populate kare → Baaki instances wait karein
 
-
-Har instance apna local lock independently acquire kar sakti hai:
-
-    P1 → Local Lock
-    P2 → Local Lock
-    P3 → Local Lock
-
-
-Problem ye hai ki ek instance ka local lock doosri
-instances ko visible nahi hota.
-
-Isliye Cache Miss hone par multiple instances
-independently Database ko hit kar sakti hain:
-
-    P1 → Database
-    P2 → Database
-    P3 → Database
-
-
-Yaani local lock sirf same application instance ke
-threads ko coordinate karta hai.
-
-Multiple service instances ke beech coordination ke liye
-Distributed Lock ki zarurat hoti hai.
-
-
-## MULTIPLE SERVICE INSTANCES ME REDIS DISTRIBUTED LOCK SE CACHE STAMPEDE HANDLE KARNA
------------------------------------------------------------------------------------------
-
-Distributed system me hume aisa lock chahiye jo sabhi service instances ke beech shared ho.
-
-Suppose:
-
-Request 1 → P1
-Request 2 → P2
-Request 3 → P3
-
-Aur tino ko same key `product:101` ke liye Cache Miss milta hai.
+                    Requests
+                        │
+                        ▼
+              ┌──────────────────┐
+              │   Service LB     │
+              └────────┬─────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+     ┌─────────┐  ┌─────────┐  ┌─────────┐
+     │Instance │  │Instance │  │Instance │
+     │   1     │  │   2     │  │   3     │
+     └────┬────┘  └────┬────┘  └────┬────┘
+          │            │            │
+          └────────────┼────────────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │  Redis (Shared   │
+              │  Distributed     │
+              │  Cache + Lock)   │
+              └────────┬─────────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │     Database     │
+              └──────────────────┘
 
 
-Ab hume ensure karna hai ki:
 
-Sirf ek instance
-        ↓
-Database ko hit kare
-        ↓
-Cache ko populate kare
-        ↓
-Baaki instances wait karein
+### QUESTION : REDIS KYUN ?
+-----------------------------
 
-Is coordination ke liye commonly Redis-based Distributed Lock use kiya ja sakta hai.
+Redis already sabhi Service instances ke liye shared cache ki tarah kaam kar raha hai. Isliye Redis me 
+ek shared lock maintain karke multiple service instances ke beech coordination kiya ja sakta hai.
 
+                  
 
-## REDIS KYUN ?
-----------------
-
-Redis already sabhi Product Service instances ke liye shared hai.
-Isliye Redis me ek shared lock maintain karke multiple service instances ke beech coordination kiya ja sakta hai.
-
-
-## QUESTION : REDIS DISTRIBUTED LOCK KYA HAI AND KAISE CREATE HOTA HAI? ?
-----------------------------------------------------------------------------
+### QUESTION : REDIS DISTRIBUTED LOCK KYA HAI AND KAISE CREATE HOTA HAI ? 
+---------------------------------------------------------------------------
 
 Redis lock basically ek normal Redis key hoti hai.
 
-Suppose `GET /products/101` ke liye application ki cache key hai:
-
-    product:101
-
-Agar isi data ke liye lock chahiye, to application
-ek naming convention ke according corresponding lock key
-bana sakti hai:
+Suppose GET /products/101 ke liye application ne Cache Key banayi hai:
 
     Cache Key → product:101
-    Lock Key  → lock:product:101
 
-Yahan `lock:` koi Redis ka special keyword nahi hai.
+Agar isi cached data ke liye lock chahiye, to application ek naming
+convention ke according corresponding Lock Key bana sakti hai:
 
-Ye sirf ek naming convention hai, jisse identify kiya ja sake ki:
-
-product:101       → Cached Data 
-lock:product:101  → Lock
-
-Dono Redis ke liye normal keys hi hain.
-
-
-## CACHE MISS KE BAAD LOCK ACQUISITION KA FLOW
-------------------------------------------------
-
-Ab suppose:
-
-    GET /products/101
-
-ki request same time par 3 different service instances ko milti hai:
-
-    Request 1 → P1
-    Request 2 → P2
-    Request 3 → P3
-
-
-Teeno instances requested product ke liye application me defined
-naming convention ke according same cache key construct karti hain:
-
-    product:101
-
-
-Teeno instances pehle Redis Cache me is key ko check karti hain.
-
-Lekin teeno ko data Cache me available nahi milta.
-
-Yaani:
-
-    Cache Miss
-
-
-Ab teeno instances isi cache entry ke corresponding lock acquire
-karne ke liye application me defined naming convention ke according
-lock key derive karti hain:
-
-    Cache Key → product:101
-            |
-            v
     Lock Key  → lock:product:101
 
 
-Ab teeno instances same lock key ke liye Redis me lock acquire
-karne ki koshish karti hain:
+Note:
+    lock: koi Redis ka special keyword nahi hai — ye sirf ek
+    naming convention hai, jisse identify kiya ja sake ki:
 
-    SET lock:product:101 <owner-id> NX EX 10
+    product:101       → Cached Data ki key
+    lock:product:101  → is cached data ke liye Lock key
 
+Redis ke liye dono normal keys hi hain.
 
-### QUESTION: IS COMMAND KA MATLAB KYA HAI?
----------------------------------------------
 
-SET lock:product:101 <unique-owner-id> NX EX 10
 
+### QUESTION: CACHE STAMPEDE SCENARIO ME CACHE MISS HONE KE BAAD REDIS LOCK ACQUISITION KAISE HOTA HAI?
+----------------------------------------------------------------------------------------------------------
 
-#### lock:product:101
-----------------------
+a) Maan lo same product (product_id = 101) ke liye read requests teen different service instances par ek saath aa jaati hain.
 
-Ye Redis key hai jo lock represent karti hai.
+b) Teeno instances is requested product ke liye same Cache Key create karti hain — say product:101. Ab sabhi instances Redis
+   me is key ko check karti hain, aur teeno ko Cache Miss milta hai.
 
+c) Ab teeno instances isi cache entry ke corresponding lock acquire karne ke liye application me defined naming convention ke
+   according Lock Key derive karti hain — say lock:product:101
 
-#### <unique-owner-id>
------------------------
+d) Ab teeno requests (hence 3 different threads, across 3 different instances) Redis me us cache entry par lock acquire karne ki
+   koshish karti hain. Inme se sirf 1 thread ko hi is cache entry (product:101) par lock milega:
 
-Ye identify karta hai ki lock kis instance / request ne
-successfully acquire kiya hai.
+      Request 1 : SET lock:product:101 <R1-123> NX EX 10
+      Request 2 : SET lock:product:101 <R2-456> NX EX 10
+      Request 3 : SET lock:product:101 <R3-789> NX EX 10
 
-Example:
+      - lock:product:101
+         → Ye Redis key hai jo lock represent karti hai, product:101 cache entry ke liye.
 
-P1 → P1-abc
-P2 → P2-xyz
-P3 → P3-pqr
+      - <owner-id>
+         → Ye represent karta hai ki lock kis request ne acquire kiya hai. 
 
+      - NX
+         → Us cache entry ke liye lock tabhi create karo jab wo pehle se exist na kare.
+           Agar lock key already exist kar rahi hai, iska matlab kisi doosri request ne
+           us cache entry par already lock le rakha hai — isliye nayi request ko lock nahi milega.
 
-#### NX
---------
+      - EX 10
+         → Lock ke saath TTL = 10 seconds configured hai. Agar lock manually release na bhi ho,
+           to Redis TTL expire hone ke baad automatically is lock key ko delete kar dega.
+           Isse us cache entry ke liye lock automatically release ho jayega.
+         → KYUN ZAROORI HAI ? : Maan lo kisi request (jo kisi service instance par aayi thi) ne lock acquire kiya
+           aur wo DB se data fetch kar rahi hai but meanwhile wo instance crash ho gaya. Us case me agar TTL na ho,
+           to us cache entry ke liye lock hamesha ke liye Redis me pada rahega, aur baaki requests jo us lock ka wait 
+           kar rahi hain, wo indefinitely wait karti reh jaayengi. TTL is situation ko prevent karta hai.
 
-`NX` ka matlab:
 
-    Only create the key if it does NOT already exist.
+e) Ab maan lo ki Request 1 (Instance 1 se) Redis tak sabse pehle pahunchti hai. Abhi Redis me lock key
+   (lock:product:101) exist nahi karti — isliye Redis successfully lock key create kar deta hai. Hence
+   Request 1 ne us cache entry (product:101) par lock acquire kar liya.
 
+   Redis me lock aisa dikhega:
 
-#### EX 10
------------
+        lock:product:101  →  R1-abc  (owner-id)
+        TTL = 10 seconds
 
-Lock ke saath:
+f) Request 2 aur Request 3 bhi same lock acquire karne ki koshish karti hain — lekin NX ka rule hai:
+   lock key tabhi create karo jab wo already exist na kare. Kyunki lock:product:101 ab already exist
+   karti hai:
 
-    TTL = 10 seconds
+   Conceptually:
 
-Agar lock manually release na bhi ho, to Redis TTL expire hone ke baad automatically is lock key ko delete kar dega.
-Isse us cache entry ke liye lock automatically release ho jayega.
+                       ┌── Request1 → Lock Acquired ✅
+     Cache Miss ───────┤
+     (product:101)     ├── Request2 → Lock Acquisition Failed ❌
+                       │
+                       └── Request3 → Lock Acquisition Failed ❌
 
+   
 
+g) Request 2 aur Request 3 ko lock nahi mila. Ab Application ko decide karna hota hai ki lock acquisition failure ke baad kya strategy use karni hai.
+   Common flow:
+    -  Agar lock acquire ho gaya → Application DB se data fetch karti hai.
+    -  Agar lock acquisition fail ho gaya → Application thodi der wait karti hai, phir Cache dobara check karti hai. 
+        * Agar data ab available hai (kyunki doosri request ne DB se fetch karke Cache populate kar diya) → return data.
+        * Agar ab bhi available nahi hai → Retry with exponential backoff, ya configured max retries ke baad error return.
 
-### P1 LOCK ACQUIRE KARTI HAI
---------------------------------
+h) Ab Request 1 ko lock mil gaya hai, so wo Database se data fetch karti hai (product:101) aur Redis me populate karti hai (product:101 → Product Data).
+  
+i) Ab Cache populate ho chuki hai. Request 2 aur Request 3 jo wait/retry kar rahi thi, wo Cache ko dobara check karti hain same key (product:101) ke liye
+   aur ab unhe Cache Hit milega. Wo data directly Cache se return kar dengi client ko, Database ko dobara hit karne ki zarurat nahi padegi.
 
-Suppose P1 ki request Redis tak sabse pehle pahunchti hai:
+j) Finally, Request 1 lock release karti hai by deleting the lock key:
+     DEL lock:product:101
 
-P1
- |
- v
 
-SET lock:product:101 P1-abc NX EX 10
 
-Kyuki:
 
-lock:product:101
 
-abhi Redis me exist nahi karti, Redis successfully key create kar deta hai:
 
-lock:product:101 → P1-abc
-
-TTL = 10 seconds
-
-P1 ko success response milta hai:
-
-Matlab:
-
-    P1 → Lock Acquired ✅
-
-
-
-### P2 AUR P3 LOCK ACQUIRE KYUN NAHI KAR PAATI?
-------------------------------------------------
-
-P2 and P3 bhi same lock acquire karne ki koshish karti hai:
-
-P2:
-
-SET lock:product:101 P2-xyz NX EX 10
-
-P3:
-
-SET lock:product:101 P3-pqr NX EX 10
-
-Lekin ab:
-
-lock:product:101
-
-already exist karti hai.
-
-Aur NX ka rule hai:
-
-Key sirf tab create karo
-jab wo already exist na karti ho.
-
-Isliye:
-
-P2 → Lock Not Acquired ❌
-P3 → Lock Not Acquired ❌
-
-
-#### Conceptually:
-------------------
-
-                 ┌── P1 → Lock Acquired ✅
-                 │
-Cache Miss ───────┤
-                 │
-                 ├── P2 → Lock Failed ❌
-                 │
-                 └── P3 → Lock Failed ❌
-
-
-Redis ka atomic operation ensure karta hai ki multiple concurrent requests, even from different service instances, 
-same lock key ko acquire karne ki koshish karein, lekin sirf ek request hi successfully lock acquire kar sake.
-
-
-
-### LOCK ACQUISITION FAIL HONE PAR KYA HOTA HAI?
-------------------------------------------------
-
-P2 aur P3 ko lock nahi mila.
-
-#### IMPORTANT:
---------------
-
-Lock acquire fail hone ka matlab ye nahi hai ki Redis automatically unhe wait karwata hai.
-
-Application ko decide karna hota hai ki failure ke baad kya strategy use karni hai.
-
-
-#### COMMON FLOW:
-----------------
-
-Cache Miss
-    |
-    v
-Try to Acquire Lock
-    |
-    +── Lock Acquired
-    |        |
-    |        v
-    |    Fetch from DB
-    |
-    +── Lock Acquisition Failed
-             |
-             v
-       Wait briefly
-             |
-             v
-       Check Cache Again
-             ↓
-      Data Available?
-             ├── YES → Return Data
-             │
-             └── NO → Retry / handle accordingly
-
-
-
-### LOCK ACQUIRE KARNE WALI REQUEST KYA KARTI HAI?
---------------------------------------------------
-
-P1 ko lock mil gaya hai.
-
-Ab P1 Database se data fetch karta hai:
-
-P1
- |
- v
-Redis Lock Acquired
- |
- v
-Product Database
- |
- v
-Fetch product:101
- |
- v
-Store Data in Redis Cache
- |
- v
-product:101 = Product Data
-
-
-Ab Cache populate ho chuki hai.
-
-P2 aur P3 jo wait/retry kar rahi thi, woh Cache ko dobara check karengi:
-
-GET product:101
-
-Aur ab unhe:
-
-Cache Hit
-
-milega.
-
-Isliye:
-
-P2 → Redis Cache → Return Data
-P3 → Redis Cache → Return Data
-
-Database ko dobara hit karne ki zarurat nahi padegi.
-
-Finally P1 lock release karti hai by deleting the lock key:
-
-DEL lock:product:101
-
-Ab future me agar same data ke liye Cache Miss hota hai, to koi doosri request/instance dobara lock acquire kar sakti hai.
-
-
-### LOCK KE SAATH TTL KYUN ZARURI HAI?
----------------------------------------
-
-Suppose P1 ne lock acquire kiya:
-
-lock:product:101
-
-TTL = 10 seconds
-
-Ab Database se data fetch karte waqt P1 crash ho gayi:
-
-Agar TTL nahi hota, to:
-
-lock:product:101
-
-Redis me indefinitely reh sakti thi.
-
-Phir future requests:
-
-Try Lock
-   |
-   v
-Lock Already Exists ❌
-
-Aur koi bhi naya instance lock acquire nahi kar pata.
-
-
----------------------------
-## STALE-WHILE-REVALIDATE
----------------------------
+2. STALE-WHILE-REVALIDATE 
+----------------------------
 
 Ye bhi ek approach hai jo popular cache entry ke expire hone ke
 baad Cache Stampede ko prevent karne ke liye use ki ja sakti hai.
