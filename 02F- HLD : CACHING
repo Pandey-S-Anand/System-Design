@@ -1656,139 +1656,54 @@ hi filter kar deta hai ki request aage jaaye ya nahi. Isse Redis load aur Databa
 
 
 
+===========================================
+# QUESTION: CACHE AVALANCHE KYA HOTA HAI?
+===========================================
 
-==========================
-## 16 : CACHE AVALANCHE
-==========================
+- Cache Avalanche ek aisi situation hai jahan bahut saari cache entries ek saath (ya approximately same time par) expire ya unavailable ho jaati hain.
+  Is wajah se different cache keys ke liye aane wali requests Cache Miss encounter karti hain aur data fetch karne ke liye Database tak pahunch jaati hain
+  jisse Database par sudden load spike aa jaata hai.
 
-Normal caching me different data Cache me store hota hai aur
-har cache entry ke saath TTL configured ho sakta hai.
-
-Suppose application ne bahut saare products approximately
-ek hi time par Cache me store kiye:
-
-    product:101 → TTL = 10 min
-    product:102 → TTL = 10 min
-    product:103 → TTL = 10 min
-    product:104 → TTL = 10 min
+- Aisi situation tab aati hai jab bahut saari cache entries similar TTL ke saath, approximately same time par Cache me store ki gayi hon. Kyunki TTL similar hai,
+  to wo saari entries bhi approximately same time par expire ho jaati hain. Ab jab un different keys ke liye requests aati hain, to saari requests Cache Miss 
+  encounter karti hain aur data fetch karne ke liye Database tak pahunch jaati hain — jisse Database par sudden load spike aa jaata hai.
 
 
-Agar ye entries approximately same time par Cache me store hui hain
-aur in sabke liye similar TTL configured hai, to inki TTL bhi
-approximately same time par expire ho sakti hai.
+-------------------------------------------------------------------
+## QUESTION: CACHE AVALANCHE KO KAISE SOLVE KARENGE? - TTL JITTER
+-------------------------------------------------------------------
 
-Result:
+- Cache Avalanche tab hota hai jab bahut saari cache entries ek hi ya similar time par expire ho jaati hain. 
+  Isse ek saath bahut zyada Cache Misses hoti hain aur Database par sudden load spike aa jaata hai. 
+  Solution hai — expiration ko different times me spread out karna.
 
-    product:101 → Expired
-    product:102 → Expired
-    product:103 → Expired
-    product:104 → Expired
+- Core idea ye hai — jab bhi nayi cache entry create ya update hoti hai, uske Base TTL ke saath thoda random variation
+  add kar diya jaata hai. Isse same time ya vicinity me create hui cache entries different times par expire hoti hain 
+  jisse cache misses spread out ho jaate hain, database requests spread out ho jaati hain, aur database par sudden load
+  spike ka risk reduce ho jaata hai.
 
+- Exmaple: 
 
-Ab agar different products ke liye bahut saari requests aati hain:
+    Base TTL = 10 minutes
+    Jitter   = Random(0–2 minutes)
+    Actual TTL = Base TTL + Random Jitter
 
-    Request → product:101 → Cache Miss
-    Request → product:102 → Cache Miss
-    Request → product:103 → Cache Miss
-    Request → product:104 → Cache Miss
-
-
-Result:
-
-        Many Cache Entries Expire
-                  ↓
-           Many Cache Misses
-                  ↓
-        Many Database Requests
-                  ↓
-          Database Load Spike
+    product:101 → TTL = 10 min + 43 sec
+    product:102 → TTL = 10 min + 1 min 27 sec
+    product:103 → TTL = 10 min + 18 sec
 
 
-Cache Avalanche ek aisi situation hai jahan bahut saari Cache entries ek saath ya approximately same time par expire ya unavailable ho jaati hain. 
-Is wajah se bahut saari different cache keys ke liye aane wali requests Cache Miss encounter karti hain aur data fetch karne ke liye Database tak pahunch jaati hain. 
-Isse Database par sudden load spike aa sakta hai.
 
+------------------------------------------
+## QUESTION: TTL JITTER KAB USEFUL HAI ?
+------------------------------------------
 
----------------------------
-## SOLUTION : TTL JITTER
----------------------------
+Jab bahut saari cache entries similar time window me populate ho rahi hon jaise:
 
-Cache Avalanche me problem tab hoti hai jab bahut saari cache entries 
-ek hi ya similar time par expire ho jaati hain.
+- Application startup / cache warm-up
+- Bulk caching
 
-Humara aim hai ki unki expiration ko different time periods me spread out kiya ja sake, 
-taaki ek saath bahut zyada Cache Misses na hon aur Database par sudden load spike ka risk reduce ho.
-
-## CORE IDEA :
----------------
-
-Jab bhi koi nayi cache entry create ya update hoti hai,
-us time Base TTL ke saath thoda random variation add kar diya
-jata hai. Isse cache entries different times par expire hoti hain.
-
-## EXAMPLE
-------------
-
-Base TTL = 10 minutes
-
-Jitter = Random(0–2 minutes)
-
-Actual TTL:
-
-    Base TTL + Random Jitter
-
-
-Har new cache entry ke liye TTL independently calculate ho sakti hai:
-
-
-product:101
-
-Created at → 10:00:00
-TTL        → 10 min + 43 sec
-
-
-product:102
-
-Created at → 10:00:05
-TTL        → 10 min + 1 min 27 sec
-
-
-product:103
-
-Created at → 10:00:12
-TTL        → 10 min + 18 sec
-
-
-Isliye in cache entries ka expiration bhi different times par
-hoga.
-
-
-## CONCEPTUALLY :
-------------------
-
-    Different Expiration Times
-              ↓
-      Cache Misses Spread Out
-              ↓
-    Database Requests Spread Out
-              ↓
-Database par sudden load spike ka
-risk reduce hota hai
-
-
-## WHEN IS TTL JITTER USEFUL ?
--------------------------------
-
-TTL Jitter especially useful hota hai jab bahut saari cache
-entries similar time window me populate ho rahi hon aur unke
-expire hone ka time synchronize ho sakta ho.
-
-Examples:
-
-    - Application startup / cache warm-up
-    - Batch processing
-    - Bulk caching
-    - Kisi event ke baad multiple cache entries populate hona
+Aise cases me entries ka expiration time synchronize ho sakta hai — aur TTL Jitter usse spread out kar deta hai.
 
 
 
