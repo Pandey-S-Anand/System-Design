@@ -1358,95 +1358,46 @@ j) Finally, Request 1 lock release karti hai by deleting the lock key:
   Conceptually: 
    Redis TTL = Fresh Time + Stale Time
 
-- Fresh Time ke dauran data fresh maana jaata hai. Stale Time ke dauran data technically stale hota hai (Application ke perspective se) 
-  lekin Redis ke perspective se ye Cache Hit hai, kyunki Redis ke liye ye ek normal cache entry hai jiska TTL abhi expire nahi hua.
-  Redis ko ye nahi pata ki Application is data ko "stale" maan rahi hai — Redis sirf itna jaanta hai ki key abhi exist karti hai → Cache Hit return karta hai.
-  Isliye Application ko stale data Redis se mil jaata hai, aur wo usse temporarily client ko serve kar deti hai .
+- Redis ko sirf key ke TTL ke baare me pata hota hai — na Fresh Time ka, na Stale Time ka. Redis ke perspective se key simply poore TTL tak 
+  exist karegi, phir expire ho jaayegi. Freshness track karne ki responsibility Application ki hai. Iske liye Application key ki corresponding 
+  value me ek extra attribute maintain karti hai — freshUntil — jo batata hai ki data kis time tak fresh maana jaayega. Uske baad data ko stale
+  maana jaayega. 
+
+- Stale Time ke dauran data Application ke perspective se technically stale hota hai — lekin Redis ke perspective se ye Cache Hit hai,
+  kyunki Redis ke liye ye ek normal cache entry hai jiska TTL abhi expire nahi hua. Redis ko ye nahi pata ki Application is data ko "stale" maan 
+  rahi hai — wo sirf itna jaanta hai ki key exist karti hai. Isliye Application ko stale data Redis se mil jaata hai, aur wo usse temporarily client
+  ko serve kar deti hai — jab tak background me refresh complete nahi ho jaata.
+
+  Application request pe check karti hai:
+
+    * Current Time < freshUntil  →  Fresh Data
+    * Current Time > freshUntil  →  Stale Data
 
 - Example:
+  
+  Database me product:101 ka price = ₹79,999 hai. Isse Redis me cache karte hain, aur decide karte hain:
 
-   Database me product:101 ka price = ₹79,999 hai. Isse Redis me cache karte hain, aur decide karte hain:
+  Fresh Time = 10 minutes
+  Stale Time = 5 minutes
 
-   Fresh Time = 10 minutes
-   Stale Time = 5 minutes
+  Redis TTL = Fresh + Stale = 15 minutes
 
-   Redis TTL = Fresh + Stale = 15 minutes
+  Redis me entry aisi dikhegi:
 
-   Timeline (Suppose data 10:00 AM pe store hua redis mai):
+    Key:    product:101
+    Value:  {
+              "data": { "id": 101, "price": 79999 },
+              "freshUntil": "10:10 AM"
+            }
+   TTL:    15 minutes
+
+
+   Timeline (suppose data 10:00 AM pe Redis me store hua):
 
     10:00 → 10:10   →  Fresh Data
     10:10 → 10:15   →  Stale Data (Redis me available, temporarily serve allowed)
     After 10:15     →  Redis TTL expire → Cache key removed
 
-
-
-  
-
-
-## REDIS KO KAISE PATA CHALEGA KI DATA STALE HAI?
-------------------------------------------------------
-
-Yahan ek important point hai.
-
-Redis ko sirf apni key ka actual TTL pata hota hai.
-
-Suppose humne decide kiya:
-
-Fresh Time = 10 minutes
-Stale Time = 5 minutes
-
-To Redis key ka total TTL ho sakta hai:
-
-10 min + 5 min = 15 minutes
-
-Redis ke perspective se:
-
-product:101
-TTL = 15 minutes
-
-yaani, Redis ke liye key simply 15 minutes tak exist karegi aur uske baad expire ho jayegi.
-
-Redis ko ye nahi pata hota ki:
-
-First 10 minutes → Fresh
-
-Next 5 minutes → Stale
-
-Isliye freshness determine karne ki responsibility application ki hoti hai.
-
-Application ko separately track karna padega ki data kab tak fresh maana jayega.
-
-For example, Redis me conceptually:
-
-Key:
-
-product:101
-{
-    "data": {
-        "id": 101,
-        "price": 79999
-    },
-    "freshUntil": "10:10 AM"
-}
-
-Aur Redis key ka actual:
-
-TTL = 15 minutes
-
-
-Ab application request ke time:
-
-Current Time < freshUntil
-        ↓
-     Fresh Data
-
-Aur:
-
-Current Time > freshUntil
-        ↓
-     Stale Data
-
-Lekin jab tak Redis key ka 15-minute TTL expire nahi hota, stale data Redis me available rahega aur application usse temporarily serve kar sakti hai.
 
 
 ## AB REQUEST FLOW DEKHO :
