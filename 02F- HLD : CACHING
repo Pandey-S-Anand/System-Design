@@ -1709,76 +1709,78 @@ Aise cases me entries ka expiration time synchronize ho sakta hai — aur TTL Ji
 
 
 
-==============================
-## 17 : REDIS SCALING BASICS 
-==============================
+===============================================
+# QUESTION: REDIS KO SCALE KAISE KARTE HAIN ?
+===============================================
 
----------------------------
-## SINGLE REDIS INSTANCE
----------------------------
+- Small to medium scale systems me ek single Redis instance sufficient hota hai. Wo saari cache keys store karta hai, 
+  aur read/write dono requests handle karta hai.
 
-Small to medium scale systems me ek single Redis instance
-sufficient ho sakta hai.
-
-                 Application
-                      │
-                      ▼
-                   Redis
-                      │
-                      ▼
-                  Database
+- Lekin jaise-jaise traffic badhta hai aur cached data ki quantity increase hoti hai, ye single Redis instance dheere-dheere 
+  bottleneck ban jaata hai. Uske paas limited memory hoti hai, limited throughput hoti hai, aur sabse badi problem wo ek single 
+  point of failure ban jaata hai. Agar wo crash ho gaya, to poora cache layer down ho jaayega, aur application directly Database 
+  pe load daalega. Isliye jab traffic aur cached data badhta hai, to ek single Redis instance kaafi nahi hota. Tab hume Redis 
+  scaling karni padti hai.
 
 
-Is setup me ek hi Redis instance:
+-----------------------------------------------
+## QUESTION: REDIS KO SCALE KAISE KARTE HAIN ?
+-----------------------------------------------
 
-    → Saari cache keys store karta hai
-    → Read requests handle karta hai
-    → Write requests handle karta hai
+Redis ko scale karne ke 2 tarike hain :
+
+1. VERTICAL SCALING
+--------------------
+
+- Vertical Scaling me hum existing Redis server ko zyada powerful bana dete hain — jaise 8 GB RAM aur 4 cores wale node 
+  ko upgrade karke 64 GB RAM aur 16 cores wala bana dena — same Redis node, bas uski capacity badh jaati hai.
+
+- BENEFITS :
+   1: Simple to implement
+   2: Application architecture me koi change nahi karna padta 
+
+- LIMITATIONS :
+   1: Ek server ki hardware limit hoti hai uske beyond nahi ja sakte. 
+   2: Hardware upgrade ke time server ko temporarily off karna padta hai, aur upgrade ke baad restart karna padta hai — isme downtime create hota hai
+   3: Kyunki ye ek hi node hai, ye single point of failure bhi rehta hai — agar ye crash ho gaya to poora caching layer down
+
+- Isliye vertical scaling tab use karo jab traffic abhi kam hai aur architecture simple rakhna hai. 
 
 
-## LIMITATIONS
---------------
+2. HORIZONTAL SCALING 
+-----------------------
 
-Jaise-jaise traffic aur cached data increase hota hai, ek single
-Redis instance bottleneck ban sakta hai.
-
-    Single Redis Instance
-            ↓
-       Limited Memory
-       Limited Throughput
-       Single Point of Failure
+- 
+   
 
 
-----------------------------------------------
-## REDIS CLUSTER : MULTIPLE REDIS INSTANCES
-----------------------------------------------
 
-Ab maan lo hum multiple Redis instances use karte hain:
+                       Clients
+                          │
+                          ▼
+                     Service LB
+                          │
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+     Service          Service          Service
+     Instance 1       Instance 2       Instance 3
+          │               │               │
+          └───────────────┼───────────────┘
+                          │
+                          ▼
+                    Redis Cluster
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+     Redis Node 1    Redis Node 2    Redis Node 3
+          │               │               │
+          └───────────────┼───────────────┘
+                          │
+                          ▼
+                      Database
 
-                         Clients
-                            │
-                            ▼
-                     Load Balancer
-                            │
-              ┌─────────────┼─────────────┐
-              │             │             │
-              ▼             ▼             ▼
-        Product Service Product Service Product Service
-          Instance 1      Instance 2      Instance 3
-              │             │             │
-              └─────────────┼─────────────┘
-                            │
-                            ▼
-                     Redis Cluster
-              ┌─────────────┼─────────────┐
-              │             │             │
-              ▼             ▼             ▼
-           Redis Node 1  Redis Node 2  Redis Node 3
-              │             │             │
-              └─────────────┼─────────────┘
-                            │
-                            ▼
-                       Product DB
+
+REDIS CLUSTER ME DATA DISTRIBUTION KAISE HOTI HAI ACROSS REDIS NODES WITHIN THE REDIS CLUSTER?
+
 
 ----------------------------
 ## KEY STORE KARNE KA FLOW
