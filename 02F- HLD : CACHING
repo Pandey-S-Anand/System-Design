@@ -1993,8 +1993,8 @@ Agar subsequent request un instances ke paas jaati hai, to stale data return ho 
  
 
 
-### IS PROBLEM KO HANDLE KAISE KARTE HAIN?
--------------------------------------------
+### QUESTION: LOCAL CACHE KI LIMITATION KO KAISE HANDLE KARTE HAIN?
+--------------------------------------------------------------------
 
 ##1. SHORT TTL
 -----------------
