@@ -1708,7 +1708,6 @@ Aise cases me entries ka expiration time synchronize ho sakta hai — aur TTL Ji
 
 
 
-
 ===============================================
 # QUESTION: REDIS KO SCALE KAISE KARTE HAIN ?
 ===============================================
@@ -1750,159 +1749,152 @@ Redis ko scale karne ke 2 tarike hain :
 2. HORIZONTAL SCALING 
 -----------------------
 
-- 
+- Existing Redis server ko powerful banane ke bajaye, multiple Redis nodes use karo aur data ko un nodes ke across store karo. 
+  Ye saare nodes primary hote hain aur high availability ke liye hote hain. Generally Redis Cluster ke andar har primary node 
+  ka apna ek replica bhi hota hai.
+
+- Aksar ye primary nodes sirf write traffic handle karte hain apne data ke liye, aur har primary node ke corresponding replica(s)
+  bhi hote hain jo read traffic handle karte hain apne primary node ke liye. Lekin ye Redis Client ki configuration pe depend karta hai 
+  jaise ReadFrom.REPLICA ya ReadFrom.MASTER_PREFERRED settings se control hota hai.
+
+- Aisi situations bhi hoti hain jahan primary node hi read aur write dono traffic handle karta hai apne data ke liye, aur replica
+  sirf HA ke liye hota hai — yaani primary node ke failure hone par wo primary node ke taur par promote ho jaata hai.
+
+                              Clients
+                                 │
+                                 ▼
+                            Service LB
+                                 │
+                 ┌───────────────┼───────────────┐
+                 ▼               ▼               ▼
+            Service          Service          Service
+            Instance 1       Instance 2       Instance 3
+                 │               │               │
+                 └───────────────┼───────────────┘
+                                 │
+                                 ▼
+╔═══════════════════════════════════════════════════════════════════╗
+║                          REDIS CLUSTER                            ║
+║                                                                   ║
+║   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐             ║
+║   │ Redis Node 1│   │ Redis Node 2│   │ Redis Node 3│             ║
+║   │  (Master)   │   │  (Master)   │   │  (Master)   │             ║
+║   │ Slots:      │   │ Slots:      │   │ Slots:      │             ║
+║   │ 0 - 5460    │   │ 5461-10922  │   │ 10923-16383 │             ║
+║   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘             ║
+║          │                 │                 │                    ║
+║          │ Replication     │ Replication     │ Replication        ║
+║          ▼                 ▼                 ▼                    ║
+║   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐             ║
+║   │  Replica 1  │   │  Replica 2  │   │  Replica 3  │             ║
+║   │ (of Node 1) │   │ (of Node 2) │   │ (of Node 3) │             ║
+║   └─────────────┘   └─────────────┘   └─────────────┘             ║
+║                                                                   ║
+╚═══════════════════════════════════════════════════════════════════╝
+                                 │
+                                 ▼
+                             Database
+
+
+
+## QUESTION: REDIS CLUSTER ME DATA DISTRIBUTION KAISE HOTI HAI?
+-----------------------------------------------------------------
+
+Redis Cluster me ye decision Hash Slots ke through hota hai. Simple 3-step process hai.
+
+Step 1: Har key ko hash function me daalte hain, jo ek unique number return karta hai.
+
+     key = user:101
+     hash("user:101") = 5432
+
+
+Step 2: Ab har hash ko slot me convert karte hain. Redis Cluster me 16384 slots hote hain (fixed number).
+
+     slot = hash(key) % 16384
+
+     user:101 → 5432  % 16384 = 5432
+     user:102 → 12000 % 16384 = 12000
+     user:103 → 8000  % 16384 = 8000
+
+    Ab har key ka ek slot number hai (0 se 16383 ke beech).
+
+
+Step 3: Ab slot se correct node identify karna hota hai. Redis Cluster khud ye mapping maintain karta hai — kaunsa slot kis node pe hai.
+
+    Node 1 → Slots : 0     - 5460
+    Node 2 → Slots : 5461  - 10922
+    Node 3 → Slots : 10923 - 16383
+
+    Ab dekho key kahan jayegi:
+
+    user:101 → slot 5432  → Node 1 ✅
+    user:102 → slot 12000 → Node 3 ✅
+    user:103 → slot 8000  → Node 2 ✅
+
+    IMPORTANT — Same key hamesha same node pe: Kyunki hash(key) hamesha same value dega → same slot → same node.
    
 
 
+## QUESTION: REDIS CLUSTER ME NODE ADD/REMOVE PE KYA HOTA HAI?
+---------------------------------------------------------------
 
-                       Clients
-                          │
-                          ▼
-                     Service LB
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-     Service          Service          Service
-     Instance 1       Instance 2       Instance 3
-          │               │               │
-          └───────────────┼───────────────┘
-                          │
-                          ▼
-                    Redis Cluster
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-     Redis Node 1    Redis Node 2    Redis Node 3
-          │               │               │
-          └───────────────┼───────────────┘
-                          │
-                          ▼
-                      Database
+Jab Redis Cluster me naya node add hota hai ya koi node remove hota hai, to slots dobara distribute hote hain
+kyunki total 16384 slots ko ab naye node count ke hisaab se baantna hota hai.
+
+Example — 3 se 4 nodes:
+
+ Before (3 nodes):
+  Node 1 → Slots : 0     - 5460
+  Node 2 → Slots : 5461  - 10922
+  Node 3 → Slots : 10923 - 16383
+
+ After (4 nodes):
+  Node 1 → Slots : 0     - 4095
+  Node 2 → Slots : 4096  - 8191
+  Node 3 → Slots : 8192  - 12287
+  Node 4 → Slots : 12288 - 16383
 
 
-REDIS CLUSTER ME DATA DISTRIBUTION KAISE HOTI HAI ACROSS REDIS NODES WITHIN THE REDIS CLUSTER?
+Is case me sirf affected slots ka data migrate karna padta hai — as per new mapping. Jaise pehle Node 1 me user_id 0 se 5460 tak ka user data cached tha, 
+lekin ab naye mapping ke hisaab se Node 1 pe sirf 0 se 4095 tak ka hi data rahega. Matlab slots 4096 se 5460 wale user_id ka data ab Node 2 me jaana chahiye
+kyunki naye mapping me ye slots Node 2 ke range me aate hain. Isliye un affected slots ka data Node 1 se Node 2 me migrate karna padta hai.
+Baaki slots (0-4095) ka data Node 1 pe hi rehta hai — unhe migrate nahi karna padta.
 
 
-----------------------------
-## KEY STORE KARNE KA FLOW
-----------------------------
-
-Maan lo Client ek naya product add karne ki request karta hai.
-
-Request Load Balancer ke through Product Service Instance 1 ke paas aati hai.
-
-Instance 1 data ko Database me store karti hai aur phir us data ko Redis me cache karna chahti hai.
-
-Key:
-
-product:101
-
-Value:
-
-{
-   id: 101,
-   name: "iPhone",
-   price: 70000
-}
+### IMPORTANT:
+---------------
+Migration ke dauran cluster available rehta hai — reads/writes continue chalte rehte hain. 
+Redis Cluster slot-by-slot migrate karta hai, isliye downtime nahi hota.
 
 
-Instance 1 Redis me data store karne ke liye request bhejti hai:
 
-SET product:101 {product data}
+## QUESTION: REDIS CLUSTER ME KEY KO STORE KAISE KARTE HAIN?
+-------------------------------------------------------------
 
-Redis Client har key ka hash calculate karke uska corresponding Hash Slot
-determine karta hai.
-
-Redis Cluster ki slot-to-node mapping ke basis par Redis Client identify
-karta hai ki corresponding Hash Slot kis Redis Node ko assigned hai.
-
-Is slot-to-node mapping ke basis par determine hota hai ki key
-kis Redis Node par store hogi.
+Jab Application ko koi data store karna hota hai tab wo pehle apne predefined naming convention ke basis par Cache Key construct karti hai (jaise product:101, user:101).
+Phir Redis Client (jo Application ke andar run hota hai — jaise Lettuce ya Jedis) us key ka hash calculate karta hai, hash ko slot me convert karta hai, aur apni cached
+slot-to-node mapping se correct Redis Node identify karta hai. Client us node pe SET command bhejta hai aur key use Node pe store ho jaati hai.
 
 
-High level par flow ye hai:
+## QUESTION: REDIS CLUSTER ME KEY KO RETRIEVE KAISE KARTE HAIN?
+-----------------------------------------------------------------
 
-Key
- ↓
-Hash Calculate
- ↓
-Hash Slot
- ↓
-Slot → Redis Node Mapping
- ↓
-Correct Redis Node
- ↓
-Key Stored
+- Jab Application ko koi data chahiye hota hai, wo pehle apne predefined naming convention ke basis par Cache Key construct karti hai (jaise product:101, user:101). 
+  Phir Redis Client us key ka hash calculate karta hai, hash ko slot me convert karta hai, aur apni cached slot-to-node mapping se correct Redis Node identify karta hai.
+  Client us node pe GET command bhejta hai.
 
+- Agar key mil jaati hai (Cache Hit), to data directly Application ko return kar diya jaata hai.
 
-------------------------------
-## KEY FETCH KAISE HOTI HAI?
-------------------------------
+- Agar key nahi milti (Cache Miss), to Application Database se data fetch karti hai, wahi naming convention use karke same Cache Key construct karti hai, 
+  aur Redis Client same slot-to-node mapping ke basis par correct Redis Node identify karke SET command se data store karta hai. Uske baad Application 
+  response return kar deti hai.
 
-Maan lo Client `product:101` ke liye read request karta hai.
+- Slot-to-node mapping ka actual source of truth Redis Cluster hota hai. Redis Client (jaise Lettuce ya Jedis) sirf uski cached copy rakhta hai (topology fetch karke),
+  taaki har request pe cluster se na poochna pade. Agar topology stale ho jaye (node add/remove), to Redis Client galat node pe request bhejta hai
+  Redis node usse MOVED / ASK response deta hai.
 
-Request Load Balancer ke through Product Service Instance 2 ke paas
-aati hai.
-
-Instance 2 Redis se data fetch karne ke liye request bhejti hai:
-
-GET product:101
-
-Redis Client `product:101` key ka hash calculate karke uska corresponding Hash Slot
-determine karta hai.
-
-Redis Cluster ke paas information hoti hai ki kaunsa hash slot kis
-Redis Node ki responsibility hai.
-
-Is mapping ke basis par `product:101` ke liye corresponding Redis Node
-identify kiya jata hai.
-
-Agar key Redis me available hai, to Cache Hit hota hai aur data
-Application ko return kar diya jata hai.
-
-Agar key Redis me available nahi hai, to Cache Miss hota hai.
-
-Application Database se data fetch karti hai.
-
-Key ke hash slot ki mapping ke basis par Redis Cluster me corresponding 
-Redis Node identify kiya jata hai aur data usi Node par store kiya jata hai.
-
-Uske baad Application response return kar deti hai.
-
-
-High level par flow ye hai:
-
-    product:101
-         ↓
-    Hash Calculate
-         ↓
-      Hash Slot
-         ↓
-Slot → Redis Node Mapping
-         ↓
-    Redis Node 2
-         ↓
-     Cache Hit?
-    ┌────┴────┐
-   YES       NO
-    │         │
-    ↓         ↓
-Return Data  Database
-                ↓
-           Fetch Data
-                ↓
-         SET product:101
-                ↓
-         Hash Calculate
-                ↓
-           Hash Slot
-                ↓
-    Slot → Redis Node Mapping
-                ↓
-      Correct Redis Node
-                ↓
-          Store Data
-                ↓
-          Return Data
+   -> MOVED = "Slot permanently shift ho gaya — apni topology update karo."
+   -> ASK = "Slot abhi migrate ho raha hai — sirf is key ke liye naye node pe try karo, topology mat badlo."
 
 
 
