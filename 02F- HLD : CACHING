@@ -1554,7 +1554,7 @@ j) Finally, Request 1 lock release karti hai by deleting the lock key:
   Isliye expected high traffic se pehle hi popular data ko proactively cache me populate kar dete hain. Isse actual traffic pe Cache
   Miss hi nahi hota — kyunki data pehle se cache me ready hai — aur Cache Stampede ka risk hi nahi banta.
 
-- Example: Example: Black Friday Sale 10:00 AM se start hone wali hai, aur expected hai ki iPhone ke liye bahut saari requests aayengi 
+- Example: Black Friday Sale 10:00 AM se start hone wali hai, aur expected hai ki iPhone ke liye bahut saari requests aayengi 
   yaani iPhone ek popular product hai aur uski cache key Hot Key ban sakti hai. Aise case me hum iPhone ki cache entry ko sale start hone
   se pehle hi proactively cache me populate kar dete hain. Isse actual traffic pe Cache Miss hi nahi hota, aur Cache Stampede ka risk hi nahi banta.
 
