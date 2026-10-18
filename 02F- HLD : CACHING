@@ -2120,9 +2120,9 @@ Jab request Application ke paas aati hai, to Application sabse pehle apni Local 
 3. HOT KEY REPLICATION (KEY SALTING)
 --------------------------------------
 
-- Ek Hot Key ki multiple independent copies banayi jaati hain — original key ke saath suffix 
-  append karke Kyunki ye different keys hain, Redis Cluster me ye different Hash Slots
-  aur potentially different Redis Nodes par distribute ho sakti hain.
+- Ek Hot Key ki multiple independent copies banayi jaati hain — original key ke saath suffix append karke. 
+  Kyunki ye different keys hain, Redis Cluster me ye different Hash Slots aur potentially different Redis 
+  Nodes par distribute ho sakti hain.
 
 - Har copy create karte waqt uske saath TTL bhi set karte hain — as a safety net. Taaki agar update ke dauran koi copy update fail ho jaye,
   to wo stale data indefinitely serve na kare — TTL expire hone pe automatically remove ho jaayegi.
@@ -2132,6 +2132,26 @@ Jab request Application ke paas aati hai, to Application sabse pehle apni Local 
      ├── product:101:1 → Node 1  (TTL = 30 sec)
      ├── product:101:2 → Node 2  (TTL = 30 sec)
      └── product:101:3 → Node 3  (TTL = 30 sec)
+
+
+### QUESTION: KITNI COPIES CREATE KARNI HAI — YE KAISE DECIDE HOTA HAI?
+------------------------------------------------------------------------
+
+N = Total RPS on Hot Key / Single Node Capacity
+
+Example:
+  Hot Key pe 1M RPS
+  Single Node Capacity = 50K ops/sec
+  N = 1,000,000 / 50,000 = 20 copies
+
+
+IMPORTANT: N ≤ Cluster me total nodes
+
+Agar N > Cluster node count, to pehle cluster scale karo (nodes add karo), phir key salting karo.
+Warna copies ek hi node pe concentrate ho jaayengi aur overload solve nahi hoga.
+
+Key Salting tabhi effective hai jab cluster me enough nodes hon.
+
 
 
 1. CREATE FLOW
@@ -2159,6 +2179,7 @@ Ab same product ki multiple independent cached copies Redis Cluster ke different
 Application 1 se N ke beech random number generate karti hai, usse original key ke saath append karke final cache key banati hai (jaise product:101:2), 
 aur Redis ko lookup request bhejti hai. Redis Client hash → slot → node mapping se correct node identify karke request wahan route karta hai. Agar key 
 mil jaati hai (jaise product:101:2 → {iPhone, ₹100}), to Cache Hit hota hai aur data Client ko return kar diya jaata hai.
+
 
 
 3. UPDATE FLOW
