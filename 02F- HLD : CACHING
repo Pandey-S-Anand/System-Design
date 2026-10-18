@@ -288,6 +288,18 @@ to data Redis me nahi milega (Cache Miss). Application Database se fresh data re
 Redis me dobara cache karegi, phir se TTL set karegi, aur client ko response return karegi.
 
 
+###  QUESTION: CACHE KEY KA TTL KAISE DECIDE KARE ? 
+----------------------------------------------------
+
+Cache me har data ke liye same TTL rakhna zaroori nahi hota. TTL ka selection mainly 2 cheezon par depend karta hai — freshness requirement aur change frequency.
+
+Examples:
+
+- Frequently changing data (jaise Stock Price) → Short TTL — Kyunki stock price bahut jaldi change hota hai, aur stale price unacceptable hai.
+- Less frequently changing data (jaise Product Details) → Longer TTL — Kyunki data change rarely hota hai.
+- Rarely changing data (jaise Configuration) → Very Long TTL — Kyunki change almost nahi hota.
+
+
 
 -----------------------------------------------------
 ## QUESTION: REDIS ME KAUNSE DATA TYPES HOTE HAIN?
@@ -1111,7 +1123,7 @@ concurrent requests aa jaati hain → Cache Stampede.
 
 
 ----------------------------------------------------
-## QUESTION: CACHE STAMPEDE KE SOLUTIONS kYA HAI ?
+## QUESTION: CACHE STAMPEDE KE SOLUTIONS KYA HAI ?
 ----------------------------------------------------
 
 1. LOCKING / REQUEST COALESCING  
@@ -1508,6 +1520,19 @@ j) Finally, Request 1 lock release karti hai by deleting the lock key:
 
 
 
+-------------------------------------------------------------------------------------------
+## QUESTION: CACHE STAMPEDE KO KAISE PREVENT KAR SAKTE HAIN ? - CACHE WARMING (PREWARMING)
+-------------------------------------------------------------------------------------------
+
+- Kuch situations me hume pehle se pata hota hai ki kisi particular time par kuch popular data ke liye bahut zyada traffic aayega. 
+  Isliye expected high traffic se pehle hi popular data ko proactively cache me populate kar dete hain. Isse actual traffic pe Cache
+  Miss hi nahi hota — kyunki data pehle se cache me ready hai — aur Cache Stampede ka risk hi nahi banta.
+
+- Example: Example: Black Friday Sale 10:00 AM se start hone wali hai, aur expected hai ki iPhone ke liye bahut saari requests aayengi 
+  yaani iPhone ek popular product hai aur uski cache key Hot Key ban sakti hai. Aise case me hum iPhone ki cache entry ko sale start hone
+  se pehle hi proactively cache me populate kar dete hain. Isse actual traffic pe Cache Miss hi nahi hota, aur Cache Stampede ka risk hi nahi banta.
+
+- Ye process manual ho sakta hai — kisi script/job ke through sale se pehle hi popular products ki cache entries populate kar di jaayein.
 
 
 
@@ -2243,135 +2268,39 @@ b) Distributed Cache (Redis)
 
 
 
+===============================================
+# QUESTION: CACHE KEY DESIGN KAISE KARTE HAIN?
+===============================================
 
-=====================================
-## 19 : CACHE WARMING / PREWARMING
-=====================================
+Cache me har data ko identify karne ke liye ek unique key hoti hai. Key design karte waqt ye dekhte hain ki
+request kis-kis parameter par depend karti hai.
 
-Kuch situations me hume pehle se pata hota hai ki kisi particular time
-par kuch popular products ke liye bahut zyada traffic aane wala hai.
-
--------------
-### EXAMPLE:
--------------
-
-Black Friday Sale → 10:00 AM
-
-Agar Sale start hone ke time popular products ki Cache entries empty
-ya expired hain:
-
-Users
-   ↓
-Application
-   ↓
-Cache Miss
-   ↓
-Database
-
-
-Ab maan lo kisi ek popular product ke liye bahut saari concurrent
-requests aati hain aur sabhi requests Cache Miss encounter karti hain.
-Ye requests ek saath Database tak pahunch sakti hain, jisse Database
-par sudden load spike aa sakta hai aur Cache Stampede jaisi situation
-create ho sakti hai.
-
-Agar ek saath bahut saare different products ki Cache entries bhi
-Miss ho rahi hain, to Cache Avalanche jaisi situation create ho sakti hai.
-
-------------------------------
-## SOLUTION : CACHE WARMING
-------------------------------
-
-Cache Warming / Prewarming ka matlab hai expected-to-be-frequently
-accessed data ko actual user requests aane se pehle proactively Cache
-me populate kar dena.
+---------------------
+1. SINGLE PARAMETER
+---------------------
+Agar request sirf ek identifier par depend karti hai, to key usi identifier se banate hain.
 
 Example:
 
-Black Friday Sale start hone wali hai
-↓
-System identifies popular products
-↓
-Fetch Data from Database
-↓
-Populate Redis Cache
-↓
-Sale Starts
-↓
-User Requests
-↓
-Cache Hit
-↓
-Return Data
-
-Is case me Cache ko populate karne ke liye actual user requests ke
-Cache Miss hone ka wait nahi karna padta.
-
-Data pehle se Cache me available hota hai.
-
----------------------------------
-## CACHE WARMING KA MAIN BENEFIT
----------------------------------
-
-Isliye Cache Warming ka main purpose hai:
-
-Agar kisi particular product ke liye **expected high traffic** hai, to uska data pehle hi Cache me populate kar diya jata hai, 
-taaki initial requests Cache Miss encounter karke unnecessarily Database ko overload na karein.
-
-
-
-
-
-=======================================
-## 20 : CACHE KEY DESIGN / KEY NAMING
-=======================================
-
-Cache me har data ko identify karne ke liye ek unique key hoti hai.
-
----------------------
-## SINGLE PARAMETER
----------------------
-
-Agar request sirf ek identifier par depend karti hai:
-
-### EXAMPLE:
-------------
-
-GET /products/101
-
-Cache Key:
-
-product:101
-
-Basic Convention:
-
-<entity>:<id>
+GET /products/101  →  Cache Key: product:101
+Convention: <entity>:<id>
 
 
 ------------------------
-## MULTIPLE PARAMETERS
+2. MULTIPLE PARAMETERS
 ------------------------
 
-Agar request multiple parameters par depend karti hai,
-to relevant parameters ko bhi Cache Key ka part banana chahiye.
+Agar request multiple parameters par depend karti hai, to relevant parameters ko bhi key ka part banate hain.
 
-### EXAMPLE:
--------------
+Example:
 
-GET /products?category=mobile&page=2
-
-Cache Key:
-
-products:mobile:page:2
-
-Basic Convention:
-
-<entity>:<parameter1>:<parameter2>:...
+GET /products?category=mobile&page=2  →  Cache Key: products:mobile:page:2
+Convention: <entity>:<parameter1>:<parameter2>:...
 
 
------------------
-### BASIC RULES
------------------
+----------------
+## BASIC RULES
+----------------
 
 → Cache Key unique honi chahiye.
 → Consistent naming convention use karo, otherwise KEY COLLISION ho sakti hai.
@@ -2380,32 +2309,6 @@ Basic Convention:
 
 
 
-
-
-=======================
-## 21 : TTL STRATEGY
-=======================
-
-Cache me har data ke liye same TTL rakhna zaroori nahi hota.
-
-TTL ka selection mainly data ki freshness requirement,
-change frequency aur access pattern par depend karta hai.
-
---------------
-### EXAMPLE:
---------------
-
-Frequently changing data:
-
-Stock Price → Short TTL
-
-Less frequently changing data:
-
-Product Details → Longer TTL
-
-Rarely changing data:
-
-Configuration → Very Long TTL
 
 
 
