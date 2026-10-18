@@ -2247,10 +2247,9 @@ Approach 2 : INVALIDATE ALL CACHE COPIES
 
 
 
-
-============================
-## 18 : MULTI-LEVEL CACHING
-============================
+=========================================
+# QUESTION: MULTI-LEVEL CACHING KYA HAI?
+=========================================
 
 Multi-Level Caching ka matlab hai data ko ek se zyada caching layers
 me maintain karna.
@@ -2294,74 +2293,25 @@ b) Distributed Cache (Redis)
 
 
 
-=====================================
-## 22 : CACHE MONITORING & METRICS
-=====================================
+====================================================================================
+# QUESTION: CACHE KO MONITOR KAISE KARTE HAIN AUR KAUNSE METRICS TRACK KARTE HAIN?
+====================================================================================
 
 Cache ko properly monitor karne ke liye kuch important metrics
 track kiye jaate hain.
 
-------------------------
-### IMPORTANT METRICS:
-------------------------
-
-→ Cache Hit Ratio
-→ Cache Miss Ratio
-→ Cache Latency
-→ Cache Eviction Rate 
-
-
------------------------
-### 1. CACHE HIT RATIO
------------------------
-
-Kitni requests Cache se successfully serve hui.
-
-Higher Hit Ratio
-→ Better Cache Effectiveness
-
-
-----------------------
-###2. CACHE MISS RATIO
-----------------------
-
-Kitni requests ko Cache me data nahi mila aur backend/Database
-tak jaana pada.
-
-Higher Miss Ratio
-→ Higher Backend Load
-
-
-----------------------
-### 3. CACHE LATENCY
-----------------------
-
-Cache se data return hone me kitna time lag raha hai.
-
-Higher Latency
-→ Response time increase ho sakta hai.
-
-
-----------------------
-### 4. EVICTION RATE
-----------------------
-
-Kitni Cache entries memory/RAM pressure ki wajah se remove ho rahi hain.
-
-High Eviction Rate
-→ Cache ke liye allocated memory (RAM) insufficient ho sakti hai.
+1. CACHE HIT RATIO — Kitni requests Cache se successfully serve hui. Higher Hit Ratio → Better Cache Effectiveness.
+2. CACHE MISS RATIO — Kitni requests ko Cache me data nahi mila aur backend/Database tak jaana pada. Higher Miss Ratio → Higher Backend Load.
+3. CACHE LATENCY - Cache se data return hone me kitna time lag raha hai. Higher Latency → Response time increase ho sakta hai.
+4. EVICTION RATE - Kitni Cache entries RAM pressure ki wajah se remove ho rahi hain. High Eviction Rate → Cache ke liye allocated memory (RAM) insufficient ho sakti hai.
 
 
 
+================================================
+# QUESTION: CACHE KAB NAHI USE KARNA CHAHIYE ?
+================================================
 
-
-=================================
-## 23 : WHEN NOT TO USE CACHE
-=================================
-
-Har type ke data ke liye Cache use karna zaroori nahi hota.
-
-Cache avoid karna chahiye jab:
+Har type ke data ke liye Cache use karna zaroori nahi hota. Cache avoid karna chahiye jab:
 
 --------------------------------------------------------------------
 1: DATA FREQUENTLY CHANGE HOTA HO AUR STALE DATA ACCEPTABLE NA HO.
@@ -2370,10 +2320,7 @@ Cache avoid karna chahiye jab:
    Example:
    Stock Price / Live Account Balance
 
-   Kyun?
-   Data frequently change hone par har update ke baad Cache ko
-   invalidate/update karna padega, jisse unnecessary Cache
-   Invalidation overhead badhega.
+   KYUN ? - Data frequently change hone par har update ke baad Cache ko invalidate/update karna padega, jisse unnecessary overhead badhega.
 
 -------------------------------------
 2: DATA BAHUT RARELY ACCESS HOTA HO.
@@ -2382,9 +2329,7 @@ Cache avoid karna chahiye jab:
    Example:
    Old / Archived Reports
 
-   Kyun?
-   Rarely accessed data ke liye Cache ka benefit bahut kam hota hai
-   aur Cache ki RAM unnecessarily occupy hogi.
+   KYUN ? - Rarely accessed data ke liye Cache ka benefit bahut kam hota hai, aur Cache ki RAM unnecessarily occupy hogi.
 
 ------------------------
 3: DATA BAHUT LARGE HO.
@@ -2393,7 +2338,5 @@ Cache avoid karna chahiye jab:
    Example:
    Large Video Files / Large Reports
 
-   Kyun?
-   Bahut large data ko Cache me store karne se limited Cache RAM
-   quickly consume ho sakti hai aur frequently accessed useful data
-   ke liye available Cache space kam ho sakta hai.
+   KYUN ? - Bahut large data ko Cache me store karne se limited Cache RAM quickly consume ho sakti hai, aur frequently accessed useful data 
+            ke liye available Cache space kam ho jaata hai — jisse RAM pressure ki wajah se Cache Eviction ho sakta hai.
