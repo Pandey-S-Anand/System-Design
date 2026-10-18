@@ -2113,15 +2113,15 @@ mil jaati hai (jaise product:101:2 → {iPhone, ₹100}), to Cache Hit hota hai 
 3. UPDATE FLOW
 ----------------
 
-- Application DB me data update karti hai. DB update ho gaya, lekin Redis me us key ki copies abhi update nahi hui — agar next read request kisi bhi copy par route ho gayi,
-  to stale data mil jayega. Isliye Database update ke baad sabhi relevant cached copies ko bhi update ya invalidate karna zaroori hai.
+- Application DB me data update karti hai. DB update ho gaya, lekin Redis me us key ki copies abhi update nahi hui — agar next read request kisi bhi copy par 
+  route ho gayi, to stale data mil jayega. Isliye Database update ke baad sabhi relevant cached copies ko bhi update ya invalidate karna zaroori hai.
 
-- Application ko pata hai ki N copies maintain ki ja rahi hain. Wo 1 se N tak har cache key generate karti hai — original key ke saath number append karke (product:101:1, product:101:2, ... product:101:N).
-  Ab in cache copies ko handle karne ke do approaches hain:
+- Application ko pata hai ki N copies maintain ki ja rahi hain. Wo 1 se N tak har cache key generate karti hai — original key ke saath number append karke 
+  (product:101:1, product:101:2, ... product:101:N). Ab in cache copies ko handle karne ke do approaches hain:
 
 
-Approach 1 : UPDATE ALL CACHE COPIES :
----------------------------------------
+Approach 1 : UPDATE ALL CACHE COPIES 
+-------------------------------------
 
 - Application Redis ko in sabhi keys ka data update karne ki request bhejti hai:
 
@@ -2140,7 +2140,7 @@ Approach 1 : UPDATE ALL CACHE COPIES :
 
 
 Approach 2 : INVALIDATE ALL CACHE COPIES
-------------------------------------------
+-----------------------------------------
 
 - Application Redis ko in sabhi keys ka data update karne ki request bhejti hai:
   
@@ -2153,132 +2153,46 @@ Approach 2 : INVALIDATE ALL CACHE COPIES
   Redis Client har key ka hash → slot → node mapping se correct node identify karta hai. Is mapping ke basis par har delete request appropriate Redis Node tak route ki jaati hai, 
   aur corresponding cache copy delete kar di jaati hai.
 
+- Ab agar us data ke liye koi read request aati hai, to us key ke liye Redis Cache Miss hoga. Isliye Application DB se fresh data fetch karegi, aur phir Redis me populate karne ki 
+  request bhejegi — Redis Client hash → slot → node mapping se correct node identify karke wahan route karega, aur N copies dobara create ho jaayengi (latest data + TTL ke saath).
+  Phir Application client ko response return kar degi.
+
+
+
+### QUESTION: SABHI CACHE COPIES INVALIDATE KARNE KE TURANT BAAD AGAR BAHUT SAARI CONCURRENT READ REQUESTS AA JAAYEIN TO KYA HOGA?
+------------------------------------------------------------------------------------------------------------------------------------
+
+- Kisi data ko DB me update karne ke baad agar humne uski saari cache copies invalidate kar di, aur uske turant baad us data ke liye bahut saari concurrent read requests aa jaayein,
+  to sabhi requests Cache Miss encounter karengi aur ek saath Database tak pahunch sakti hain — isse Cache Stampede jaisi situation create ho sakti hai.
+
+- CACHE STAMPEDE Solution :
+
+  a) REQUEST COALESCING (LOCKING) : Ye tab use akrneege jab Agar us data ke liye temporarily stale data serve karna allowed nhi  hai — jaise payment, balance. Lock acquire karne ke liye hum 
+     replicated keys (product:101:1, :2, :3) pe lock nahi lenge instead hum original/base key (product:101) pe lock acquire karne ki koshish karenge. Jo request lock acquire karegi wo DB se 
+     fresh data fetch karke saari cache copies ko populate karegi (TTL ke saath), baaki requests lock release hone ka wait karengi aur phir already populated cache copies se data serve karengi.
+
+  b) STALE-WHILE-REVALIDATE + REQUEST COALESCING (LOCKING) : Agar us data ke liye temporarily stale data serve karna allowed hai — jaise product listing, feed to hum Stale-While-Revalidate + Request Coalescing
+     bhi use kar sakte hain. isme requests immediately stale data se serve ho jaati hain (wait nahi karna padta), aur background me ek request lock (original/base key par) acquire karke background job 
+     trigger karti hai jo DB se fresh data fetch karke copies refresh kar deti hai. Jab background job apna kaam kar chuki hoti hai, tab fresh data cache se serve hota hai. Isse better user experience 
+     milta hai. 
 
 
 
 
+4. CDN / EDGE CACHE
+---------------------
 
-### SUBSEQUENT READ REQUEST
------------------------------
+- CDN especially useful hai jab Hot Content geographically distributed users ke 
+  dwara access kiya ja raha ho.
 
-Ab maan lo `product:101` ke liye ek subsequent read request aati hai:
+- Agar Hot Content static ya safely cacheable HTTP response hai, to usse CDN / Edge Cache par store kiya ja sakta hai. 
+  Isse bahut saari requests Application, Redis aur Database tak pahunchne se pehle hi CDN se serve ho sakti hain
+  origin infrastructure pe load drastically kam ho jaata hai.
 
-GET /products/101
-
-Load Balancer request ko kisi ek Application Instance ke paas route
-karta hai.
-
-Maan lo request Application Instance 3 ke paas jaati hai.
-
-Application ko pata hai ki `product:101` ki `N = 3` cached copies
-maintain ki jaati hain.
-
-Application `1` se `N` ke beech ek random number generate karke
-ek cache copy select karti hai.
-
-Maan lo:
-
-Random Number = 2
-
-Isliye selected cache key hogi:
-
-product:101:2
-
-Application is key ko Redis Cluster se fetch karne ke liye request
-bhejti hai.
-
-Redis Client key ka hash calculate karke corresponding Hash Slot
-determine karta hai aur slot-to-node mapping ke basis par request ko
-appropriate Redis Node tak route karta hai.
-
-Lekin kyunki update ke baad sabhi cache copies invalidate kar di gayi
-thi:
-
-product:101:2 → Cache Miss
-
-Application latest product data Database se fetch karti hai:
-
-Database
-↓
-product:101
-↓
-{iPhone, ₹120}
-
-Ab Application ko latest data mil gaya hai.
-
-Kyuki Application ko pata hai ki `product:101` ek Hot Key hai aur iski
-`N = 3` cached copies maintain karni hain, Application multiple cache
-copies dobara create karti hai:
-
-SET product:101:1 {iPhone, ₹120}
-SET product:101:2 {iPhone, ₹120}
-SET product:101:3 {iPhone, ₹120}
-
-Redis Client har key ka hash calculate karke corresponding Hash Slot
-determine karta hai.
-
-Slot-to-node mapping ke basis par har cache write request appropriate
-Redis Node tak route ki jaati hai aur corresponding cache copy wahan
-store kar di jaati hai.
-
-Ab Redis Cluster me latest product data ki multiple independent cached
-copies available hain:
-
-product:101:1 → {iPhone, ₹120}
-product:101:2 → {iPhone, ₹120}
-product:101:3 → {iPhone, ₹120}
-
-Finally, Application Database se fetched latest product data Client ko
-return kar deti hai.
-
-
-### BENEFIT
-------------
-
-Database ko source of truth maan kar purani cache copies invalidate kar di jaati hain.
-Next subsequent request par Cache Miss hone par latest data Database se fetch kiya jata hai. 
-Uske baad required number of cache copies create karke unhe latest data ke saath populate kar diya jata hai.
-
-
-## PROBLEM
-------------
-
-Invalidate karne ke baad next read request ko Cache Miss encounter hota hai,
-jiske baad request latest data fetch karne ke liye Database tak jaati hai.
-
-Agar invalidation ke immediately baad bahut saari concurrent read requests
-aa jaayen, to multiple requests Database tak pahunch sakti hain aur
-Cache Stampede jaisi situation create ho sakti hai.
-
-
-## IMPORTANT POINT
--------------------
-
-Hot Key Replication me multiple cache keys:
-
-product:101:1
-product:101:2
-product:101:3
-
-same underlying data ki copies hoti hain.
-
-Isliye Cache Stampede prevent karne ke liye lock individual replicated
-cache key ke basis par create karne ke bajaye base/original key ke basis
-par create kiya jana chahiye
-
-
-## 4. CDN / EDGE CACHE
--------------------------
-
-CDN especially useful hai jab Hot Content geographically distributed
-users ke dwara access kiya ja raha ho.
-
-Agar Hot Content static ya safely cacheable HTTP response hai,
-to usse CDN / Edge Cache par store kiya ja sakta hai.
-
-Isse bahut saari requests Application, Redis aur Database tak pahunchne
-se pehle hi CDN se serve ho sakti hain.
-
+- First request pe CDN Edge pe Cache Miss hota hai — request Origin (Application/Redis/DB) tak jaati hai, response CDN Edge pe cache ho jaata 
+  hai, aur client ko return ho jaata hai. Subsequent requests pe CDN Edge pe Cache Hit hota hai — response directly CDN se serve ho jaata hai,
+  Origin tak request hi nahi jaati. Isse Hot Key ka traffic multiple geographically distributed CDN Edge nodes me distribute ho jaata hai, aur
+  Origin (Application/Redis/DB) pe load drastically kam ho jaata hai.
 
 
 
@@ -2290,67 +2204,41 @@ se pehle hi CDN se serve ho sakti hain.
 Multi-Level Caching ka matlab hai data ko ek se zyada caching layers
 me maintain karna.
 
-
-                         REQUEST
-                            │
-                            ▼
-                  ┌───────────────────┐
-                  │   LOCAL CACHE     │
-                  └─────────┬─────────┘
-                            │
-                     Cache Hit?
-                      /        \
-                   YES          NO
-                    │            │
-                    ▼            ▼
-              RETURN DATA   ┌───────────────┐
-                            │     REDIS     │
-                            └───────┬───────┘
-                                    │
-                             Cache Hit?
-                              /        \
-                           YES          NO
-                            │            │
-                            ▼            ▼
-                    POPULATE LOCAL   ┌───────────┐
-                        CACHE        │ DATABASE  │
-                            │        └─────┬─────┘
-                            │              │
-                            │       Data Found?
-                            │         /      \
-                            │       YES       NO
-                            │        │         │
-                            │        ▼         ▼
-                            │   POPULATE    RETURN
-                            │    REDIS        404
-                            │        │
-                            │        ▼
-                            │   POPULATE
-                            │  LOCAL CACHE
-                            │        │
-                            └────────┘
-                                    │
-                                    ▼
-                               RETURN DATA
+Request
+   │
+   ▼
+Application Instance Cache (RAM me) ──HIT──→ Return Data
+   │
+  MISS
+   │
+   ▼
+Redis (Distributed Cache) ──HIT──→ Return Data + Populate Local Cache
+   │
+  MISS
+   │
+   ▼
+Database
+   │
+   ▼
+Populate Distributed Cache (Redis) → Populate Application Instance Local Cache → Return Data
 
 
-Different cache layers ke different benefits hote hain:
+Har layer ka role:
 
-Local Cache
-→ Fastest access
-→ No network call to Redis or Database
+a) Local Cache 
+   → Application Instance ki RAM me maintain hota hai.
+   → Fastest access
+   → No network call to Redis or Database
+   → Per-instance hoti hai (shared nahi hoti).
 
-Distributed Cache (Redis)
-→ Shared across multiple Application Instances
-→ Larger cache capacity
-→ Reduces Database calls
+b) Distributed Cache (Redis)
+   → Shared across multiple Application Instances 
+   → Larger cache capacity 
+   → Reduces Database calls
 
 
-Multi-Level Caching ke benefits:
-
-↓ Response Latency
-↓ Redis Traffic
-↓ Database Load
+- Multi-Level Caching se application ki latency kam hoti hai due to reduced network calls,
+  jisse better user experience milta hai.
 
 
 
