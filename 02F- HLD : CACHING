@@ -1753,12 +1753,12 @@ Redis ko scale karne ke 2 tarike hain :
   Ye saare nodes primary hote hain aur high availability ke liye hote hain. Generally Redis Cluster ke andar har primary node 
   ka apna ek replica bhi hota hai.
 
-- Aksar ye primary nodes sirf write traffic handle karte hain apne data ke liye, aur har primary node ke corresponding replica(s)
-  bhi hote hain jo read traffic handle karte hain apne primary node ke liye. Lekin ye Redis Client ki configuration pe depend karta hai 
-  jaise ReadFrom.REPLICA ya ReadFrom.MASTER_PREFERRED settings se control hota hai.
+- Default configuration: Primary Node read aur write dono handle karta hai apne set of data ke liye, aur Replica sirf HA ke liye hota hai
+  yaani agar Primary Node fail ho jaye, to Replica promote ho jaata hai.
 
-- Aisi situations bhi hoti hain jahan primary node hi read aur write dono traffic handle karta hai apne data ke liye, aur replica
-  sirf HA ke liye hota hai — yaani primary node ke failure hone par wo primary node ke taur par promote ho jaata hai.
+- Doosri configuration (Read Replicas): Hum ye bhi configure kar sakte hain ki Primary Node sirf writes handle kare apne data ke liye, aur uske Replicas
+  reads handle karein us data ke liye. Ye Redis Client ki configuration se control hota hai — ReadFrom.REPLICA ya ReadFrom.MASTER_PREFERRED.
+
 
                               Clients
                                  │
@@ -1944,7 +1944,7 @@ hai aur performance degrade hoti hai. Yaani overall cluster ke paas enough capac
 --------------------------------------------
 
 1. LOCAL / IN-MEMORY CACHE
------------------------------
+---------------------------
 
 Local Cache (ya In-Memory Cache) ek aisa cache hota hai jo directly Application Instance ki RAM me maintain hota hai. 
 Distributed system me multiple Application Instances hote hain, aur har instance apni separate Local Cache maintain 
@@ -1984,484 +1984,87 @@ Jab request Application ke paas aati hai, to Application sabse pehle apni Local 
 ### QUESTION: LOCAL CACHE KI LIMITATION KYA HAI?
 -------------------------------------------------
 
-Distributed System me multiple Application Instances hote hain, aur har Application Instance apni separate/independent Local Cache maintain karta hai.
-In sabhi instances ke liye ek shared Distributed Cache (jaise Redis) hota hai. Jab koi Instance data ko Database me update karta hai, to wo Redis 
-(Distributed Cache) ko invalidate karta hai, aur apni Local Cache ko bhi invalidate karta hai — lekin doosri instances ki Local Cache ko nahi.
+- Distributed System me multiple Application Instances hote hain, aur har Application Instance apni separate/independent Local Cache maintain karta hai.
+  In sabhi instances ke liye ek shared Distributed Cache (jaise Redis) hota hai. 
 
-Example: Instance 1 ne update kiya → apni Local Cache clear ki. Lekin Instance 2 aur Instance 3 ki Local Cache me purana data abhi bhi stored hai. 
-Agar subsequent request un instances ke paas jaati hai, to stale data return ho jata hai.
+- Limitation ye hai ki Local Cache invalidation across instances synchronized nahi hoti. Jab koi Instance data ko Database me update karta hai, to wo 
+  Redis (Distributed Cache) ko invalidate karta hai, aur apni Local Cache ko bhi invalidate karta hai — lekin doosri instances ki Local Cache ko nahi.
+  Kyunki har instance ki Local Cache independent hoti hai, ek instance ki invalidation doosri instances tak automatically propagate nahi hoti.
+
+- Example: Instance 1 ne update kiya → apni Local Cache clear ki. Lekin Instance 2 aur Instance 3 ki Local Cache me purana data abhi bhi stored hai. 
+  Agar subsequent request un instances ke paas jaati hai, to stale data return ho jata hai.
  
 
 
 ### QUESTION: LOCAL CACHE KI LIMITATION KO KAISE HANDLE KARTE HAIN?
 --------------------------------------------------------------------
 
-##1. SHORT TTL
------------------
+- EVENT-BASED CACHE INVALIDATION + SHORT TTL (Safety Net) — dono ko combine karke handle karte hain.
 
-Distributed System me Application Instances ki Local Cache entries ke
-saath relatively short TTL configure ki ja sakti hai.
+- Jab koi Application Instance data update karti hai (Database me), to wo pehle Redis ko invalidate karti hai, phir apni Local Cache ko, aur uske baad 
+  ek Cache Invalidation Event publish karti hai (message broker ke through) — jisme key hoti hai (jaise product:101). Ye event saare instances receive
+  karte hain aur apni-apni Local Cache se wo key invalidate kar dete hain.
 
-## EXAMPLE :
---------------
+- Ab next request — chahe kisi bhi instance pe aaye — sabse pehle apni Local Cache check karegi. Kyunki event ke through us key ki entry invalidate ho chuki thi,
+  Local Cache Miss hoga. Ab request Redis tak jaati hai — lekin Redis bhi update ke waqt invalidate ho chuka tha, isliye wahan bhi Redis Cache Miss hoga. 
+  Ab Application Database se fresh data fetch karti hai, usse Redis me populate karti hai (future requests ke liye), aur apni Local Cache me bhi populate karti hai 
+  (is instance pe aane wali next requests ke liye) — phir response client ko return kar deti hai.
 
-product:101
+- Note: Baaki instances ki Local Cache me us key ki koi entry nahi hai (empty hai). Ab agar us data ke liye request kisi doosre instance pe jaati hai, to wahan bhi
+  Local Cache Miss hoga → wo instance Redis se data fetch karega (jo ab populated hai) → apni Local Cache me populate karega → response return karega.
 
-Local Cache TTL = 30 seconds
-
-Agar Database aur Shared Cache (e.g. Redis) update ho jaye, lekin kisi
-reason se Local Cache invalidate na ho, to stale data permanently Local
-Cache me nahi rahega.
-
-TTL expire hone ke baad:
-
-Local Cache → MISS
-       ↓
-Redis → Latest Data
-       ↓
-Populate Local Cache
-       ↓
-Return Latest Data
-
-TTL ek safety mechanism ki tarah kaam karta hai, lekin TTL expire
-hone tak stale data serve ho sakta hai.
+- Short TTL (Safety Net): Lekin possible hai ki kisi instance ko event receive na ho (network issue, instance down, etc.). Aise case me stale data indefinitely na rahe 
+  isliye Local Cache entries pe short TTL (jaise 30 sec) configure karte hain. Agar event miss ho jaye, to TTL expire hone pe entry automatically remove ho jaati hai, 
+  aur next request pe Redis se fresh data fetch hoga. TTL yaha safety net ka kaam karta hai.
 
 
-##2. EVENT-BASED CACHE INVALIDATION
--------------------------------------
-
-Abhi humne dekha ki Distributed System me har Application Instance apni
-separate Local / In-Memory Cache maintain karti hai.
-
-Write request ke case me Database update karna aur Shared Redis Cache
-ko invalidate/update karna relatively straightforward hai.
-
-Lekin Local Cache ke saath problem ye hai ki writing request jis
-Application Instance ke paas aati hai, woh maximum apni Local Cache
-ko invalidate kar sakti hai.
-
-Woh directly doosre Application Instances ki Local Caches ko
-invalidate nahi kar sakti.
-
-Isliye agar data Database me update ho jaye aur Redis bhi
-invalidate/update ho jaye, tab bhi doosre Application Instances ki
-Local Caches me purana data stored reh sakta hai.
-
-Agar subsequent request kisi aise instance ke paas jaati hai jahan
-Local Cache me purana data available hai, to stale data serve ho sakta hai.
-
-Is problem ko solve karne ke liye hume aisa mechanism chahiye jisse
-data update hone par sabhi Application Instances ko notify kiya ja sake
-ki corresponding Local Cache entry invalidate karni hai.
-
-Isi approach ko Event-Based Cache Invalidation kehte hain.
 
 
-## FLOW :
-----------
 
-Maan lo `product:101` ko update karne ke liye write request
-Application Instance 1 ke paas aati hai.
+##2. REPLICA-BASED READ DISTRIBUTION
+---------------------------------------
 
-Application Instance 1 Database update karti hai aur corresponding
-Redis Cache entry ko update ya invalidate karti hai.
+- Jab hum Redis ko horizontally scale karte hain, to humare paas ek Redis Cluster hota hai jisme multiple nodes hote hain.
+  Har node ek Primary Node hota hai, aur har Primary Node ka apna ek Replica hota hai. Do configurations possible hain:
 
-Uske baad Application ek Cache Invalidation Event publish karti hai:
+    a) Default configuration: Primary Node read aur write dono handle karta hai apne set of data ke liye, aur Replica sirf HA ke liye hota hai
+       yaani agar Primary Node fail ho jaye, to Replica promote ho jaata hai.
 
-CacheInvalidationEvent : key = product:101
+    b) Doosri configuration (Read Replicas): Hum ye bhi configure kar sakte hain ki Primary Node sirf writes handle kare apne data ke liye, aur uske Replicas
+       reads handle karein us data ke liye. Ye Redis Client ki configuration se control hota hai — ReadFrom.REPLICA ya ReadFrom.MASTER_PREFERRED.
 
-Ye event aise messaging mechanism ke through sabhi relevant Application Instances tak deliver kiya jata hai, 
-jisse har instance corresponding Local Cache entry invalidate kar sake.
+- Ab maan lo kisi key ke liye bahut zyada read requests aa rahi hain — is wajah se wo Hot Key ban gayi hai. Aise case me us key ke corresponding Primary Node
+  ko hum sirf us key ke write operations ke liye reserve kar dete hain, aur read traffic ko Primary Node ke multiple Replicas me distribute kar dete hain jisse
+  Primary Node pe load drastically kam ho jaata hai.
 
-Har Application Instance received key `product:101` ko apni Local
-Cache se invalidate kar deti hai.
+        Primary Node 1 (product:101) → sirf writes
+        │
+        ├── Replica 1 → reads (1/3 traffic)
+        ├── Replica 2 → reads (1/3 traffic)
+        └── Replica 3 → reads (1/3 traffic)
 
-Ab kisi bhi instance par next request aane par Local Cache me stale
-data nahi milega. Application Redis se latest data fetch karke
-response return karegi.
+   Read load 3 replicas me distribute → Primary Node free for writes
 
-Is tarah Event-Based Cache Invalidation ke through Distributed Systems me 
-multiple Application Instances ki Local Caches ko invalidate kiya ja sakta hai.
+- Ye configuration read-heavy Hot Key ke liye effective hai. Agar Hot Key pe writes zyada hain (jaise Rate Limiter ka counter INCR), 
+  to Read Replicas help nahi karenge — kyunki writes Primary Node pe hi jaayenge. Us case me Key Salting zyada effective hai.
 
 
-## LIMITATION: EVENT DELIVERY FAILURE
--------------------------------------
+### QUESTION: REPLICA-BASED READ DISTRIBUTION KI LIMITATION KYA HAI?
+----------------------------------------------------------------------
 
-Event-Based Cache Invalidation me data update hone ke baad ek
-Cache Invalidation Event relevant Application Instances ko bheja
-jata hai taaki woh corresponding Local Cache entry invalidate kar saken.
+- REPLICATION DELAY — Primary Node pe hone wale writes (yaani key ke corresponding value ko update karna ya key ko delete karna) Redis ke internal replication mechanism 
+  ke through Replicas tak propagate hote hain. Ye propagation instant nahi hoti — Primary aur Replicas ke beech thoda delay hota hai.
+      
+      Primary  → Price = ₹120  (updated)
+      Replica 1 → Price = ₹120  (synced)
+      Replica 2 → Price = ₹100  (abhi sync nahi hua)
 
-Lekin possible hai ki kisi instance ko event receive na ho.
+  Agar isi time read request Replica 2 pe route ho jaye, to temporarily stale data return ho sakta hai.
 
-Maan lo product:101 update hua:
+- Read traffic multiple nodes me distribute hota hai, lekin replication delay ki wajah se temporary stale reads possible hain.
 
-Database Updated
-       ↓
-Redis Updated / Invalidated
-       ↓
-Cache Invalidation Event Published
-       ↓
 
-Event Instance 1 aur Instance 2 tak successfully pahunch gaya:
-
-Instance 1 → Event Received → Local Cache Invalidated
-
-Instance 2 → Event Received → Local Cache Invalidated
-
-Lekin kisi reason se Instance 3 event receive nahi kar paya:
-
-Instance 3 → Event Not Received
      
-Isliye Instance 3 ki Local Cache me purana data abhi bhi stored reh
-sakta hai:
-
-Agar subsequent request Instance 3 ke paas jaati hai:
-
-Request
-   ↓
-Local Cache → HIT
-   ↓
-Stale Data
-
-
-## TTL AS A SAFETY NET
------------------------
-
-Agar kisi Application Instance ko Cache Invalidation Event miss ho jaye,
-to stale data uski Local Cache me indefinitely nahi rehna chahiye.
-
-Isliye Local Cache entries ke saath TTL configure kiya ja sakta hai.
-
-Event-Based Invalidation + TTL Safety Net → Prevents Stale Data from Remaining Indefinitely
-
-
-TTL expire hone ke baad:
-
-Local Cache Entry Expires
-          ↓
-Next Request → Local Cache MISS
-          ↓
-Fetch Latest Data from Shared Cache (e.g. Redis)
-          ↓
-Populate Local Cache
-
-
-
-##2. READ REPLICAS / REPLICA-BASED READ DISTRIBUTION
-------------------------------------------------------
-
-Redis Cluster me different cache keys different Redis Nodes par
-distributed ho sakti hain.
-
-Maan lo `product:101` ek Hot Key ban jaati hai aur iske liye
-extremely high number of requests aa rahi hain.
-
-
-Example:
-
-product:101 → Node 1 -> 1M req/sec 🔥
-product:102 → Node 2 -> 100 req/sec  
-product:103 → Node 3 -> 120 req/sec  
-
-
-Yaani Redis Cluster me multiple Nodes hone ke bawajood, ek particular
-Hot Key ka traffic usi Node par concentrate ho sakta hai jahan woh
-key stored hai.
-
-Result:
-
-Node 1 → High Load
-Node 2 → Low Load
-Node 3 → Low Load
-
-## OBJECTIVE :
---------------
-Hot Key ke case me main objective read traffic ko ek single Redis
-Node par concentrate hone se rokna hai.
-
-##SOLUTION:
-------------
-Ab hum is Hot Key ke read load ko distribute karne ke liye
-Node 1 ki multiple Redis Replicas maintain kar sakte hain.
-
-Maan lo `product:101` ka Primary Node, Node 1 hai aur
-Node 1 ke saath multiple Redis Replicas configured hain.
-
-Architecture kuch aisa dikhega:
-
-                    REDIS CLUSTER
-
-                        CLIENT
-                           │
-                           │ HTTP Request
-                           ▼
-                    Load Balancer
-                           │
-                 ┌─────────┼─────────┐
-                 ▼         ▼         ▼
-        Application   Application   Application
-         Instance 1    Instance 2    Instance 3
-                 │         │         │
-                 │         │         │
-                 └─────────┼─────────┘
-                           │
-                           ▼
-                     REDIS CLUSTER
-        ┌───────────────────────────────────────┐
-        │                                       │
-        │     Primary Node 1                    │
-        │     product:101                       │
-        │           │                           │
-        │           │ Replication               │
-        │       ┌───┴────┐                      │
-        │       ▼        ▼                      │
-        │   Replica 1  Replica 2                │
-        │                                       │
-        │      Node 2                           │
-        │     product:102                       │
-        │                                       │
-        │     Node 3                            │
-        │     product:103                       │
-        │                                       │
-        └───────────────────────────────────────┘
-
-
-Yahan Replica 1  & Replica 2  Node 1 (Primary node) ki copy hai.
-
-Primary Node par stored data uski Replicas tak replicate kiya jata hai, 
-isliye Replicas par bhi us data ki copies available hoti hain.
-
-Ab read aur write traffic ko alag tarah se handle kiya ja sakta hai:
-
-Write Requests → Corresponding Primary Node
-
-Read Requests → Primary Node ya Read Replicas
-
-Read request kahan route hogi, ye configured read-routing strategy par
-depend karta hai. Redis Client ko accordingly configure kiya ja sakta hai.
-
-Read-heavy use cases me reads ko available Replicas ke across distribute
-kiya ja sakta hai, jabki writes generally corresponding Primary Node par
-handle hoti hain.
-
-
-
-## REQUEST FLOW WITH READ REPLICAS
--------------------------------------
-
-Client
-   │
-   │ HTTP Request
-   ▼
-Load Balancer
-   │
-   ▼
-Application Instance
-   │
-   ▼
-Check Local / In-Memory Cache
-   │
-   ├───────────────────────────────────────┐
-   │                                       │
-   │ LOCAL CACHE HIT                       │ LOCAL CACHE MISS
-   │                                       │
-   ▼                                       ▼
-Return Data                            Redis Client
-to Client                                  │
-                                           ▼
-                                  Calculate Hash of Key
-                                           │
-                                           ▼
-                                  Determine Hash Slot
-                                           │
-                                           ▼
-                              Check Redis Cluster Topology
-                                           │
-                                           ▼
-                          Identify Primary Node responsible
-                                for the Hash Slot
-                                           │
-                                           ▼
-                            Identify associated Replicas
-                                           │
-                                  ┌────────┴────────┐
-                                  │                 │
-                                  ▼                 ▼
-                              Replica 1         Replica 2
-                                  │                 │
-                                  └────────┬────────┘
-                                           │
-                                           ▼
-                            Select one Replica for Read
-                                           │
-                                           ▼
-                                  Check Redis Cache
-                                           │
-                         ┌─────────────────┴─────────────────┐
-                         │                                   │
-                         ▼                                   ▼
-                   REDIS CACHE HIT                     REDIS CACHE MISS
-                         │                                   │
-                         ▼                                   ▼
-                Data returned to                      Fetch Data from
-              Application Instance                       Database
-                         │                                   │
-                         ▼                                   ▼
-               Populate Local Cache                      Data Found?
-                         │                             ┌─────┴─────┐
-                         ▼                             │           │
-                Return Response                      YES          NO
-                  to Client                           │            │
-                                                       ▼            ▼
-                                              Write Cache Entry   Return 404
-                                              to the Primary      to Client
-                                              Node responsible
-                                              for the Hash Slot
-                                                       │
-                                                       ▼
-                                               Primary Node 1
-                                                       │
-                                                       ▼
-                                              Cache Entry Stored
-                                                       │
-                                                       ▼
-                                              Data returned to
-                                            Application Instance 2
-                                                       │
-                                                       ▼
-                                             Populate Local Cache
-                                                       │
-                                                       ▼
-                                             Return Response
-                                                to Client
-                  
-
-## IMPORTANT:
---------------
-
-Redis Client key ka hash calculate karke uska corresponding Hash Slot
-determine karta hai.
-
-Cluster topology ke basis par Redis Client ko pata hota hai ki
-us Hash Slot ka Primary Node kaunsa hai aur uske associated Replicas
-kaunse hain.
-
-Agar Replica-based reads configured hain, to Redis Client
-configured read-routing strategy ke basis par available Replicas me
-se kisi appropriate Replica ko read request route kar sakta hai.
-
-Write operations  corresponding Primary Node par jaati hain.
-
-
-## NOTE:
----------
-Spring Boot application Redis ke saath typically Spring Data Redis ke through interact karti hai, 
-jo internally Lettuce ya Jedis jaise Redis clients ka use kar sakti hai. Redis client cluster topology aur available 
-nodes ki information ke basis par appropriate Redis node se communication handle karta hai.
-
-
-## BENEFITS OF READ REPLICAS
-----------------------------
-
-Hot Key ki read requests ko multiple Redis Replicas ke across
-distribute kiya ja sakta hai.
-
-Isse read traffic ek single Redis Node par concentrate nahi hota,
-jisse overall read throughput increase ho sakta hai aur kisi single
-Redis Node ke bottleneck banne ka risk reduce hota hai.
-
-
-
-## 2. WRITE FLOW AND REPLICATION
--------------------------------
-
-Ab maan lo `product:101` ka data update karna hai:
-
-Price: ₹100 → ₹120
-
-
-## WRITE REQUEST FLOW
-----------------------
-
-Client
-   │
-   │ HTTP Request
-   ▼
-Load Balancer
-   │
-   ▼
-Application Instance
-   │
-   ▼
-Update Database
-   │
-   ▼
-Database Update Successful
-   │
-   ▼
-Calculate Hash of Key
-`product:101`
-   │
-   ▼
-Determine Hash Slot
-   │
-   ▼
-Redis Client checks Cluster Topology
-   │
-   ▼
-Identify Primary Node
-responsible for this Hash Slot
-   │
-   ▼
-Primary Redis Node 1
-   │                              
-   ▼                            
-Update / Invalidate Cache Entry                           
-   │
-   ▼
-Publish Cache Invalidation Event
-   │
-   ▼
-All relevant Application Instances
-receive the event
-   │
-   ▼
-Invalidate corresponding
-Local / In-Memory Cache entries
-
-
-
-## REPLICATION DELAY
----------------------
-
-Primary Node par hone wale updates ya invalidations Redis ke internal
-replication mechanism ke through associated Replicas tak propagate hote hain.
-
-Primary aur Replicas ke beech replication me thoda delay ho sakta hai.
-
-Example:
-
-Primary  → Price = ₹120
-Replica 1 → Price = ₹120
-Replica 2 → Price = ₹100
-
-Agar isi time read request Replica 2 ke paas route ho jaaye, to
-temporarily stale data return ho sakta hai.
-
-### TRADE-OFF:
-Read traffic multiple Redis Nodes me distribute kiya ja sakta hai,
-lekin replication delay ki wajah se temporary stale reads possible hain.
-
-
-## READ REPLICAS KAB USEFUL HAIN?
-----------------------------------
-
-Read Replicas especially useful hoti hain jab:
-
-- Kisi particular Redis Node par read traffic bahut high ho. Ye ek Hot Key ki wajah se ho sakta hai, ya multiple Hot Keys ki combined read traffic ki wajah se.
-- Temporary stale data acceptable ho, kyunki replication delay ki wajah se Replicas kabhi-kabhi temporarily outdated data return kar sakti hain.
-
-
 
 ##3. HOT KEY REPLICATION 
 ---------------------------
