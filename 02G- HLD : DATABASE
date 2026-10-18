@@ -108,88 +108,32 @@ aur zyada CPU processing (backup create karne ke liye) chahiye.
 # QUESTION : DATABASE KO SCALE KAISE KAREIN ?
 ==============================================
 
-Database ki capacity increase karne ki Broadly do approaches hoti hain:
+Database capacity increase karne ke 2 broad approaches hain:
 
 ---------------------
-#1. VERTICAL SCALING
+1. VERTICAL SCALING
 ---------------------
 
-Vertical scaling ka meaning hai existing database server ko more powerful banana.
+Existing database server ko zyada powerful banana — jaise CPU 8 → 32 cores, RAM 32 → 128 GB, Disk 500 GB → 2 TB.
 
-Example:
+- BENIFIT : Application architecture me changes nahi karne padte — same code, bas powerful hardware.
 
-Initially:
-    CPU  : 8 cores
-    RAM  : 32 GB
-    Disk : 500 GB
+- LIMITATIONS: 
+   1. Cost — more powerful hardware generally more expensive hota hai
+   2. Single Point of Failure — resources badhane ke baad bhi DB single node hi rehta hai. Agar wo down hua, to application ka DB access fail ho jayega.
 
-After scaling:
-    CPU  : 32 cores
-    RAM  : 128 GB
-    Disk : 2 TB
-
-
-
-## BENIFIT :
--------------
-
-Vertical scaling relatively simple hota hai because
-application architecture mein major changes nahi karne padte.
-
-Architecture same rehti hai:
-
-Application
-     |
-     v
-Single DB
-     |
-     v
-More Powerful DB
-
-
-
-## LIMITATIONS :
------------------
-
-1. COST
----------
-
-More powerful hardware generally more expensive hota hai.
-
-2. SINGLE POINT OF FAILURE
-----------------------------
-
-Resources increase karne ke baad bhi database ek single node ho sakta hai.
-
-Agar wahi DB unavailable ho gaya, to application ka database access fail ho sakta hai.
-
-Therefore:
-
-Vertical Scaling
-    → Capacity increase karta hai
-    → But by itself High Availability solve nahi karta.
-
+- Vertical scaling server ki capacity increase karta hai, but High Availability solve nahi karta.
 
 
 ------------------------
-#2. HORIZONTAL SCALING
+2. HORIZONTAL SCALING
 ------------------------
 
-Ek database server ko bigger banane ke bajaye
-multiple database nodes/servers use karke
-database ki capacity ya availability ko improve karna.
+- Existing server ke hardware ko upgrade karke powerful banane ke bajaye, multiple database nodes use karte hain — jisse:
+   a) Capacity increase hoti hai (load multiple nodes me distribute hota hai — no hardware limit)
+   b) Availability improve hoti hai (ek node down ho to baaki nodes traffic sambhaal lete hain — no single point of failure)
 
-Conceptually:
-
-             Application
-                  |
-          +-------+-------+
-          |       |       |
-          v       v       v
-        DB-1    DB-2    DB-3
-
-
-Horizontal Scaling ke common approaches:
+- Horizontal Scaling ke common approaches:
 
 
 DATABASE SCALING
@@ -209,9 +153,11 @@ DATABASE SCALING
         └── SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
 
 
-============================================================================
-#4. READ INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - READ REPLICAS
-============================================================================
+
+
+===================================================================================
+# QUESTION : READ INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - READ REPLICAS
+===================================================================================
 
 Maan lo application par read requests bahut zyada hain aur write requests comparatively kam hain.
 
