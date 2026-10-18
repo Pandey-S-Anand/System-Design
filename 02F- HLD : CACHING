@@ -260,15 +260,41 @@ aur phir response return karti hai.
 ## QUESTION : REDIS KEY KAISE CREATE HOTI HAI APPLICATION ME ?
 ----------------------------------------------------------------
 
-Redis key ka fixed format nahi hota; developer naming convention define karta hai.
+- Cache me har data ko identify karne ke liye ek unique key hoti hai. Redis key ka koi fixed format nahi hota 
+  Developer naming convention define karta hai, aur Application usi convention ke according key banati hai.
 
-Common Pattern: <resource>:<identifier>
+- Key design karte waqt ye dekhte hain ki request kis-kis parameter par depend karti hai.
 
-Example: GET /products/101 → productId = 101
 
-Application naming convention ke according key banati hai:
+1. SINGLE PARAMETER
+---------------------
 
-Redis Key = "product:" + productId → product:101
+Agar request sirf ek identifier par depend karti hai, to key usi identifier se banate hain.
+
+Example:
+
+GET /products/101  →  Cache Key: product:101
+Convention: <entity>:<id>
+
+
+2. MULTIPLE PARAMETERS
+------------------------
+
+Agar request multiple parameters par depend karti hai, to relevant parameters ko bhi key ka part banate hain.
+
+Example:
+
+GET /products?category=mobile&page=2  →  Cache Key: products:mobile:page:2
+Convention: <entity>:<parameter1>:<parameter2>:...
+
+
+### BASIC RULES
+----------------
+
+→ Cache Key unique honi chahiye.
+→ Consistent naming convention use karo, otherwise KEY COLLISION ho sakti hai.
+→ Relevant parameters ko key me include karo.
+→ Keys unnecessarily large nahi honi chahiye.
 
 
 
@@ -288,8 +314,8 @@ to data Redis me nahi milega (Cache Miss). Application Database se fresh data re
 Redis me dobara cache karegi, phir se TTL set karegi, aur client ko response return karegi.
 
 
-###  QUESTION: CACHE KEY KA TTL KAISE DECIDE KARE ? 
-----------------------------------------------------
+###  QUESTION: TTL KAISE DECIDE KARE ? 
+---------------------------------------
 
 Cache me har data ke liye same TTL rakhna zaroori nahi hota. TTL ka selection mainly 2 cheezon par depend karta hai — freshness requirement aur change frequency.
 
@@ -2264,52 +2290,6 @@ b) Distributed Cache (Redis)
 
 - Multi-Level Caching se application ki latency kam hoti hai due to reduced network calls,
   jisse better user experience milta hai.
-
-
-
-
-===============================================
-# QUESTION: CACHE KEY DESIGN KAISE KARTE HAIN?
-===============================================
-
-Cache me har data ko identify karne ke liye ek unique key hoti hai. Key design karte waqt ye dekhte hain ki
-request kis-kis parameter par depend karti hai.
-
----------------------
-1. SINGLE PARAMETER
----------------------
-Agar request sirf ek identifier par depend karti hai, to key usi identifier se banate hain.
-
-Example:
-
-GET /products/101  →  Cache Key: product:101
-Convention: <entity>:<id>
-
-
-------------------------
-2. MULTIPLE PARAMETERS
-------------------------
-
-Agar request multiple parameters par depend karti hai, to relevant parameters ko bhi key ka part banate hain.
-
-Example:
-
-GET /products?category=mobile&page=2  →  Cache Key: products:mobile:page:2
-Convention: <entity>:<parameter1>:<parameter2>:...
-
-
-----------------
-## BASIC RULES
-----------------
-
-→ Cache Key unique honi chahiye.
-→ Consistent naming convention use karo, otherwise KEY COLLISION ho sakti hai.
-→ Relevant parameters ko key me include karo.
-→ Keys unnecessarily large nahi honi chahiye.
-
-
-
-
 
 
 
