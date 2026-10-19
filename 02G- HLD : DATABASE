@@ -896,96 +896,24 @@ mapping update kar do — taaki future requests naye Shard par route hon.
 ## QUESTION: CROSS-SHARD JOINS KYA HAI ?
 -------------------------------------------
 
-Normally agar JOIN operation ke liye required data same Database/Shard mein stored ho,
-to JOIN operation directly execute kiya ja sakta hai.
+- Normally JOIN ke liye required data same Shard me hota hai to JOIN directly execute ho jaata hai. 
+  Lekin sharding ke baad JOIN ke liye required data different Shards me ho sakta hai — isse Cross-Shard Join
+  kehte hain.
 
-Lekin Sharding ke baad JOIN operation ke liye required 
-data different Shards mein stored ho sakta hai.
+- Example: Maan lo Users aur Orders — dono tables sharded hain, aur hume user aur uske saare orders fetch karne hain. 
+  User ka data Shard 1 me hai, aur uske orders ka data Shard 2 me hai. Is case me Application ko Shard 1 se User data 
+  aur Shard 2 se Orders fetch karke, dono ko combine karke response banana padta hai. 
 
-Example:
-
-User Data  → Shard 1
-or uska Order Data → Shard 2
-
-Agar User aur uske Orders ko combine karke response
-banana ho, to Application ko multiple Shards se data
-fetch karke unhe combine karna pad sakta hai.
-
-Cross-Shard Join tab hota hai jab JOIN operation ke liye
-required data multiple Shards se retrieve karna pade.
+- Cross-Shard Joins me multiple database calls ki zarurat padti hai — jisse overall latency increase ho jaati hai.
 
 
-## EXAMPLE :
-------------
+### QUESTION: CROSS-SHARD JOIN KO AVOID KAISE KAREIN?
+-------------------------------------------------------
 
-Maan lo system mein do tables hain:
-
-- Users
-- Orders
-
-Users Table user_id ke basis par sharded hai aur
-Orders Table order_id ke basis par sharded hai.
-
-Ab possible hai ki:
-
-User 101 → Shard 2
-User 101 ke Orders → Shard 3
-
-Ab request aati hai:
-
-Get User 101 with all Orders
-
-Conceptually required query:
-
-SELECT *
-FROM users
-JOIN orders
-ON users.user_id = orders.user_id
-WHERE users.user_id = 101;
-
-
-Lekin User aur uske Orders different Shards mein stored hain.
-
-Isliye Application ko:
-
-1. Shard 2 se User data fetch karna padega.
-2. Shard 3 se User ke Orders fetch karne padenge.
-3. Application dono results ko combine karke final response return karegi.
-
-Is approach ko broadly Application-Level Join kaha ja sakta hai.
-
-
-## QUESTION: CROSS-SHARD JOIN KI PROBLEM ?
---------------------------------------------
-
-Cross-Shard Joins mein multiple Database calls aur
-Application-side data combining ki zarurat pad sakti hai 
-jisse Latency increase ho sakti hai
-
-
-## QUESTION: CROSS-SHARD JOIN KO AVOID KAISE KAREIN?
-------------------------------------------------------
-
-Sharding design karte time generally try kiya jaata hai ki
-frequently requested aur frequently joined data ko same Shard mein
-store kiya ja sake, taaki Cross-Shard Joins avoid kiye ja sakein.
-
-Agar Application mein User aur uske Orders frequently saath mein access 
-kiye jaate hain, to dono related tables ke liye same Shard Key use ki ja sakti hai.
-
-Example:
-
-Users Table  → Shard Key = user_id
-Orders Table → Shard Key = user_id
-
-Isse user_id = 101 ka User aur uske Orders
-same Shard par route aur store honge.
-
-Isliye Get User 101 + Orders request ko correct Shard par route karke usi Shard 
-ke andar Local Database JOIN perform kiya ja sakta hai, jisse multiple Shards ko query 
-karne ki zarurat nahi padti aur Cross-Shard Join ki additional complexity aur 
-latency avoid ki ja sakti hai.
-
+Sharding design karte time frequently joined data ko same Shard me rakhne ki koshish karo — isse Cross-Shard Join avoid ho jaata hai. 
+Iska tarika ye hai ki related tables ke liye same Shard Key use karo. Jaise Users aur Orders tables — dono ke liye Shard Key = `user_id`.
+Isse User 101 aur uske Orders same Shard par store honge, aur "User + Orders" request usi Shard ke andar local JOIN se serve ho jayegi
+multiple Shards query nahi karni padegi, jisse network latency bhi avoid hogi.
 
 
 
