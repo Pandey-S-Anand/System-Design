@@ -477,162 +477,42 @@ promote kar deta hai.
 
 
 
+
 ==============================================
 # QUESTION : DATABASE PARTITIONING KYA HAI ? 
 ==============================================
 
-Database Partitioning ek technique hai jisme ek Database ke large amount of Data
-ko multiple smaller logical parts, yaani Partitions, mein divide kiya jaata hai.
-
-Har Partition Database ke total Data ka ek subset store karta hai.
-
 Database Partitioning ke do common types hain:
 
-1. Vertical Partitioning
-2. Horizontal Partitioning
-
-
+-------------------------
 1. VERTICAL PARTITIONING
+-------------------------
+
+Wide table ke columns ko logically split karke multiple smaller tables me store karna - access pattern ke basis par (frequently accessed columns ek table me, rarely accessed doosre me).
+
+## Example:
+
+- USERS table: `user_id, name, email, profile_picture, bio, address, preferences`
+
+- Agar application me frequently sirf `user_id, name, email` access hote hain, aur baaki columns rarely — to table ko vertically partition kar sakte hain.
+
+- After vertically partitioning - 
+  Do smaller tables:
+   - `USERS_BASIC` → `user_id, name, email`
+   - `USERS_PROFILE` → `user_id, profile_picture, bio, address, preferences`
+
+- Original USERS table ko deprecate/remove kar diya jaata hai. Application ke read/write operations newly partitioned tables par route ho jaate hain
+  i.e basic data `USERS_BASIC` se, profile data `USERS_PROFILE` se. Dono tables ko Common Key se relate kiya jaata hai — is example me `user_id` dono tables me hai.
+  Kyunki dono ka data same user se related hai, jab application ko complete user information chahiye hoti hai, to common key (`user_id`) ke through dono tables ka data 
+  combine kiya ja sakta hai.
+
+- Core Idea: One large/wide table → split columns → multiple smaller tables → related using a common key.
+
+- BENIFIT: Wide table ke frequently accessed columns ko separate table me rakhne se, queries ko rarely accessed columns unnecessarily load nahi karne padte.
+
+
+
 ----------------------------
-
-Vertical Partitioning mein ek large / wide Table ke Columns ko logically
-divide karke multiple smaller Tables mein store kiya jaata hai.
-
-Generally Columns ko unke access pattern ke basis par split kiya jaata hai.
-
-For example, frequently accessed Columns ko ek Table mein aur less frequently
-accessed Columns ko doosre Table mein store kiya ja sakta hai.
-
-
-## EXAMPLE
-------------
-
-Maan lo initially ek USERS table hai:
-
-USERS
-
-user_id
-name
-email
-profile_picture
-bio
-address
-preferences
-
-Agar Application mein frequently sirf:
-
-user_id
-name
-email
-
-access hote hain, aur remaining Columns comparatively less frequently
-access hote hain, to Table ko vertically partition kiya ja sakta hai.
-
-
-### BEFORE PARTITIONING 
------------------------
-
-
-              USERS
-                │
-     ┌──────────┴──────────┐
-     │                     │
-Frequently Used       Less Frequently Used
-Columns                Columns
-
-
-### AFTER VERTICAL PARTITIONING
-----------------------------
-
-USERS_BASIC              USERS_PROFILE
-
-user_id                  user_id
-name                     profile_picture
-email                    bio
-                         address
-                         preferences
-
-Yaani original large USERS table ke Columns ko logically split karke multiple smaller Tables create ki gayi hain.
-
-
-### QUESTION: ORIGINAL USERS TABLE KA KYA HOTA HAI?
----------------------------------------------------
-
-Original USERS table ko generally  deprecate/remove kar diya jaata hai.
-Application ke Read aur Write Operations ko newly partitioned Tables par route kar diya jaata hai.
-
-Is table ko generally remove/deprecate kar diya jaata hai.
-and applciation  mai data fetch aur write logic ka traffic ko newly parttioned 
-tables pai route kar diya jaata hai.
-
-Application phir:
-
-Basic User Data
-      ↓
-USERS_BASIC
-
-aur:
-
-Profile Data
-      ↓
-USERS_PROFILE
-
-se read karegi.
-
-
-
-### QUESTION : KYA HAMESHA NAYE TABLES BANAYE JAATE HAIN?
---------------------------------------------------------
-
-Vertical Partitioning mein typical approach ek large/wide Table ko split
-karke multiple logically related Tables create karna hota hai.
-
-Columns ko kisi random existing unrelated Table mein add karna 
-generally Vertical Partitioning nahi maana jaata.
-
-
-### QUESTION: NEWLY PARTITIONED TABLES KO RELATE KAISE KARTE HAIN? ?
-------------------------------------------------------------------
-
-Newly partitioned Tables ko generally ek Common Key ke through relate kiya jaata hai.
-
-Is example mein:
-
-USERS_BASIC.user_id
-        │
-        │ Common Key
-        │
-USERS_PROFILE.user_id
-
-Kyuki dono Tables ka data same User se related hai, isliye user_id dono Tables mein present hai.
-
-Jab Application ko complete User information chahiye hoti hai, to Common Key ke through Tables ka data combine kiya ja sakta hai.
-
-
-
-## CORE IDEA
---------------
-
-One Large / Wide Table
-          ↓
-     Split Columns
-          ↓
-Multiple Smaller Tables
-          ↓
-Related using a Common Key
-
-
-
-## BENIFIT ?
--------------
-
-Agar Table mein bahut zyada Columns hon, aur kuch Columns frequently access hote hon jabki kuch rarely access hote hon, 
-to hum Vertical Partitioning ke through frequently accessed aur rarely accessed Columns ko separate Tables mein divide kar sakte hain.
-Isse agar kisi Query ko sirf frequently accessed Columns ki zarurat ho, to use unnecessary aur rarely accessed Columns load nahi karne padte.
-
-
-
-
 2. HORIZONTAL PARTITIONING
 ----------------------------
 
