@@ -598,10 +598,9 @@ row movement avoid ho.
 
 
 
-
-============================================================================================================
-#6. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?   - SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
-============================================================================================================
+==================================================================================================================
+# QUESTION : WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN? - SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
+==================================================================================================================
 
 Read Replicas se reads multiple nodes ke across distribute ho gaye.
 Lekin writes abhi bhi Primary DB par hi ja rahi hain.
