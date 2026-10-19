@@ -516,190 +516,84 @@ Wide table ke columns ko logically split karke multiple smaller tables me store 
 2. HORIZONTAL PARTITIONING
 ----------------------------
 
-Horizontal Partitioning mein same logical Table ki rows ko multiple Partitions mein
-divide kiya jaata hai. Ye Partitions usi Database ke andar store aur manage kiye 
-jaate hain jahan original logical Table exist karta hai.
-
-Lekin Application ke perspective se data abhi bhi ek hi logical Table ka part hota hai.
+Horizontal Partitioning me same logical table ki rows ko multiple partitions me divide kiya jaata hai
+ye partitions usi database ke andar rehte hain. Application ke perspective se data abhi bhi ek hi 
+logical table ka part hota hai.
 
 
 ## QUESTION: PARTITIONING KEY KYA HAI?
 ---------------------------------------
 
-Partitioning Key ek Column (ya kabhi multiple Columns) hota hai jiske
-basis par Database decide karta hai ki ek particular Row kis Partition 
-se belong karti hai.
+- Partitioning Key wo column (ya multiple columns) hota hai jiske basis par Database decide karta hai ki particular row (table ki) kis partition se belong karti hai. 
+  Iske liye generally stable aur rarely-changing column choose karte hain — kyunki agar update ke waqt key value change ho jaye, to row ko ek partition se doosre me
+  move karna padta hai. 
 
-Generally, Partitioning Key ke liye stable aur rarely changing Column 
-choose kiya jaata hai, kyunki agar kisi Row par Update Operation perform 
-karte waqt Partitioning Key ki value change ho jaaye, to Row ko ek Partition
-se doosre Partition mein move karna padta hai.
-
-Partitioning Key auto-generated Column ho sakta hai, 
-lekin auto-generated hona mandatory nahi hai.
-
-Partitioning Key aur usse related Partitioning Rule 
-Table Definition mein configured hota hai.
+- Partitioning Key aur usse related Partitioning Rule table definition me configure hote hain.
 
 
 ## QUESTION: PARTITIONING RULE KYA HAI?
 ---------------------------------------
 
-Partitioning Rule woh rule/logic hota hai jo Partitioning Key ki value ke basis
-par decide karta hai ki ek particular Row kis Partition se belong karti hai.
-
-Partitioning Rule different ways se define kiya ja sakta hai.
-
-Common Partitioning Rules:
-
-1. Range-Based Partitioning
-2. List-Based Partitioning
-3. Hash-Based Partitioning
+Partitioning Rule wo rule hota hai jo Partitioning Key ki value ke basis par decide karta hai ki particular row kis partition se belong karti hai. 
+Isse different ways se define kiya ja sakta hai — 3 common types:
 
 
-## 1. RANGE-BASED PARTITIONING
+ 1. RANGE-BASED PARTITIONING
 --------------------------------
 
-Partitioning Key ki value ke Range ke basis par Row ko
-different Partitions mein store kiya jaata hai.
+Partitioning Key ki value ke Range ke basis par Row ko different Partitions mein store karte hain.
 
-Example:
+Example: Partitioning Key = created_at
 
-Partitioning Key = created_at
-
-2024 ke Orders → Partition 1
-2025 ke Orders → Partition 2
-2026 ke Orders → Partition 3
+→ 2024 ke Orders → Partition 1
+→ 2025 ke Orders → Partition 2
+→ 2026 ke Orders → Partition 3
 
 
-## 2. LIST-BASED PARTITIONING
--------------------------------
+2. LIST-BASED PARTITIONING
+-----------------------------
 
-Partitioning Key ki predefined Value ya Values ke basis 
-par decide kiya jaata hai ki Row kis Partition mein store hogi.
+Partitioning Key ki predefined Value ya Values ke basis  par decide kiya jaata hai ki Row kis Partition mein store hogi.
 
-Example:
+Example: Partitioning Key = country
 
-Partitioning Key = country
-
-India, Nepal → Partition 1
-USA, Canada → Partition 2
-UK, Germany → Partition 3
+→ India, Nepal → Partition 1
+→ USA, Canada → Partition 2
+→ UK, Germany → Partition 3
 
 
-## 3. HASH-BASED PARTITIONING
--------------------------------
+3. Hash-Based Partitioning
+-----------------------------
 
-Partitioning Key ki value par Hash Function apply kiya jaata hai.
-Hash Function ke result ke basis par Database determine karta hai
-ki Row kis Partition mein store hogi.
+- Partitioning Key ki value par hash function apply kiya jaata hai, aur result ke basis par Database decide karta hai ki row kis partition me jayegi.
 
-Example:
+- Example: Partitioning Key = `user_id`, `hash(user_id) % 4`
 
-Partitioning Key = user_id
-
-hash(user_id) % 4
-
-Result 0 → Partition 0
-Result 1 → Partition 1
-Result 2 → Partition 2
-Result 3 → Partition 3
+    → `hash(101) % 4 = 0` → Partition 0
+    → `hash(102) % 4 = 1` → Partition 1
+    → `hash(103) % 4 = 2` → Partition 2
+    → `hash(104) % 4 = 3` → Partition 3
 
 
-
-##1. QUESTION: NEW ROW CREATE / INSERT KAISE HOTA HAI?
-------------------------------------------------------
-
-      Application
-         |
-         | INSERT Query + New Row Data
-         v
-      Database
-         |
-         v
-    Partitioning Key Value Available?
-         |
-    +----+----+
-    |         |
-   YES        NO
-    |         |
-    v         v
-Apply        Database cannot determine
-Partitioning correct target Partition
-Rule             |
-   |             v
-   v          INSERT cannot be
-Identify      correctly routed
-Correct
-Partition
-   |
-   v
-Insert New Row
-   |
-   v
-SUCCESS
+- IMPORTANT : Partitioning Key kaunse column(s) par defined hai, ye application ko table schema se pata chalta hai. New row insert karte waqt us Partitioning Key ki value available honi 
+  chahiye taaki us key value ke basis par partitioning rule apply karke correct partition me row store ki ja sake. Agar Partitioning Key ki value available nahi hai, to INSERT possible nahi hai.
 
 
-## IMPROTANT:
--------------
-New Row insert karte waqt Database ko Partitioning Key ki value available honi chahiye,
-taaki Partitioning Rule apply karke correct Partition identify kiya ja sake.
+## QUESTION: UPDATE AND READ ROW OPERATION KAISE KAAM KARTA HAI?
+------------------------------------------------------------------
+
+a) Partitioning Key query me available → partitioning rule apply → relevant partition identify → row locate → UPDATE/READ
+
+b) Partitioning Key query me available nahi → direct determine nahi ho sakta row kis partition me hai → multiple partitions search karne padte hain (slow) → jis partition me row mili → UPDATE/READ wahan
 
 
 
-##2. QUESTION: UPDATE AND READ ROW OPERATION KAISE KAAM KARTA HAI?
--------------------------------------------------------------------
+## QUESTION: KYA HOGA AGAR UPDATE OPERATION MEIN PARTITIONING KEY KI VALUE HI CHANGE HO JAAYE?
+------------------------------------------------------------------------------------------------
 
-
-           Application
-              |
-              | UPDATE / READ Query
-              v
-           Database
-              |
-              v
-    +----------------------------------+
-    | Partitioning Key Query mein      |
-    | Available hai?                   |
-    +----------------------------------+
-              |
-         +----+----+
-         |         |
-        YES        NO
-         |         |
-         v         v
-   Partitioning   Directly determine
-   Rule Apply     nahi kar sakta ki
-         |        Row kis Partition
-         v        mein located hai
-   Identify          |
-   Relevant          v
-  Partition       Search Multiple
-      |           Partitions
-      |              |
-      +---------+----+
-             |
-             v
-      Locate Required Row 
-             |
-             v
-      UPDATE / READ Required Data
-             |
-             v
-        Application
-
-
-
-
-##3. QUESTION: KYA HOGA AGAR UPDATE OPERATION MEIN PARTITIONING KEY KI VALUE HI CHANGE HO JAAYE?
---------------------------------------------------------------------------------------------------
-
-Agar Update Operation Partitioning Key ki value change karta hai, to Row ka target Partition bhi change ho sakta hai. 
-Aisi situation mein Row ko ek Partition se doosre Partition mein move karna pad sakta hai.
-
-Isliye Partitioning Key ke liye generally stable aur rarely-changing Column choose karna preferable hota hai, 
-taaki frequent Row movement avoid kiya ja sake.
-
+Row ka target partition bhi change ho jaata hai — Database internally row ko ek partition se doosre me move karta hai. 
+Ye movement expensive hai. Isliye Partitioning Key ke liye stable aur rarely-changing column choose karo, taaki frequent 
+row movement avoid ho.
 
 
 
