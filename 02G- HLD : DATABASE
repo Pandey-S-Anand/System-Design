@@ -1193,117 +1193,57 @@ Ye additional row T2 ne introduce ki thi. Isi additional row ko Phantom Row kehl
 
 
 
----------------------------------------------------------
-## QUESTION: TRANSACTION ISOLATION LEVELS KYA HOTE HAIN?
----------------------------------------------------------
+-----------------------------------------------------------------------------------------
+## QUESTION: CONCURRENCY PROBLEMS KO KAISE SOLVE KAREIN? — TRANSACTION ISOLATION LEVELS
+-----------------------------------------------------------------------------------------
 
-Jab multiple Transactions concurrently execute hoti hain, to ek Transaction ki
-operations doosri Transaction ki operations ko affect kar sakti hain, jisse:
+- Transaction Isolation Levels Database ke rules hote hain jo define karte hain ki ek transaction 
+  ko doosri concurrently executing transactions ke changes kitne visible honge — different levels 
+  concurrency problems ko different extent tak prevent karte hain.
 
-- Lost Update
-- Dirty Read
-- Non-Repeatable Read
-- Phantom Read
+- Generally,
+   → Higher Isolation -> Fewer Concurrency Problems → More Data Consistency →  Lower Performance
+   → Lower Isolation -> More Concurrency Problems → Less Data Consistency →  Better Performance
 
-jaise problems ho sakti hain.
-
-
-Transaction Isolation Levels Database ke rules hote hain jo define karte hain ki ek Transaction
-ko doosri concurrently executing Transactions ke changes kitne level tak visible honge.
-Different Isolation Levels concurrency ke problems ko different extent tak prevent karte hain.
-
-Generally,
-
-Higher Isolation -> Fewer Concurrency Problems → More Data Consistency →  Lower Performance
-
-Lower Isolation -> More Concurrency Problems → Less Data Consistency →  Better Performance
-
-
-Database commonly 4 standard Transaction Isolation Levels provide karta hai:
+- Database commonly 4 standard Transaction Isolation Levels provide karta hai:
 
 
 1. READ UNCOMMITTED
 --------------------
 
-Read Uncommitted sabse lowest Transaction Isolation Level hota hai.
-Is Isolation Level mein ek Transaction, doosri concurrent Transaction
-ke uncommitted changes bhi read kar sakti hai.
-
-Read Uncommitted isolation level Dirty Read ko allow karta hai.
+Sabse lowest isolation level — isme ek transaction doosri concurrent transaction ke uncommitted changes bhi read kar sakti hai.
+Isliye ye Dirty Read allow karta hai.
 
 
 2. READ COMMITTED
 -------------------
-
-Multiple concurrent transations agar execute ho rahe ho to ek
-txn dusre txn ka sirf committed data ko read kar sakti hai.
-Yaani ek Transaction doosri Transaction ke uncommitted changes read nahi kar sakti.
-
-Isliye Read Committed isolation level Dirty Read ko Prevent karta hai.
+Multiple concurrent transactions execute ho rahi hain to ek transaction doosri transaction ka sirf committed changes read kar sakti hai,
+uncommitted changes read nahi kar sakti. Isliye ye Dirty Read prevent karta hai.
 
 
 3. REPEATABLE READ
 ---------------------
+- Repeatable Read ensure karta hai ki ek transaction ke andar same row ko **do baar read karne par same value mile — even if kisi doosri transaction ne 
+  us row ko update karke commit kar diya ho. Isliye ye Non-Repeatable Read prevent karta hai.
 
-Repeatable Read Isolation Level ensure karta hai ki ek Transaction agar kisi row ko read kare, 
-to us Transaction ke andar usi row ko dobara read karne par same value mile, 
-even if kisi doosri Transaction ne us row ko update karke commit kar diya ho.
-
-Isliye Repeatable Read isolation level Non-Repeatable Read ko prevent karta hai.
-
-Is level par Dirty Read bhi prevent hota hai, kyunki ek Transaction doosri 
-concurrent Transaction ke uncommitted changes ko read nahi kar sakti.
-Yaani Transaction ko sirf committed data visible hota hai.
+- Repeatable Read me Dirty Read bhi prevent hai — kyunki ye Read Committed se upar ka level hai, to Read Committed ka prevention yahan bhi included hai.
 
 
 4. SERIALIZABLE
 -----------------
+- Sabse highest isolation level — isme concurrent transactions ko aise execute kiya jaata hai ki final behavior aisa lage jaise 
+  transactions ek-ek karke serially execute hui hain.
 
-Serializable sabse highest Transaction Isolation Level hota hai.
-
-Is level mein concurrent Transactions ko aise execute kiya jaata hai ki 
-final behavior aisa lage jaise Transactions ek-ek karke serially execute hui hain.
-
-Serializable generally prevent karta hai:
-
-- Dirty Read
-- Non-Repeatable Read
-- Phantom Read
-- Lost Update
+- Ye sabhi concurrency problems prevent karta hai — Dirty Read, Non-Repeatable Read, Phantom Read, aur Lost Update.
 
 
-------------------------------------
-## QUESTION: LOCKS KYA HOTE HAIN?
-------------------------------------
+
+---------------------------------------------------------------------------
+## QUESTION: ISOLATION LEVELS KAISE ACHIEVE KAREN? — LOCKS KYA HOTE HAIN?
+---------------------------------------------------------------------------
 
 Database Locks ek Concurrency Control mechanism hain jo multiple concurrent Transactions
 ko same data par conflicting operations karne se control karta hai.
-
-## EXAMPLE:
-------------
-
-Maan lo Transaction T1 Account A ka Balance update kar rahi hai.
-
-T1 → Acquire Lock on Account A 
-↓ 
-Update Balance 
-↓ 
-Release Lock 
-
-
-Isi time T2 bhi Account A ko update karna chahti hai:
-
-T2 → Wants to Update Account A 
-          ↓ 
-        WAIT 
-          ↓ 
-  T1 Releases Lock 
-          ↓ 
-  T2 Can Proceed
-
-Is tarah Locks concurrent Transactions ke conflicting operations ko control karte hain
-aur problems jaise Lost Update ko prevent karne mein help kar sakte hain.
-
 
 -------------------------------
 ## QUESTION: TYPE OF LOCKS ?
