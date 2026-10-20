@@ -1281,6 +1281,7 @@ ko same data par conflicting operations karne se control karta hai.
   T2 aur T3 dono ko tab tak wait karna padega jab tak T1 apna Exclusive Lock release nahi kar deta.
 
 
+
 -----------------------------------------
 ### QUESTION: LOCK GRANULARITY KYA HAI ?
 -----------------------------------------
@@ -1290,13 +1291,13 @@ Lock Granularity batati hai ki lock data ke kitne bade portion par apply hua hai
 #### COMMON LOCK GRANULARITY LEVELS :
 ---------------------------------------
 
-Commonly Locks different levels par apply kiye ja sakte hain:
+Locks different levels par apply kiye ja sakte hain. Lock type (Shared ya Exclusive) granularity se independent hai — har level par dono types use ho sakte hain:
 
 1. ROW-LEVEL LOCK
 -------------------
 
 - Row-Level Lock me lock table ki sirf ek specific row par apply hota hai.
-  
+
 - Example — Accounts table: A = ₹10,000, B = ₹5,000, C = ₹8,000. 
 
   T1 ne Account A update karne ke liye uski row par X lock liya. Jab tak ye lock active hai, doosri transactions ko Account A ki
@@ -1322,226 +1323,114 @@ Commonly Locks different levels par apply kiye ja sakte hain:
 3. PAGE-LEVEL LOCK
 --------------------
 
-- Page-level lock me lock ek complete page par lagta hai — page database ki fixed-size storage unit hai jo ki kisi table ki multiple rows contain karta hai.
-
-- Lock type shared bhi ho sakta hai (reads ke liye) ya exclusive (writes ke liye).
-
-- Page-Level Lock ki Granularity:
-   → Row-Level Lock se larger
-   → Table-Level Lock se smaller
+Page-level lock me lock ek complete page par lagta hai. Page database ki fixed-size storage unit hoti hai jisme kisi table ki multiple rows store hoti hain.
 
 
-4: DATABASE-LEVEL LOCK  
+4. DATABASE-LEVEL LOCK
 -------------------------
 
-Database-Level Lock mein Lock poore Database par apply hota hai.
-
-Yaani agar ek Transaction ke paas Database-Level Lock hai,
-to doosri Transactions ko us Database ke data par conflicting operations
-perform karne ke liye wait karna pad sakta hai.
-
-### BENEFIT
--------------
-Database ko bahut kam Locks manage karne padte hain.
-
-### LIMITATION
-----------------
-Concurrency bahut significantly reduce ho jaati hai.
-
-Isliye normal database Transactions ke liye Database-Level Lock
-generally avoid kiya jaata hai aur ye relatively uncommon hai.
+- Database-Level Lock me lock **poore database** par apply hota hai.
+- Benefit: Database ko bahut kam locks manage karne padte hain.
+- Limitation: Concurrency bahut significantly reduce ho jaati hai — isliye normal transactions ke liye ye avoid kiya jaata hai, relatively uncommon hai.
 
 
 
-## GRANULARITY ORDER & CORE TRADE-OFF
----------------------------------------
+#### QUESTION: LOCK GRANULARITY ORDER AUR CORE TRADE-OFF KYA HAI?
+-------------------------------------------------------------------
 
-Lock Granularity smallest se largest order mein:
+- Order (smallest → largest): Row → Page → Table → Database.
 
-Row-Level Lock
-↓
-Page-Level Lock
-↓
-Table-Level Lock
-↓
-Database-Level Lock
+- Smaller lock me zyada concurrent transactions parallel chal sakti hain (high concurrency), kyunki sirf chhota portion block hota hai — but bahut saare individual locks manage karne padte hain, jisse overhead higher ho jaata hai.
+
+- Larger lock me kam transactions parallel chal sakti hain (low concurrency), kyunki bada portion block hota hai — but locks kam manage karne padte hain, jisse overhead lower rehta hai.
 
 
-Jaise-jaise Lock Granularity smaller hoti hai:
 
-Smaller Lock Granularity
-↓
-More Concurrency
-↓
-More Transactions simultaneously / concurrently execute kar sakti hain
-↓
-More Individual Locks to Manage
-↓
-Higher Lock Management Overhead
-
-
-Jaise-jaise Lock Granularity larger hoti hai:
-
-Larger Lock Granularity
-↓
-Less Concurrency
-↓
-More Transactions ko wait karna pad sakta hai
-↓
-Fewer Individual Locks to Manage
-↓
-Lower Lock Management Overhead
 
 
 ----------------------------------------------
 ## QUESTION: PESSIMISTIC LOCKING KYA HAI ?
 ----------------------------------------------
 
-Pessimistic Locking approach mein jab kisi Transaction ko kisi Row ko
-modify karna hota hai, to Transaction us Row par Exclusive Lock acquire karti hai.
+- Pessimistic Locking me transaction assume karti hai ki data modify karte waqt same data par doosri transaction ke dwara conflicting operation ho sakta hai
+  isliye row modify karne se pehle hi us row par Exclusive Lock acquire kar leti hai. Phir row read karti hai, changes karti hai, aur COMMIT/ROLLBACK karti hai.
+  Jab tak X lock active hai, doosri concurrent transactions us row par conflicting operations (read/write) ke liye wait karti hain — jab tak lock release na ho jaaye.
 
-Iske baad Transaction Row ko read karti hai, required changes karti hai
-aur COMMIT / ROLLBACK karti hai.
-
-Jab tak Exclusive Lock active hota hai, doosri concurrent Transactions ko
-usi Row par conflicting operations perform karne ke liye wait karna padta hai,
-jab tak Lock release nahi ho jaata.
-
-Pessimistic Locking mein Transaction assume karti hai ki same Data par
-concurrent conflict ho sakta hai.
-
-### PESSIMISTIC LOCKING KA BENEFIT
-------------------------------------
-
-Conflicting Transactions ko pehle hi block karne ki wajah se
-concurrency problems, jaise Lost Update, prevent kiye ja sakte hain.
+- Pessimistic Locking useful hai jahan same row par frequently concurrent updates hone ki possibility ho — pehle hi X lock laga kar conflicting writes block ho jaati hain.
 
 
-### PESSIMISTIC LOCKING KA LIMITATION
----------------------------------------
+### QUESTION:  PESSIMISTIC LOCKING KA BENEFIT KYA HAI ?
+----------------------------------------------------------
 
-Agar Lock long time tak hold rahe, to doosri Transactions ko wait karna padta hai.
+Kyunki ek transaction ne data par X lock le liya hai, X lock do problems prevent karta hai. 
 
-Isse:
+   a) Lost Update : Doosri transaction same data par write operation ke liye simultaneous X lock acquire nahi kar sakti, isliye wo current transaction 
+                    ke lock release hone tak koi write perform nahi kar sakti isse Lost update avoid ho jaata hai. 
 
-- Concurrency reduce ho sakti hai
-- Request ka response time increase ho sakta hai
+   b) Dirty Read  : X lock ke dauran kisi doosri transaction ko read (S lock) nahi milta same data par, to uncommitted changes visible nahi 
+                    hote isse Dirty Read avoid ho jaata hai. Modern MVCC databases me reads lock acquire nahi karti — wo committed snapshot
+                    padhti hain. Isliye wahan Dirty Read prevention isolation levels se aata hai, 
 
 
-### COMMON USE CASE
----------------------
+### QUESTION:  PESSIMISTIC LOCKING KA LIMITATION KYA HAI ?
+-----------------------------------------------------------
 
-Pessimistic Locking generally un scenarios mein useful hoti hai
-jahan same Row par frequently concurrent Updates hone ki possibility ho.
+Agar lock long time tak hold rahe, to doosre conflicting transactions ko wait karna padta hai — jisse concurrency reduce ho jaati hai 
+aur request ka response time increase ho jaata hai. Kyunki jab tak lock release nahi hota, conflicting operations blocked rehte hain.
 
 
 
-
-----------------------------------------------
+-------------------------------------------
 ## QUESTION: OPTIMISTIC LOCKING KYA HAI ?
-----------------------------------------------
+-------------------------------------------
 
-Optimistic Locking mein kisi Row ko Update karne ke liye pehle se Exclusive Lock
-acquire karke doosri concurrent Transactions ko block nahi kiya jaata.
+- Optimistic Locking me transaction assume karti hai ki row modify karte waqt same row par doosri transaction ke dwara conflicting operation nahi hoga.
+  Isliye row update karne ke liye pehle se Exclusive Lock acquire nahi kiya jaata — jisse doosri concurrent transactions block nahi hoti. But possibility 
+  hai ki row read karne ke baad koi doosri transaction us same row ko modify kar de.
 
-Is wajah se possibility hoti hai ki Transaction ke Data read karne ke baad 
-koi doosri concurrent Transaction usi Row ko modify kar de.
-
-Optimistic Locking generally assume karta hai ki Data Conflicts frequently nahi honge.
+- Optimistic Locking generally un scenarios mein useful hoti hai jahan same Row par concurrent Updates relatively rare hote hain.
 
 
-### QUESTION : VERSION KYA HOTA HAI ?
----------------------------------------
+### QUESTION : OPTIMISTIC LOCKING KAISE KAAM KARTA HAI ?
+-----------------------------------------------------------
 
-Optimistic Locking approach mein hum generally har Row ke corresponding Database mein 
-ek Version Number maintain karte hain, jo track karta hai ki Row kitni baar successfully
-update hui hai. Har successful Update ke baad Row ka Version Number generally increment 
-kar diya jaata hai.
+- Database me har row ke corresponding (table mai) ek Version Number maintain hota hai — jo track karta hai ki wo row kitni baar successfully update hui hai.
+  Har successful update ke baad us row ka version number increment ho jaata hai.
 
+- Read: Transaction required row ko read karti hai, aur us row ka current version number bhi read/remember karti hai.
 
-### QUESTION : HOW OPTIMISTIC LOCKING WORKS ?
-----------------------------------------------
+- Update attempt: Transaction required changes prepare karti hai aur commit attempt karti hai. 
 
-Transaction Row ko read karta hai and aur Row ka Version Number bhi 
-read aur remember karta hai.
+- Version check: Update ke time Database verify karta hai ki row ka current version wahi hai ya nahi jo transaction ne initially read kiya tha:
 
-Iske baad Transaction required changes prepare karta hai aur apne changes
-Database mein commit karne ka attempt karta hai.
+   UPDATE accounts
+   SET balance = ?,
+   version = version + 1
+   WHERE account_id = ?
+   AND version = ?; → jo version transaction ne initially read kiya tha
 
-Update attempt ke time Database check karta hai ki Row ka current Version
-abhi bhi wahi hai ya nahi jo Transaction ne initially read kiya tha.
+   Outcome:
+     → Affected Rows = 1 → Version same tha → Update successful.
+     → Affected Rows = 0 → Version change ho chuka hai → Conflict detected → Retry/Fail.
 
-
-### QUESTION : DATABASE VERSION KAISE VERIFY KARTA HAI ?
----------------------------------------------------------
-
-Transaction Row ko read karte waqt uska current version bhi read karti hai.
-
-Update ke time wahi initially read kiya gaya version condition mein pass hota hai:
-
-UPDATE accounts
-SET balance = ?,
-    version = version + 1
-WHERE account_id = ?
-  AND version = ?;
-
-Last version = ? = Transaction ne initially jo version read kiya tha.
-
-Affected Rows = 1 → Version same tha → Update successful.
-Affected Rows = 0 → Version change ho chuka hai → Conflict detected → Retry/Fail.
+- Agar version same hai, to iska matlab kisi doosri transaction ne beech me us row ko modify nahi kiya iska matlab conflict nahi hua, changes successfully apply 
+  ho jaate hain aur version increment ho jaata hai. Aur agar version change ho chuka hai, to iska matlab kisi doosri transaction ne beech me us row ko modify kar 
+  diya — matlab concurrency conflict detect hua, Update reject/fail ho jaata hai, aur application retry kar sakti hai.
 
 
-### AGAR VERSION SAME HAI
-----------------------------
+### QUESTION: OPTIMISTIC LOCKING KA BENEFIT KYA HAI ?
+-------------------------------------------------------
 
-Iska matlab hai ki Transaction ke Data read karne ke baad kisi doosri
-concurrent Transaction ne us Row ko successfully modify nahi kiya.
-
-Yaani Conflict nahi hua.
-
-Is situation mein Transaction ke changes successfully update kiye jaate hain
-aur Row ka Version Number generally increment kar diya jaata hai.
+Optimistic Locking me row modify karne ke liye pehle se Exclusive Lock acquire nahi karna padta — isliye doosri concurrent transactions 
+block nahi hoti, aur higher concurrency achieve ho jaati hai.
 
 
-### AGAR VERSION CHANGE HO GAYA HAI
---------------------------------------
+### QUESTION: OPTIMISTIC LOCKING KA LIMITATION KYA HAI ?
+----------------------------------------------------------
 
-Iska matlab hai ki Transaction ke Data read karne ke baad kisi doosri
-concurrent Transaction ne us Row ko successfully modify kar diya.
+Agar same row par frequently concurrent updates ho rahe hain, to version mismatch frequently hoga — updates repeatedly fail honge aur retry karni padti hai. 
+Isse unnecessary retry overhead aur performance issues create hote hain.
 
-Yaani Concurrency Conflict detect ho gaya.
-
-Is situation mein Transaction ka Update reject / fail kiya ja sakta hai
-aur Application required action, jaise Transaction ko retry, kar sakti hai.
-
-
-
-### OPTIMISTIC LOCKING KA BENEFIT
-------------------------------------
-
-Transaction ko row modify karne ke liye pehle se Exclusive Lock acquire karke
-doosri concurrent Transactions ko block nahi karna padta.
-Isse higher concurrency achieve ho sakti hai.
-
-
-### OPTIMISTIC LOCKING KA LIMITATION
---------------------------------------
-
-Agar same Row par frequently concurrent Updates ho rahe hain,
-to Version Mismatch ki wajah se Conflicts frequently occur ho sakte hain.
-
-Aise cases mein Transactions ke Updates repeatedly fail ho sakte hain
-aur Transaction ko retry karna pad sakta hai.
-
-Isse repeated retries ki wajah se unnecessary overhead aur performance
-issues ho sakte hain.
-
-
-### COMMON USE CASE
-----------------------
-
-Optimistic Locking generally un scenarios mein useful hoti hai
-jahan same Row par concurrent Updates relatively rare hote hain.
 
 
 
