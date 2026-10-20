@@ -952,13 +952,9 @@ Example:
 
 
 
-=======================================================================
-# QUESTION: DATABASE TRANSACTIONS & CONCURRENCY CONTROL KYA HOTA HAI ?
-=======================================================================
-
---------------------------------------------
-## QUESTION: DATABASE TRANSACTION KYA HAI?
---------------------------------------------
+=================================================
+# QUESTION: DATABASE TRANSACTIONS KYA HOTA HAI ?
+=================================================
 
 - Database Transaction ek ya multiple operations ka aisa group hai jise Database ek single logical unit of work ki tarah treat karta hai
   matlab ya to saare operations successfully complete hokar commit honge, ya kisi bhi operation ke fail hone par pehle successfully execute
@@ -980,48 +976,29 @@ Example:
 ## QUESTION: EXPLICIT AUR IMPLICIT TRANSACTION KYA HOTA HAI?
 --------------------------------------------------------------
 
-Database Transactions generally do tarah se execute ho sakti hain:
-
-- Explicit Transaction
-- Auto-Commit Transaction
-
-Dono mein main difference yeh hota hai ki transaction ki boundary (kab shuru hoga aur kab khatam)
-kaun decide kar raha hai—database system khud ya fir developer.
-
+DB Transactions 2 categories me divide hoti hain — based on ki transaction ki boundary kaun define karta hai:
 
 1: EXPLICIT TRANSACTION
 -------------------------
 
 Explicit Transaction mein Developer khud Transaction ki boundary define karta hai.
 
-## QUESTION : RAW SQL / WORKBENCH MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
+### QUESTION : RAW SQL / WORKBENCH MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
 ---------------------------------------------------------------------------------
 
-Ek Transaction ke andar multiple related Database Operations ho sakte hain.
+Developer khud transaction ki boundary define karta hai. Transaction ke andar multiple
+READ/WRITE operations ho sakte hain.
 
-In Operations mein:
-
-- READ Operations
-- WRITE Operations
-
-dono include ho sakte hain.
-
-
-## EXAMPLE
-------------
-
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain:
-
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain:
+Example — Account A se Account B me ₹1,000 transfer:
 
 BEGIN TRANSACTION;   
 
--- Operation 1
+-- Operation 1 : Debit
 UPDATE accounts
 SET balance = balance - 1000
 WHERE account_id = 101;
 
--- Operation 2
+-- Operation 2 : Credit
 UPDATE accounts
 SET balance = balance + 1000
 WHERE account_id = 501;
@@ -1029,236 +1006,89 @@ WHERE account_id = 501;
 COMMIT;  
 
 
-## IMPORTANT COMMANDS :
--------------------------
+### COMMANDS :
+---------------
+- BEGIN — transaction start karta hai (kuch DBs me sirf `BEGIN;` bhi chalta hai)
 
-1: BEGIN TRANSACTION; 
-  - Transaction start karta hai.
-  - Kuch Databases mein sirf BEGIN; bhi use kiya ja sakta hai. 
+- COMMIT — Ye tabhi execute hota hai jab transaction ke andar ke saare operations successfully execute ho jaate hain. 
+           Jab execution COMMIT statement tak pahunchta hai, tab COMMIT un saare operations ke changes ko permanently Database me persist kar deta hai.
+           Agar beech me koi operation fail ho jaye, to execution COMMIT tak nahi pahunchta — aur changes persist nahi hote.
 
-
-2: COMMIT;
-  - Transaction ke andar successfully execute hue sabhi Operations ke changes 
-    ko permanently Database mein persist karta hai.
-
-ROLLBACK
-  - Current Transaction ke andar previously successful Operations ke uncommitted changes ko undo karta hai.
-  - Isse Database ka state Transaction start hone se pehle wali consistent state mein wapas aa jaata hai.
+- ROLLBACK — Jab kisi DB transaction ke aandar ka koi operation fail ho, usi same transation ke aandar  pehle ke successfully execute hue operations 
+             ke changes undo karta hai — DB transaction start se pehle wali consistent state me wapas aa jaata hai. 
+             Operation fail hone par transaction automatically abort hoti hai ya active rehti hai — ye DBMS aur error type par depend karta hai.
+             Agar transaction active hai, to developer explicitly `ROLLBACK;` execute karke uncommitted changes undo kar sakta hai.
 
 
-### CASE 1 : TRANSACTION KE SABHI OPERATIONS SUCCESSFULLY COMPLETE HO JAAYE
-------------------------------------------------------------------------------
 
-Script mein COMMIT statement pehle se likha hone ka matlab yeh nahi hai ki Database
-beech mein failure hone ke baad bhi blindly Transaction ko COMMIT kar dega.
-
-Agar Transaction ke previous Operations successfully execute ho jaate hain aur execution 
-COMMIT statement tak pahunch jaati hai, tab COMMIT execute hota hai.
-
-COMMIT successfully execute hone ke baad Transaction ke andar kiye gaye uncommitted changes
-permanently Database mein persist ho jaate hain.
-
-
-### CASE 1 : TRANSACTION KE BEECH MEIN KOI OPERATION FAIL HO JAAYE 
---------------------------------------------------------------------
-
-Operation fail hone ke baad normal execution flow aage COMMIT statement 
-tak proceed nahi karta, isliye COMMIT execute nahi hota. 
-
-Is situation mein pehle successfully execute hue Operations ke changes
-abhi permanently persist nahi hue hote, 
-
-Lekin Transaction automatically abort/rollback hogi ya abhi active rahegi,
-ye DBMS aur error ke type par depend karta hai.
-
-Agar Transaction abhi active hai, to Developer explicitly:
-
-ROLLBACK;
-
-execute karke Transaction ke uncommitted changes ko undo kar sakta hai.
-
-
-## QUESTION : APPLICATION LEVEL MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
+### QUESTION : APPLICATION LEVEL MEIN EXPLICIT TRANSACTION KAISE LIKHTE HAIN ?
 --------------------------------------------------------------------------------
 
-Spring Boot mein commonly @Transactional annotation use ki jaati hai.
+- Spring Boot me commonly @Transactional annotation use hoti hai. Ye Spring ke transaction management framework ko indicate karti hai 
+  ki annotated method ke execution ke around ek Database Transaction manage karna hai.
 
-Spring mein @Transactional transaction management framework ko indicate karta hai
-ki annotated method ke execution ke around ek Database Transaction manage karna hai.
-
-
-Yahan:
-
-@Transactional Method Start
-        ↓
-Database Transaction Start
-        ↓
-Operation 1 → Debit Account A
-        ↓
-Operation 2 → Credit Account B
-        ↓
-All Operations Successful?
-      /             \
-    YES              NO
-     ↓                ↓
-   COMMIT          ROLLBACK
-
+- Flow: Method start → DB transaction start → method ke andar ke operations (jaise debit + credit) execute → method successfully complete → COMMIT, 
+  exception throw → ROLLBACK.
 
 
 
 2: AUTO-COMMIT TRANSACTION
 ---------------------------
 
-Auto-Commit enabled hone par generally har individual SQL statement apni separate
-Transaction ki tarah execute hoti hai.
+- Auto-Commit enabled hone par har SQL statement apni separate transaction ke andar execute hota hai:
+   Statement successful → Automatically COMMIT
+   Statement fail → Us Statement ke uncommitted changes Abort / Rollback
 
-- Statement successful → Automatically COMMIT
-- Statement fail → Us Statement ke uncommitted changes Abort / Rollback
+- Example : Maan lo Auto-Commit enabled hai aur Developer ye query execute karta hai:
 
+  UPDATE accounts
+  SET balance = balance - 1000
+  WHERE account_id = 101;
 
-## EXAMPLE
-------------
+  Database internally is single statement ko ek transaction ke andar execute karta hai. Agar statement successfully execute ho jaata hai, 
+  to changes automatically COMMIT ho jaate hain — permanently persist hote hain. Aur agar statement fail ho jaata hai, to us statement ke 
+  uncommitted changes abort/rollback ho jaate hain — persist nahi hote.
 
-Maan lo Auto-Commit enabled hai aur Developer ye query execute karta hai:
-
-UPDATE accounts
-SET balance = balance - 1000
-WHERE account_id = 101;
-
-Database internally is statement ko ek Transaction ke andar execute karta hai.
-
-
-                SQL Statement
-                      │
-                      v
-        Database executes Statement
-                      │
-              ┌───────┴───────┐
-              │               │
-          SUCCESS            FAIL
-              │               │
-              v               v
-        Auto COMMIT      Abort / Rollback
-              │               │
-              v               v
-     Changes Permanently   Statement ke changes
-        Persisted          Persist nahi honge
+- Auto-commit har SQL statement ko ek separate DB transaction ke andar execute karta hai — dono queries independent transactional boundaries
+  me manage hoti hain. Isliye debit aur credit auto-commit mode me alag-alag transactions hain — Query 1 success ho ke commit ho gayi, Query 2
+  fail ho gayi, aur Query 1 automatically rollback nahi hoti. Isliye multi-step operations (jaise money transfer) ke liye explicit transaction 
+  zaroori hai.
 
 
 
-## IMPORTANT: AUTO-COMMIT MULTIPLE QUERIES KO EK TRANSACTION NAHI BANATA
---------------------------------------------------------------------------
-
-Ye sabse important point hai.
-
-Maan lo Auto-Commit enabled hai:
-
--- Query 1
-UPDATE accounts
-SET balance = balance - 1000
-WHERE account_id = 101;
-
--- Query 2
-UPDATE accounts
-SET balance = balance + 1000
-WHERE account_id = 501;
 
 
-In dono Queries ko Database ek single DB Transaction ka part nahi maanta.
-Balki, har Query apni separate Database Transaction mein independently execute
-hoti hai aur successful hone par independently Auto-COMMIT ho jaati hai.
+=====================================
+# QUESTION: ACID PROPERTIES KYA HAI?
+=====================================
 
-Query 1 → Success → Auto-COMMIT
-
-Query 2 → Fail → Abort / Rollback
-
-Query 2 fail hone par Query 1 automatically Rollback nahi hogi,
-kyunki Query 1 pehle hi independently COMMIT ho chuki hoti hai.
-
-
-
-----------------------------------------
-## QUESTION: ACID PROPERTIES KYA HAI?
-----------------------------------------
-
-ACID Properties Database Transaction ki 4 important properties hain jo ensure 
-karti hain ki Transaction correct aur reliable way mein execute ho.
+ACID 4 properties hain jo ensure karti hain ki DB transaction correct aur reliable way me execute ho.
 
 1. ATOMICITY
 -------------
-
-Transaction ke saare required Operations ya to successfully complete hokar 
-collectively COMMIT honge, ya agar kisi bhi Operation mein failure hota hai,
-to Transaction ke andar kiye gaye kisi bhi Operation ke changes permanently 
-Database mein persist nahi honge.
-
-All Operations Successful
-        ↓
-      COMMIT
-
-Any Required Operation Fails
-        ↓
-     ROLLBACK
+Transaction ke saare operations ya to collectively COMMIT honge — matlab saare changes permanently persist honge — ya kisi bhi ek operation
+ke fail hone par poora transaction ROLLBACK ho jaayega, matlab us transaction ke andar pehle successfully execute hue operations ke changes
+bhi undo ho jaayenge i.e unke changes DB me persist nahi honge.
 
 
 2. CONSISTENCY
 ----------------
+DB Transaction Database ko ek valid and consistent state se doosri valid and consistent state mein le jaaye.
 
-Transaction Database ko ek valid and consistent state 
-se doosri valid and consistent state mein le jaaye.
+Exmaple — 
 
+Account A = ₹10,000, Account B = ₹5,000 — total ₹15,000. Transfer ₹1,000 from A to B.
 
-## EXAMPLE
-------------
+- Success: A = ₹9,000, B = ₹6,000 → total ₹15,000 ✅
+- Fail → Rollback: A = ₹10,000, B = ₹5,000 → total ₹15,000 ✅
 
-Maan lo:
-
-Account A → ₹10,000
-Account B → ₹5,000
-
-Account A se ₹1,000 deduct karke Account B mein ₹1,000 add karne hain.
-
-Initial Total Money = ₹15,000
-
-
-### CASE 1: SUCCESSFUL TRANSACTION
-------------------------------------
-
-Account A → ₹9,000
-Account B → ₹6,000
-
-Final Total Money = ₹15,000
-
-Yaani Transaction successfully complete hone ke baad bhi important business rule maintain raha:
-
-Money create ya destroy nahi hona chahiye.
-
-
-### CASE 2: TRANSACTION FAILS
--------------------------------
-
-Maan lo Account A se ₹1,000 successfully deduct ho gaye:
-
-Account A → ₹9,000
-
-Lekin Account B mein ₹1,000 add karne wali operation fail ho gayi.
-
-Transaction Rollback:
-
-Account A → ₹10,000
-Account B → ₹5,000
-
-Final Total Money = ₹15,000
-
-Yaani failure ke baad bhi rollback, Database ko ek valid aur business-consistent state mein rakhta hai.
+Dono cases me total money same raha — money create/destroy nahi hua. Transaction ne DB ko ek valid state se doosri valid state me hi rakha — yahi Consistency hai.
 
 
 3. ISOLATION
 ---------------
-
-Isolation ka matlab hai ki jab multiple Database Transactions concurrently execute 
-ho rahi hote hai, to ek Transaction ke intermediate / uncommitted changes doosri 
-Transaction ko incorrect way mein affect nahi karna chahiye.
+Isolation ka matlab hai ki jab multiple transactions concurrently execute ho rahi hoti hain, to ek transaction ke intermediate/uncommitted changes doosri 
+transaction ko incorrect way me affect nahi karne chahiye. Ise hum isolation levels se control karte hain.
 
 
 4. DURABILITY
@@ -1268,16 +1098,13 @@ System crash, power failure ya Database restart hone ki situation mein bhi commi
 
 
 
-----------------------------------------------------
-## QUESTION: CONCURRENCY CONTROL KI NEED KYA HAI?
------------------------------------------------------
 
-Concurrency Control ki zarurat tab padti hai jab multiple Transactions ek hi
-time par same data ko access ya modify kar rahi hoti hain.
+==================================================
+# QUESTION: CONCURRENCY CONTROL KI NEED KYA HAI?
+==================================================
 
-Concurrency Control ensure karta hai ki multiple concurrent transactions ek doosre ke 
-execution ke saath interfere na karein aur final Database consistent state mai rahe.
-
+Concurrency Control ki zarurat tab padti hai jab multiple transactions ek hi time par same data ko access ya modify kar rahi hoti hain.
+Ye ensure karta hai ki concurrent transactions ek doosre ke execution ke saath interfere na karein, aur final Database consistent state me rahe.
 
 -----------------------------------------------------
 ## QUESTION: CONCURRENCY SE KYA PROBLEMS AATI HAI ?
