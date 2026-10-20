@@ -1285,137 +1285,50 @@ ko same data par conflicting operations karne se control karta hai.
 ### QUESTION: LOCK GRANULARITY KYA HAI ?
 -----------------------------------------
 
-Lock Granularity batati hai ki Lock Data ke kitne bade portion par apply hua hai.
+Lock Granularity batati hai ki lock data ke kitne bade portion par apply hua hai — ek row, ek database page, poori table, ya poora database.
 
-### EXAMPLE
--------------
-
-Maan lo Transaction T1 Account A ka Balance update kar rahi hai.
-
-Iske liye T1 ko Exclusive Lock acquire karna hoga.
-
-Lekin Exclusive Lock exactly kis Data Unit par lagega?
-
-- Sirf Account A ki Row par
-- Ek Database Page par
-- Puri Accounts Table par
-
-Lock kis level ke Data Unit par apply hoga, isi ko Lock Granularity kehte hain.
-
-
-## COMMON LOCK GRANULARITY LEVELS :
-------------------------------------
+#### COMMON LOCK GRANULARITY LEVELS :
+---------------------------------------
 
 Commonly Locks different levels par apply kiye ja sakte hain:
 
 1. ROW-LEVEL LOCK
 -------------------
 
-Row-Level Lock mein Lock Table ki sirf ek specific Row par apply hota hai.
+- Row-Level Lock me lock table ki sirf ek specific row par apply hota hai.
+  
+- Example — Accounts table: A = ₹10,000, B = ₹5,000, C = ₹8,000. 
 
-### EXAMPLE
------------
+  T1 ne Account A update karne ke liye uski row par X lock liya. Jab tak ye lock active hai, doosri transactions ko Account A ki
+  row par read/write ke liye wait karna padega — but Account B aur C lock nahi hoti, wo parallel accessible rehti hain.
 
-Accounts Table:
-
-Account A → ₹10,000
-Account B → ₹5,000
-Account C → ₹8,000
-
-Transaction T1 Account A ko update karna chahti hai:
-
-T1 → Acquires Exclusive Lock on Account A Row
-
-Jab tak T1 ka Exclusive Lock active hai, doosri Transactions ko
-Account A ki usi Row par conflicting Read/Write Operation perform
-karne ke liye wait karna pad sakta hai.
-
-Lekin Accounts Table ki doosri Rows, jaise Account B aur Account C,
-is specific Row-Level Lock ki wajah se directly locked nahi hoti hain.
-
-
-## BENEFIT
------------
-
-Sirf required Row ko lock karne ki wajah se, Table ki baaki Rows
-unnecessarily block nahi hoti hain.
-
-Isse generally higher Concurrency achieve ki ja sakti hai.
-
-
-### LIMITATION
------------------
-
-Agar ek Transaction bahut zyada Rows par Locks acquire kare,
-to Database ko large number of individual Locks manage karne pad sakte hain.
-
-Isse Lock Management ka overhead increase ho sakta hai.
+- Benefit: Sirf required row lock hoti hai — baaki rows unnecessarily block nahi hoti, higher concurrency milti hai.
+- Limitation: Agar transaction bahut saari rows par locks le, to Database ko large number of individual locks manage karne padte hain — lock management overhead badh jaata hai.
 
 
 2. TABLE-LEVEL LOCK
 ---------------------
 
-Table-Level Lock mein Lock complete Table par apply hota hai.
+- Table-Level Lock mein Lock complete Table par apply hota hai.
 
-Ye generally tab useful hota hai jab Transaction ko Table ke bahut large
-number of Rows par operation perform karna ho.
+- Ye tab useful hai jab transaction ko table ke bahut large number of rows par operation karna ho Aise case mein har
+  Row par individually Lock acquire aur manage karna expensive ho sakta hai, isliye Table-Level Lock use kiya ja sakta hai.
 
-Aise case mein har Row par individually Lock acquire aur manage karna
-expensive ho sakta hai, isliye Table-Level Lock use kiya ja sakta hai.
-
-
-### EXAMPLE
-------------
-
-Maan lo `Accounts` Table mein millions of Rows hain:
-
-Accounts Table:
-
-Account A
-Account B
-Account C
-...
-Millions of Accounts
-
-Ab Database ko `Accounts` Table par ek large-scale administrative operation,
-jaise Table restructuring ya migration, perform karna hai.
-
-Is operation ke dauran Transaction ko ensure karna ho sakta hai ki Table ka
-data kisi doosri concurrent Transaction ke conflicting Read ya Write Operation ki wajah se
-simultaneously modify na ho.
-
-Iske liye:
-
-T1:
-
-Acquire Table-Level Lock
-↓
-Perform Required Table-Wide Operation
-↓
-Complete Operation
-↓
-Release Table-Level Lock
-
-Jab Table-Level Lock active hota hai, to doosri Transactions ko Table par
-conflicting Read ya Write Operations perform karne ke liye wait karna padta hai,
-jab tak Lock release nahi ho jaata.
+- Example — Accounts table me millions of rows hain, aur Database ko ek large-scale migration (write operation) karna hai. 
+            Iske liye transaction Table-Level Exclusive Lock acquire karta hai — jisse us table par koi doosri concurrent 
+            transaction na write kar sakti hai, na read. Transaction operation complete karta hai, phir X lock release karta hai.
 
 
 3. PAGE-LEVEL LOCK
 --------------------
 
-Database Data ko internally fixed-size storage blocks, yaani Pages, mein organize kar sakta hai.
+- Page-level lock me lock ek complete page par lagta hai — page database ki fixed-size storage unit hai jo ki kisi table ki multiple rows contain karta hai.
 
-Page-Level Lock mein Lock ek complete Page par apply hota hai.
+- Lock type shared bhi ho sakta hai (reads ke liye) ya exclusive (writes ke liye).
 
-Agar ek Page mein multiple Rows stored hain aur us Page par Lock acquire ho gaya,
-to doosri Transactions ko us Page mein stored Rows par conflicting operations
-perform karne ke liye wait karna pad sakta hai.
-
-Page-Level Lock ki Granularity:
-
-Row-Level Lock se larger
-Table-Level Lock se smaller
+- Page-Level Lock ki Granularity:
+   → Row-Level Lock se larger
+   → Table-Level Lock se smaller
 
 
 4: DATABASE-LEVEL LOCK  
