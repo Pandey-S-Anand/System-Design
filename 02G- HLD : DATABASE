@@ -622,10 +622,9 @@ bottleneck ban sakta hai. Isliye hum DB ko writes ke liye bhi scale karna hoga �
 
   ┌─────────────┐                       ┌─────────────────────┐
   │   Shard 1   │                       │      Shard 1        │
-  │             │                       │    (replica set)    │
-  │   DB Node   │                       │                     │
+  │             │                       │                     │
   │             │                       │     Primary DB      │
-  │             │                       │          │          │
+  │   DB Node   │                       │          │          │
   │             │                       │    ┌─────┴─────┐    │
   │             │                       │    ▼           ▼    │
   │             │                       │ Replica 1  Replica 2│
@@ -954,7 +953,7 @@ Example:
 
 
 =======================================================================
-# QUESTION. DATABASE TRANSACTIONS & CONCURRENCY CONTROL KYA HOTA HAI ?
+# QUESTION: DATABASE TRANSACTIONS & CONCURRENCY CONTROL KYA HOTA HAI ?
 =======================================================================
 
 --------------------------------------------
