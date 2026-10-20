@@ -1246,148 +1246,43 @@ Database Locks ek Concurrency Control mechanism hain jo multiple concurrent Tran
 ko same data par conflicting operations karne se control karta hai.
 
 -------------------------------
-## QUESTION: TYPE OF LOCKS ?
+### QUESTION: TYPE OF LOCKS ?
 -------------------------------
 
 1: SHARED LOCK (S LOCK)
 ------------------------
+- Shared Lock read operations ke liye use hota hai — multiple concurrent transactions ek hi data ko simultaneously read kar sakti hain. 
+  Lekin jab Shared Lock active hota hai, to koi bhi transaction usi data par write nahi kar sakti — jab tak existing Shared Locks release 
+  na ho jaayein.
 
-Shared Lock Read Operation ke liye use hota hai.
+ Example : Account A balance = ₹10,000.
+  → T1 → Acquire Shared Lock → Read = ₹10,000 ✅
+  → T2 → Acquire Shared Lock → Read = ₹10,000 ✅
+  → T3 → UPDATE Account A → Exclusive Lock required → WAIT.
 
-Multiple Concurrent Transactions ek hi data ko simultaneously 
-Shared Lock ke saath read kar sakti hain.
+   T3 ko tab tak wait karna padega jab tak T1 aur T2 dono Shared Locks release nahi kar dete.
 
-Lekin jab Shared Lock active hota hai, to kisi doosri Transaction
-ko usi data par conflicting Write Operation perform karne ke liye 
-wait karna pad sakta hai, jab tak existing Shared Lock release nahi ho jaata.
-
-
-### EXAMPLE
--------------
-
-Maan lo:
-
-Account A → Balance = ₹10,000
-
-Transaction T1 Account A ka balance read karti hai:
-
-T1 → Acquire Shared Lock
-↓
-Read Balance = ₹10,000
-
-Isi time Transaction T2 bhi Account A ka balance read karna chahti hai:
-
-T2 → Acquire Shared Lock
-↓
-Read Balance = ₹10,000
-
-Dono Transactions ek saath read kar sakti hain:
-
-T1 → READ ✅
-T2 → READ ✅
-
-Lekin ab Transaction T3 Account A ka balance update karna chahti hai:
-
-T3 → UPDATE Account A
-↓
-Exclusive Lock Required
-↓
-WAIT
-
-T3 ko generally tab tak wait karna padega jab tak existing Shared Locks release nahi ho jaate.
-
-
-### CORE IDEA:
----------------
-
-Multiple Reads Allowed, but conflicting Write has to wait.
+- CORE IDEA: Multiple Reads Allowed, but conflicting Write has to wait.
 
 
 
 2. EXCLUSIVE LOCK (X LOCK)
 ----------------------------
 
-Exclusive Lock Write Operations ke liye use hota hai.
+- Exclusive Lock write operations ke liye use hota hai — ye exclusive hai, matlab jab ek transaction ke paas kisi data par X Lock hai, 
+  to koi doosri transaction us data par na READ kar sakti, na WRITE — jab tak X Lock release na ho jaaye.
 
-Agar kisi Data par kisi Transaction ne Exclusive Lock acquire kar rakha hai, 
-to koi doosri Transaction usi Data par:
+  Example — Account A balance = ₹10,000.
 
-- Exclusive Lock acquire nahi kar sakti.
-- Shared Lock bhi acquire nahi kar sakti.
+   → T1 → Acquire Exclusive Lock → Write (Balance = ₹9,000) ✅
+   → T2 → wants Read → Shared Lock required → WAIT
+   → T3 → wants Write → Exclusive Lock required → WAIT
 
-Yaani Exclusive Lock ke dauran doosri Transactions ko conflicting Read 
-ya Write Operations ke liye generally wait karna padta hai.
-
-
-### IMPORTANT
----------------
-
-However, agar kisi Data par kisi Transaction ne Shared Lock acquire kar rakha hai,
-to doosri Transactions usi Data par aur Shared Locks acquire karke simultaneously
-Read Operations perform kar sakti hain. Lekin koi Transaction us Data par Exclusive Lock
-acquire nahi kar sakti jab tak existing Shared Locks release nahi ho jaate.
-
-
-### EXAMPLE
--------------
-
-Maan lo:
-
-Account A → Balance = ₹10,000
-
-
-Transaction T1 Account A ka balance update karna chahti hai:
-
-T1 → Acquire Exclusive Lock
-        ↓
-     Update Balance
-        ↓
-     Lock Active
-
-
-Isi time Transaction T2 Account A ko read karna chahti hai:
-
-T2 → READ
-        ↓
-Shared Lock Required
-        ↓
-       WAIT
-
-
-Isi time Transaction T3 bhi Account A ko update karna chahti hai:
-
-T3 → UPDATE
-        ↓
-Exclusive Lock Required
-        ↓
-       WAIT
-
-
-Jab T1 apna Transaction complete karke Lock release karegi:
-
-
-Jab T1 apna Transaction complete karke Exclusive Lock release karti hai:
-
-T1 → COMMIT / ROLLBACK
-↓
-Release Exclusive Lock
-↓
-Lock Manager waiting Transactions mein se
-kisi eligible Transaction ko Lock grant karta hai.
-
-T2 aur T3 ek saath proceed nahi kar sakte, kyunki:
-
-T2 → Shared Lock Required
-
-T3 → Exclusive Lock Required
-
-aur Shared Lock aur Exclusive Lock ek hi Data par
-simultaneously coexist nahi kar sakte.
-
+  T2 aur T3 dono ko tab tak wait karna padega jab tak T1 apna Exclusive Lock release nahi kar deta.
 
 
 -----------------------------------------
-## QUESTION: LOCK GRANULARITY KYA HAI ?
+### QUESTION: LOCK GRANULARITY KYA HAI ?
 -----------------------------------------
 
 Lock Granularity batati hai ki Lock Data ke kitne bade portion par apply hua hai.
