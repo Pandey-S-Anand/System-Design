@@ -921,200 +921,61 @@ multiple Shards query nahi karni padegi, jisse network latency bhi avoid hogi.
 ## QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KYA HAI ?
 ----------------------------------------------------------
 
-Local Database Transaction ke saare Write Operations
-ek hi Database ke transactional scope ke andar execute kiye jaate hain.
-
-Agar Transaction ke kisi bhi Write Operation mein failure ho jaata hai,
-to Database poori Transaction ko rollback kar sakta hai.
-
-Isse Atomicity ensure hoti hai, yaani Transaction ke saare Write Operations
-successfully complete honge aur unke changes commit honge, ya Transaction ke
-kisi bhi operation mein failure hone ki situation mein pehle successfully
-completed Write Operations ke changes bhi rollback ho jaayenge.
-
-Cross-Shard Database Transaction sharded Database ke context mein hoti hai,
-jahan Database Write Operations multiple independent Shards par execute hote hain.
-
-Har Shard apne respective Write Operation ko apni independent Local
-Database Transaction ke andar execute aur manage karta hai.
+- Local DB Transaction me ek operation ke saare writes ek hi DB ke transactional boundary ke andar hote hain — koi bhi write fail ho to poora
+  transaction rollback ho jaata hai, jisse Atomicity ensure hoti hai. Cross-Shard DB Transaction me ek operation ke writes multiple independent
+  Shards par execute hote hain (kyunki data different Shards ke across distributed hota hai) — har Shard apna write apne DB ke transactional 
+  boundary me independently execute aur manage karta hai.
 
 
---------------
-## PROBLEM ?
---------------
+### QUESTION: CROSS-SHARD DATABASE TRANSACTIONS KI PROBLEM KYA HAI?
+---------------------------------------------------------------------
 
-Problem tab aati hai jab ek Shard par write operation successfully
-complete ho jaaye, lekin doosre Shard par write operation fail ho jaaye.
+Problem tab aati hai jab ek Shard ka write commit ho jaaye, lekin doosre Shard ka write fail ho jaaye. Kyunki dono writes independently 
+different transactional boundaries ke andar execute ho rahe hain, isliye Shard 2 ki failure se Shard 1 ka committed write automatically
+rollback nahi hota — jisse data inconsistency create ho jaati hai.
 
+Example: 
 
-## EXAMPLE :
---------------
+ Client request — Account 101 (balance = ₹1,000) se Account 501 (balance = ₹500) me ₹100 transfer karo. Account Service sharded Account DB use karti hai (Shard Key = `account_id`, routing rule = `hash(account_id)`):
+   - Account 101 → Shard 1
+   - Account 501 → Shard 2
 
-Maan lo Client se request aati hai ki `AccountId = 101` se `AccountId = 501` mein ₹100 transfer karne hain:
+ Ab Account Service ko do write operations perform karne hain, different Shards ke across:
+   - Shard 1: Account 101 se ₹100 debit → SUCCESS → COMMIT
+   - Shard 2: Account 501 me ₹100 credit → FAIL
 
-Ye request system architecture ke through route hote hue eventually 'Account Service' tak pahunchti hai.
+ Before: A = ₹1,000, B = ₹500  
+ After:  A = ₹900, B = ₹500
 
-`Account Service' Account Database ko use karti hai, jo sharded hai.
-
-Ab 'Account Service' ko identify karna hai:
-
-Account 101 kis Shard par stored hai?
-Account 501 kis Shard par stored hai?
-
-Maan lo:
-
-Shard Key = account_id
-
-Aur routing rule hai:
-
-hash(account_id) → Shard
-
-'Account Service' routing rule apply karke identify karti hai ki dono Accounts kis Shards par stored hain:
-
-account_id = 101 → Shard 1
-account_id = 501 → Shard 2
+₹100 source se kat gaya, but destination me add nahi hua kyunki Shard 2 ka transaction fail hone par Shard 1 ka already-committed transaction automatically rollback nahi hota 
+(dono apne-apne Shard ke transactional scope me independently execute hote hain). Isliye system me ₹100 lost ho gaya — yahi cross-shard transaction ki main challenge hai.
 
 
-Ab `Account Service` ko do write operations perform karne hain:
-
-### Operation 1
-----------------
-
-Shard 1:
-Debit ₹100 from Account 101
 
 
-### Operation 2
-----------------
 
-Shard 2:
-Credit ₹100 to Account 501
-
-Ab maan lo `Shard 1` par Account A se ₹100 deduct karne wali database transaction successfully execute aur commit ho jaati hai:
-
-Shard 1 → Account A se ₹100 deduct → SUCCESS → COMMIT
-
-
-Lekin `Shard 2` par Account B mein ₹100 credit karne wali database transaction fail ho jaati hai:
-
-Shard 2 → Account B mein ₹100 add → FAIL
-
-
-### INTIAL STATE:
------------------
-
-Account A → ₹1,000
-Account B → ₹500
-
-
-## Result:
-----------
-Account A → ₹900
-Account B → ₹500
-
-
-Yaani ₹100 source account se successfully deduct ho gaye, lekin destination account mein add nahi hue.
-
-Problem ye hai ki 'Shard 2' par database transaction fail hone ke baad bhi, 'Shard 1' par
-previously committed database transaction automatically rollback / undo nahi hogi.
-
-Kyuki dono database transactions apne respective Shards ke transactional scope
-ke andar independently execute aur manage hoti hain.
-
-Yahi Cross-Shard database transaction ki main challenge hai.
-
-
-==================================================
-#7. DATABASE TRANSACTIONS & CONCURRENCY CONTROL
-==================================================
+=======================================================================
+# QUESTION. DATABASE TRANSACTIONS & CONCURRENCY CONTROL KYA HOTA HAI ?
+=======================================================================
 
 --------------------------------------------
 ## QUESTION: DATABASE TRANSACTION KYA HAI?
 --------------------------------------------
 
-Database Transaction ek ya multiple Database Operations ka
-aisa group hota hai jise Database ek single logical unit of work
-ki tarah treat karta hai.
+- Database Transaction ek ya multiple operations ka aisa group hai jise Database ek single logical unit of work ki tarah treat karta hai
+  matlab ya to saare operations successfully complete hokar commit honge, ya kisi bhi operation ke fail hone par pehle successfully execute
+  hue operations ke changes bhi rollback ho jaayenge.
 
-Transaction ke andar included Operations:
+- Example:
 
-- Ya to sabhi Operations successfully complete honge aur
-  unke changes permanently commit honge.
+  Account A se Account B me ₹1,000 transfer — iske liye do operations chahiye: A se ₹1,000 deduct, aur B me ₹1,000 add.
+  
+     → Without DB Transaction : Agar A se deduction success ho jaaye but B me addition fail ho jaaye, to state — A = ₹9,000, B = ₹5,000. ₹1,000 source
+                                se kat gaye but destination me nahi pahunche business operation partially complete, data inconsistent.
 
-- Ya agar Transaction ke execution ke dauran koi Operation fail ho jaaye, 
-  to Transaction ke andar pehle successfully execute hue Operations ke 
-  changes bhi rollback kar diye jaayenge.
-
-
-Yaani Transaction ensure karti hai:
-
-All Operations Successful
-        ↓
-      COMMIT
-
-Any Operation Failed
-        ↓
-     ROLLBACK
-
-
-## EXAMPLE
-------------
-
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
-
-Initial State
-
-- Account A → ₹10,000
-- Account B → ₹5,000
-
-Required Operations
-- Account A se ₹1,000 deduct karna.
-- Account B mein ₹1,000 add karna.
-
-
-## WITHOUT DATABASE TRANSACTION
---------------------------------
-
-Agar dono Operations independently execute kiye jaayen aur pehla Operation successfully complete ho jaaye:
-
-Account A → ₹9,000
-
-Lekin agar doosra Operation fail ho jaaye, to state ho sakti hai:
-
-Account A → ₹9,000
-Account B → ₹5,000
-
-Yaani ₹1,000 source Account se deduct ho gaye, lekin destination Account mein add nahi hue.
-
-Is situation mein Business Operation partially complete hui hai, jiski wajah se Database
-ka data expected business-consistent state mein nahi hai.
-
-
-## WITH DATABASE TRANSACTION
-------------------------------
-
-Database Transaction dono related Operations ko ek single logical unit 
-of work ki tarah manage karti hai.
-
-Is example mein agar:
-
-Account A se ₹1,000 deduct → SUCCESS
-
-Lekin:
-
-Account B mein ₹1,000 add → FAIL
-
-To Transaction ROLLBACK ho sakti hai.
-
-Final State after ROLLBACK
-
-Account A → ₹10,000
-Account B → ₹5,000
-
-
-Is tarah Transaction partial changes ko permanently persist hone se prevent karne mein help 
-karti hai aur Database ko expected consistent state mein maintain karne mein help karti hai.
-
+     → With DB Transaction : Dono operations ek single unit ki tarah manage hote hain. Agar A se deduction success ho but B me addition fail ho jaaye, to poora 
+                             transaction rollback ho jaata hai — A = ₹10,000, B = ₹5,000 (original state). Is tarah partial changes permanently persist nahi hote, 
+                             aur Database consistent state me rehta hai.
 
 
 --------------------------------------------------------------
