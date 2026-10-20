@@ -1113,164 +1113,83 @@ Ye ensure karta hai ki concurrent transactions ek doosre ke execution ke saath i
 1: LOST UPDATE
 ----------------
 
-Lost Update problem tab hoti hai jab do concurrent Transactions same data ko read karke update karti hain,
-aur ek Transaction ka update doosri Transaction ke update ki wajah se overwrite ho jaata hai.
+- Lost Update tab hoti hai jab do concurrent transactions same data ko read karke update karti hain, aur ek transaction ka update 
+  doosre ke update se overwrite ho jaata hai.
 
+- Exmaple: 
 
-### EXAMPLE: 
--------------
+  Account A ka balance = ₹1,000. Do transactions ek saath — T1: ₹100 deduct, T2: ₹200 deduct.
 
-Maan lo Account A ka current balance hai:
+  → T1 reads balance = ₹1,000 → calculates 1,000 - 100 = 900
+  → T2 reads balance = ₹1,000 → calculates 1,000 - 200 = 800
 
-Balance = ₹1,000
+  Agar T1 pehle update kare (balance = ₹900), phir T2 apni calculated value likh de (balance = ₹800) → final balance = ₹800.
 
-Ek hi time par do Transactions execute hoti hain:
-
-Transaction T1: ₹100 deduct karna
-Transaction T2: ₹200 deduct karna
-
-Dono Transactions same time par current balance read karti hain:
-
-T1 reads Balance = ₹1,000
-T2 reads Balance = ₹1,000
-
-Ab:
-
-T1 calculates: 1000 - 100 = 900
-T2 calculates: 1000 - 200 = 800
-
-Agar T1 pehle update kare:
-
-Balance = ₹900
-
-Aur uske baad T2 apni previously calculated value write kar de:
-
-Balance = ₹800
-
-
-Final Balance:
-
-₹800
-
-Lekin correct Balance hona chahiye tha:
-
-₹1,000 - ₹100 - ₹200 = ₹700
-
-T1 ka ₹100 deduction lost / overwrite ho gaya, kyunki T2 ne old value ₹1,000 ke basis par
-calculate karke apni value later write kar di.
+  Lekin correct balance hona chahiye tha ₹700 (1,000 - 100 - 200). T1 ka ₹100 deduction lost ho gaya — kyunki T2 ne old value (₹1,000)
+  ke basis par calculate karke baad me write kiya.
 
 
 2. DIRTY READ
 ---------------
 
-Dirty Read tab hota hai jab ek Transaction kisi doosri Transaction ke 
-uncommitted changes ko read kar leti hai.
+Dirty Read tab hota hai jab ek transaction (T2) kisi doosri transaction (T1) ke uncommitted changes read kar leti hai aur baad me T1 rollback ho jaati hai,
+matlab uske changes DB me permanently persist nahi hote. Lekin T2 ne wo temporary changes pehle hi padh liye — matlab usne aisa data read kiya jo eventually
+Database me exist hi nahi hua, aur ho sakta hai us galat data ke basis par T2 ne koi aur database operation bhi perform kar diya ho.
 
-Problem isliye hoti hai kyunki jis Transaction ne ye changes kiye hain, 
-woh baad mein ROLLBACK ho sakti hai jisse us transaction ke changes 
-Database mein permanently persist nahi hote.
+Example
 
-Lekin doosri Transaction un temporary changes ko pehle hi read kar 
-chuki hoti hai. Yaani doosri Transaction ne aisa data read kar liya 
-jo eventually Database mein permanently exist hi nahi hua.
+Initial balance = ₹1,000.
 
+- T1 → `UPDATE Balance = ₹1,500` (abhi commit nahi hua)
+- T2 → `READ Balance = ₹1,500` (T1 ke uncommitted changes padh liye)
+- T1 → kuch fail hua → ROLLBACK
 
-### EXAMPLE: 
--------------
-
-Initial Balance = ₹1,000
-
-
-T1 → UPDATE Balance = ₹1,500
-     (Changes abhi COMMIT nahi hue)
-
-
-T2 → READ Balance = ₹1,500
-     (T1 ke uncommitted changes read kar liye)
-
-
-T1 → Something fails
-     ↓
-     ROLLBACK
-
-
-Final Balance = ₹1,000
-
-Lekin T2 ne ₹1,500 read kar liya tha, jabki ye value kabhi permanently commit hi nahi hui.
-
-Isliye T2 ne Dirty Data read kiya.
+Final balance = ₹1,000 — lekin T2 ne ₹1,500 padh liya, jo value kabhi permanently commit hi nahi hui. 
+Yahi Dirty Read hai — T2 ne aisa data read kiya jo eventually DB me exist hi nahi hua.
 
 
 
 3. NON-REPEATABLE READ
 ------------------------
 
-Non-Repeatable Read tab hota hai jab same Transaction ek hi row ko do baar read karti hai, 
-lekin dono reads ke beech kisi doosri Transaction ne us row ka data update karke COMMIT kar diya ho.
-Is wajah se same Transaction ko same row ki different values milti hain.
+Non-Repeatable Read tab hota hai jab same transaction ek hi row ko do baar read karti hai, lekin dono reads ke beech kisi doosri 
+transaction ne us row ko update karke COMMIT kar diya ho — jisse same transaction ko same row ki different values milti hain.
 
-### EXAMPLE: 
--------------
+Example
 
-T1 → Read Account Balance = ₹1,000
+- T1 → Read balance = ₹1,000
+- T2 → Update balance = ₹1,500 → **COMMIT**
+- T1 → Read same row again = ₹1,500
 
-T2 → Update Balance = ₹1,500
-     COMMIT
-
-T1 → Read Same Account Again = ₹1,500
-
-
-T1 ne same Transaction ke andar same row ko do baar read kiya, lekin dono baar different value mili.
-
-First Read  → ₹1,000
-Second Read → ₹1,500
-
-Yahi Non-Repeatable Read hai.
-
+Same transaction ne same row do baar read ki, but different values mili — first ₹1,000, second ₹1,500. Yahi Non-Repeatable Read hai.
 
 
 4. PHANTOM READ
 -----------------
 
-Phantom Read tab hota hai jab same Transaction same query ko do baar execute karti hai, 
-lekin dono executions ke beech kisi doosri Transaction ne new rows INSERT ya existing rows
-DELETE karke COMMIT kar diya ho.
+Phantom Read tab hota hai jab **same transaction same query ko do baar execute karti hai, lekin dono executions ke beech kisi doosri 
+transaction ne naye rows INSERT ya existing rows DELETE karke COMMIT kar diya ho — jisse same query dono baar alag results deti hai.
 
-Yaani same Transaction ne same query do baar execute ki, lekin dono baar alag-alag result mila.
+Example
 
-### EXAMPLE: 
--------------
+T1 — same transaction ke andar do baar query:
 
-Maan lo T1 query execute karti hai:
+BEGIN TRANSACTION;
 
-SELECT * FROM orders
-WHERE customer_id = 101;
+-- Query 1
+SELECT * FROM orders WHERE customer_id = 101;
+-- Result: Order 1, Order 2
 
-T1 ko initially milti hain:
+-- (beech me T2 ka INSERT + COMMIT)
 
-Order 1
-Order 2
+-- Query 2 — same query, same transaction
+SELECT * FROM orders WHERE customer_id = 101;
+-- Result: Order 1, Order 2, Order 3
 
-Ab doosri Transaction T2 ek naya Order insert karti hai:
+COMMIT;
 
-INSERT New Order for customer_id = 101
-COMMIT
-
-Ab T1 same query dobara execute karti hai:
-
-SELECT * FROM orders
-WHERE customer_id = 101;
-
-Ab result:
-
-Order 1
-Order 2
-Order 3
-
-Yaani same Transaction ne same query do baar execute ki, lekin second time ek additional row appear ho gayi.
-
-Ye additional row Phantom Row kehlati hai.
-
+Same transaction ne same query do baar execute ki — lekin second query ke result me ek additional row aa gayi (Order 3), jo first query me nahi thi.
+Ye additional row T2 ne introduce ki thi. Isi additional row ko Phantom Row kehlate hain.
 
 
 
