@@ -135,22 +135,21 @@ Existing database server ko zyada powerful banana — jaise CPU 8 → 32 cores, 
 
 - Horizontal Scaling ke common approaches:
 
-
-DATABASE SCALING
-│
-├── 1. READ-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
-│       │
-│       └── READ REPLICAS
-│
-├── 2. DATABASE PARTITIONING
-│       │
-│       ├── Vertical Partitioning
-│       │
-│       └── Horizontal Partitioning
-│
-└── 3. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
-        │
-        └── SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
+   DATABASE SCALING  
+   │
+   ├── 1. READ-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
+   │       │
+   │       └── READ REPLICAS
+   │
+   ├── 2. DATABASE PARTITIONING
+   │       │
+   │       ├── Vertical Partitioning
+   │       │
+   │       └── Horizontal Partitioning
+   │
+   └── 3. WRITE-INTENSIVE APPLICATION KO KAISE SCALE KAREIN?
+           │
+           └── SHARDING (DISTRIBUTED HORIZONTAL PARTITIONING)
 
 
 
