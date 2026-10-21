@@ -1850,19 +1850,23 @@ i.e failure ke according compensation chain decide karna
 # QUESTION: BUFFER POOL KYA HAI AUR KAISE KAAM KARTA HAI?
 ----------------------------------------------------------
 
-- Jab bhi kisi row/rows par koi bhi operation hota hai — READ, INSERT, UPDATE, ya DELETE — to database ko relevant data page(s) RAM me load karne padte
-  hain disk se (agar RAM me nahi hain). Aur agar us row ko locate karne wala column indexed hai, to us column ka index page bhi RAM me load karna padta 
-  hai disk se (agar RAM me nahi hai) phir required operation perform hota hai.
+- Buffer Pool: RAM ka wo area hai jahan database data pages aur index pages ko temporarily store karta hai. Database aisa isliye karta hai kyunki disk (SSD/HDD) RAM
+  se bahut slow hai — disk se page fetch karne me milliseconds lagte hain, jabki RAM se access nanoseconds me hota hai. Agar har query ke liye required data/index
+  pages disk se fetch karne padte, to har query bahut slow hoti.
+
+- Jab bhi kisi row/rows par koi bhi operation hota hai — READ, INSERT, UPDATE, ya DELETE — to database ko relevant data page(s) Buffer Pool me load karne padte
+  hain disk se (agar Buffer Pool me nahi hain). Aur agar us row ko locate karne wala column indexed hai, to us column ka index page bhi Buffer Pool me load karna 
+  padta hai disk se (agar Buffer Pool me nahi hai) phir required operation perform hota hai.
 
 - Jab kisi table ke kisi column par CREATE INDEX ki request aati hai, to database ko us table ke saare data pages sequentially scan karne padte hain kyunki 
-  index me column values daalne ke liye har row se wo column value nikaalni padti hai. Jo data pages already Buffer Pool me nahi hain, unhe disk se RAM me 
-  fetch karna padta hai. Phir naye index ke liye database free page pool se pages allocate karta hai (ye pages disk par already exist karte hain — previously used, ab free)
-  unhe RAM me load karta hai, aur unse B+ Tree build karta hai. B+ Tree ka har node (root, internal, leaf) ek index page represent karta hai kitne pages chahiye ye column 
-  data ki size par depend karta hai. Ye saare index pages dirty mark hote hain, aur eventually poora B+ Tree (i.e sabhi dirty pages) disk par flush ho jaate hai.
+  index me column values daalne ke liye har row se wo column value nikaalni padti hai. Jo data pages already Buffer Pool me nahi hain, unhe disk se fetch karna 
+  padta hai. Phir naye index ke liye database free page pool se pages allocate karta hai (ye pages disk par already exist karte hain — previously used, ab free)
+  unhe Buffer Pool me load karta hai, aur unse B+ Tree build karta hai. B+ Tree ka har node (root, internal, leaf) ek index page represent karta hai kitne pages chahiye ye 
+  column data ki size par depend karta hai. Ye saare index pages dirty mark hote hain, aur eventually poora B+ Tree (i.e sabhi dirty pages) disk par flush ho jaate hai.
 
   NOTE: Indexed column ki actual values hamesha B+ Tree ke leaf nodes me hoti hain — internal nodes sirf un leaf nodes tak navigate karne ke liye use hote hain.
 
-- Jab kisi table ke kisi column par DROP INDEX ki request aati hai, to database ko sirf us particular index ke saare index pages RAM me chahiye hote hain (agar nahi hain to disk se load).
+- Jab kisi table ke kisi column par DROP INDEX ki request aati hai, to database ko sirf us particular index ke saare index pages Buffer Pool me chahiye hote hain (agar nahi hain to disk se load).
   Phir us index ke saare pages ek saath free mark kar diye jaate hain (Metadata pages mai) ye physically delete nahi hote, aur page ke andar ki individual entries bhi delete nahi karni padti
   (kyunki wo pages future me naye data/index se overwrite ho jaayenge). Isse pages future me naye indexes/data ke liye reuse ho jaate hain.
 
