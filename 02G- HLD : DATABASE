@@ -1562,119 +1562,49 @@ Isliye Circular Wait create nahi hua aur Deadlock prevent ho gaya.
 
 
 
-==============================
-#8. DISTRIBUTED TRANSACTION
-==============================
 
-Distributed Transaction mein ek single larger Business Operation ko 
-complete karne ke liye required Write Operations multiple independent 
-transactional boundaries ke across execute kiye jaate hain.
+==============================================
+# QUESTION: DISTRIBUTED TRANSACTION KYA HAI?
+==============================================
 
-Ye independent boundaries different Services aur unke respective
-Databases ho sakte hain.
+- Distributed Transaction me ek single larger business operation ko complete karne ke liye required write operations multiple independent transactional
+  boundaries ke across execute kiye jaate hain — ye boundaries different services aur unke respective databases ho sakte hain. Har service apne database 
+  ke andar apni local database transaction ke through apna write operation independently execute aur manage karti hai.
 
-Har Service apne Database ke andar apni Local Database Transaction ke
-through respective Write Operation independently execute aur manage karti hai.
+- Agar saare required write operations successfully complete ho jaate hain, to overall business operation successful maana jaata hai. Lekin agar kisi bhi 
+  service ka write operation fail ho jaata hai, to pehle successfully completed write operations ke business effects ko revert karna pad sakta hai taaki 
+  system eventually consistent state me aa sake.
 
-Agar saare required Write Operations successfully complete ho jaate hain,
-to overall Business Operation successful maana jaata hai.
+Example :
 
-Lekin agar kisi bhi Service ka Write Operation fail ho jaata hai, to pehle
-successfully completed Write Operations ke business effects ko revert
-karna pad sakta hai, taaki system eventually consistent state mein aa sake.
+- Maan lo ek E-commerce application microservices architecture use kar rahi hai — Order Service, Inventory Service, Payment Service, har ek ka apna database.
 
+- Customer order place karta hai. Is business operation ko complete karne ke liye 3 write operations chahiye — har service apne dedicated database me local
+  DB transaction ke through apna write operation independently execute karti hai.
 
-## EXMAPLE:
-------------
+   1. Order Service → Create Order (Order DB)
+   2. Inventory Service → Reduce Inventory (Inventory DB)
+   3. Payment Service → Process Payment (Payment DB)
 
-Maan lo ek E-commerce Application hai jo Microservices Architecture use kar rahi hai:
+- Success case: Teeno write operations success → overall business operation successful.
 
-Order Service → Order Database
-Inventory Service → Inventory Database
-Payment Service → Payment Database
+- Failure case: Order creation ✅, Inventory reduction ✅, Payment processing ❌ — ab problem ye hai ki Order aur Inventory ke write operations apne local DB transactions ke through 
+  pehle hi independently commit ho chuki hain. Payment fail hone se wo automatically rollback nahi hote. System ko consistent state me laane ke liye pehle successful writes ke
+  business effects revert karne padte hain — Restore Inventory → Cancel Order → overall operation failed.
 
-Customer ek Order place karta hai.
-
-Is Business Operation ko complete karne ke liye multiple Services
-ke across required write operations execute karne padte hai.
-
-
-1. Order Service
-   → Create Order
-   → Execute Local Database Transaction on Order Database
-
-2. Inventory Service
-   → Reduce Product Inventory
-   → Execute Local Database Transaction on Inventory Database
-
-3. Payment Service
-   → Process Payment
-   → Execute Local Database Transaction on Payment Database
-
-
-Agar saare write operations successfully complete ho jaate hain:
-
-Order Created        → SUCCESS
-Inventory Reduced    → SUCCESS
-Payment Processed    → SUCCESS
-
-To overall Business Operation successful maana jaata hai.
-
-Maan lo:
-
-Order Created        → SUCCESS
-Inventory Reduced    → SUCCESS
-Payment              → FAIL
-
-Ab Payment process nahi ho paayi.
-
-Isliye overall Business Operation ko successful nahi maana ja sakta.
-
-Lekin problem ye hai ki:
-
-- Order pehle hi successfully create ho chuka hai.
-- Inventory pehle hi reduce ho chuki hai.
-
-Ye respective write Operations apni respective Local database transactions
-ke through independently commit ho chuke hain.
-
-Isliye Payment failure ki wajah se Order aur Inventory ke already committed 
-local database transactions automatically rollback nahi honge.
-
-Overall system ko consistent state mein laane ke liye previously successfully 
-completed write operations ke business effects ko revert karna pad sakta hai:
-
-
-Payment Failed
-      ↓
-Restore Inventory
-      ↓
-Cancel Order
-      ↓
-Overall Business Operation Failed
-
-
-Yahan har Write Operation apni respective Service ke andar ek independent Local
-database transaction ke through execute hota hai.
-
-In sabko collectively manage karna, taaki ek failure ki situation mein overall business 
-consistency maintain ki ja sake, Distributed Transaction ka core challenge hai.
+- Yahi Distributed Transaction ka core challenge hai — multiple independent local transactions ko collectively manage karna, taaki failure ki situation me overall business consistency maintain rahe.
 
 
 -----------------------------------------------------------------------------
-## QUESTION: DISTRIBUTED TRANSACTION Vs CROSS-SHARD DATABASE TRANSACTIONS
+## QUESTION: DISTRIBUTED AUR CROSS-SHARD TRANSACTION ME KYA DIFFERENCE HAI?
 -----------------------------------------------------------------------------
 
-Distributed Transaction aur Cross-Shard Transaction dono mein ek Business Operation ke Write Operations
-multiple independent transactional boundaries ke andar execute hote hain. In operations ko coordinate 
-karna zaroori hota hai taaki failure ki situation mein overall consistency maintain rahe.
+- Dono me ek business operation ke write operations multiple independent transactional boundaries ke across execute hote hain — aur failure ki situation 
+  me consistency ke liye inhe coordinate karna zaroori hota hai. Difference sirf boundaries ka hai — Cross-Shard Transaction me ye boundaries same logical 
+  database ke different Shards hote hain, jabki Distributed Transaction me ye different Services aur unke respective Databases hote hain.
 
-1. Cross-Shard Transaction mein ye independent transactional boundaries same logical database system ke different Shards hote hain.
+- Cross-Shard Transaction, Distributed Transaction ka ek specific case hai.
 
-2. Broader Distributed Database Transaction mein ye independent transactional boundaries different Services aur unke respective Databases ho sakte hain.
-
-
-Yaani Cross-Shard Transaction ko Distributed Transaction ka ek specific case maana ja sakta hai.
 
 
 ----------------------------------------------------------------------------------------------
