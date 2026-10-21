@@ -1714,27 +1714,9 @@ Saga me local transactions coordinate karne ke 2 common approaches hain:
     → Reverse: C → B → A (compensating transactions)
 
 
-#### QUESTION : CHOREOGRAPHY-BASED SAGA KI LIMITATIONS KYA HAI ?
------------------------------------------------------------------
 
-- Choreography-based saga me services events ke through directly coordinate karti hain — koi central coordinator nahi. 
-  Isliye agar koi required event consume ya successfully process nahi hota, to saga ka next step execute nahi hota aur 
-  saga incomplete reh jaati hai.
-
-- Isliye production me ye cheezein zaroori hain:
-
-   a) Reliable Message Broker → reliable event delivery
-   b) Retries → temporary failures handle karne ke liye
-   c) Idempotent Consumers → duplicate event processing avoid karne ke liye
-   d) Dead Letter Topic → repeatedly failing events ko handle karne ke liye
-
-Ye sab additional failure-handling aur operational complexity introduce karta hai.
-
-
-
-
-# 2. ORCHESTRATION-BASED SAGA
---------------------------------
+2. ORCHESTRATION-BASED SAGA
+-----------------------------
 
 - Orchestration-Based Saga me ek central component hota hai jo saga ke multiple local transactions ko coordinate aur manage
   karta hai ise Saga Orchestrator kehte hain. Ye bhi ek service hai, but business service nahi — coordination service hai i.e 
@@ -1772,128 +1754,61 @@ Ye sab additional failure-handling aur operational complexity introduce karta ha
 
 
 
-## SAGA PATTERN KI LIMITATIONS :
------------------------------------
+### QUESTION : SAGA PATTERN KI LIMITATIONS KYA HAI ?
+-------------------------------------------------------
 
 1:  TEMPORARY DATA INCONSISTENCY 
 ----------------------------------
-   Saga Pattern mein har Service apni Local Transaction independently commit karti hai. 
-   Isliye Saga execution ke beech kuch time ke liye participating Services ke Databases 
-   ka data temporarily inconsistent state mein ho sakta hai.
 
-   ## EXAMPLE:
-   ------------
+- Saga me har service apni local transaction independently execute aur commit karti hai — isliye saga execution ke beech kuch time ke liye participating services ke databases ka data temporarily inconsistent rehta hai.
+  Jaise hi saga ka final outcome decide ho jaata hai (sab success ya compensation complete), databases eventually consistent state me aa jaate hain. Isliye Saga immediate 
+  consistency nahi deta — ye system ko eventually consistent state me laata hai.
 
-   Order Service
-    → Start Local Transaction on Order DB
-    → Create Order
-    → COMMIT
+- Example: 
+  Order create ✅ → Inventory reserve ✅ → Payment process... (abhi pending). 
 
-   Inventory Service
-    → Start Local Transaction on Inventory DB
-    → Reserve Inventory
-    → COMMIT
-
-   Payment Service
-    → Start Local Transaction on Payment DB
-    → Process Payment...
+  Is waqt Order aur Inventory DB update ho chuke hain, but Payment complete nahi hua, to data temporarily inconsistent hai.
+  Agar saari local transactions success ho gayi, to eventually saare databases consistent ho jaate hain. Aur agar koi bhi 
+  local transaction fail hui, to compensating transactions chalti hain — unke complete hone ke baad saare databases eventually 
+  consistent ho jaate hain.
 
 
-   Is temporary state mein Order aur Inventory ke databases successfully update
-   ho chuke hain, lekin Payment abhi complete nahi hui hai.
-
-   Agar saare Local database Transactions successfully complete ho jaati hain, to eventually
-   sabhi participating  Servies ke Databases consistent state mein aa jaate hain.
-
-   Aur agar kisi bhi Local database transaction mein failure ho jaata hai, to previously successfully 
-   completed Local database transactions ke effects ko reverse karne ke liye Compensating Transactions
-   execute ki jaati hain. Compensating Transactions complete hone ke baad, sabhi participating Databases
-   phir se eventually consistent state mein aa jaate hain.
-
-   Isliye Saga Pattern Immediate Consistency provide nahi karta, balki system ko eventually Consistent State mein laata hai.
-
-
-2:  COMPENSATING TRANSACTIONS KA OVERHEAD
+2: COMPENSATING TRANSACTIONS KA OVERHEAD
 -------------------------------------------
 
-    Saga Pattern mein agar kisi later Local Transaction mein failure ho jaata hai, to pehle successfully
-    completed Local Transactions ke business effects ko logically reverse karne ke liye respective Databases 
-    par Compensating Transactions execute karni padti hain.
-
-    Kyuki har participating Service apni respective Database ke andar apni Local Database Transaction ko independently
-    execute aur commit karti hai, isliye ek Service ki Local Transaction fail hone ki wajah se doosri Services ki previously
-    committed Local Database Transactions automatically rollback nahi hoti hain.
-
-    Isliye failure ki situation mein previously successful local Transaction ke business effects ko explicitly 
-    reverse karne ke liye Compensating transactions ko separately implement aur execute karna padta hai.
-
-    Ye additional application logic, compensation handling aur implementation complexity introduce karta hai.
+Saga me kisi later local transaction ke fail hone par, pehle successfully completed transactions ke business effects ko logically reverse karne
+ke liye respective databases par Compensating Transactions execute karni padti hain. Iska overhead — har step ke liye compensating logic likhni
+padti hai, retries handle karne padte hain, idempotency ensure karni padti hai (duplicate compensation se data corrupt na ho), aur error handling 
+i.e failure ke according compensation chain decide karna
 
 
-
-3: FAILURE HANDLING AND RETRY COMPLEXITY
+3. FAILURE HANDLING AND RETRY COMPLEXITY
 ------------------------------------------
 
-  Distributed Environment mein Network Failure ya Timeout ki wajah 
-  se kisi write operation ka actual result uncertain ho sakta hai.
-
-  ### EXAMPLE:
-  -------------
-
-  Maan lo ek E-commerce Application mein Order Service, Inventory Service aur Payment Service Saga 
-  Orchestration Pattern ke through ek Order process kar rahi hain.
-
-  Saga Orchestrator Payment Service ko Payment process karne ke liye instruct karta hai.
-
-  Payment Service Payment successfully process karke Payment Database mein persist kar deti hai, 
-  lekin uska response Saga Orchestrator tak pahunchne se pehle Network Timeout ho jaata hai.
-
-  Ab Saga Orchestrator ko clear nahi hoga ki Payment Successfully process hui thi, ya Actually fail hui thi.
-
-  Agar Saga Orchestrator Payment Process karne wali Write Operation ko blindly retry kare aur Payment pehle 
-  hi successfully process ho chuki ho, to Customer ko duplicate charge kiya ja sakta hai.
-
-  Isliye Saga mein involved Local Transactions ko generally Idempotent design karna important hota hai.
-
-  Yaani agar kisi Local Transaction ko Network Failure, Timeout ya temporary failure ki wajah se multiple
-  times retry kiya jaaye, to uska final business effect incorrect ya duplicate nahi hona chahiye.
-
-  ### EXAMPLE:
-  ------------ 
-  Agar paymentId = P123 ke liye Payment pehle hi successfully process ho chuki hai,
-  aur Network Timeout ki wajah se Saga Orchestrator ko response receive nahi hua,
-  to same paymentId = P123 ke saath retry request aane par Payment Service ko
-  identify karna chahiye ki paymentId = P123 ka Payment pehle hi process ho chuka hai
-  and Customer ko dobara charge nahi karna chahiye.
-
-  Isliye Saga Pattern mein Network Failures, Timeouts aur Retries ko correctly
-  handle karne ke liye additional logic implement karna padta hai, jisse overall 
-  implementation complexity increase ho sakti hai.
-
-
-4: COMPENSATING TRANSACTION KHUD BHI FAIL HO SAKTI HAI
----------------------------------------------------------
-
-  Saga Pattern mein agar kisi Local Transaction mein failure ho jaata hai, to previously successfully
-  completed Local Transactions ke business effects ko reverse karne ke liye Compensating Transactions 
-  execute ki jaati hain.
+- Distributed environment me network failure ya timeout ki wajah se kisi write operation ka actual result uncertain ho sakta hai — 
+  matlab operation success hua ya fail, ye reliably pata nahi chalta. Ye dono saga types ko affect karta hai:
   
-  Lekin Compensating Transaction khud bhi fail ho sakti hai.
+   a) Orchestration me — operation ho gaya but response timeout ho gaya, to orchestrator ko pata nahi ki success hua ya fail.
+   b) Choreography me — koi required event consume/process nahi hua to saga ka next step trigger nahi hota, aur saga incomplete reh jaati hai.
 
-  ## EXMAPLE:
-  ------------
-   Payment Process → FAIL   
-   ↓
-   Restore Inventory → FAIL
+- Solutions — dono types ke liye common:
 
-  Aisi situation mein Compensating Transaction ke failure aur retries ko properly handle karna padta hai.
+    a) Idempotency — local operations aur compensating transactions dono ko idempotent design karna zaroori hai, taaki multiple retries
+                     se final effect duplicate na ho - jaise `paymentId` already processed hai to dobara charge na karo; waise hi compensation 
+                     already ho chuka hai to dobara reverse na karo.
 
-  Saath hi, Saga mein involved Compensating Transactions ko bhi generally Idempotent design karna important hota hai.
+    b) Retries — Temporary failures handle karne ke liye (but idempotency ke saath, warna duplicate effect)
 
-  Yaani agar Network Failure, Timeout ya temporary failure ki wajah se same Compensating Transaction ko multiple times
-  retry kiya jaaye, to uska business effect duplicate ya incorrect nahi hona chahiye.
- 
- 
+
+- Solutions — choreography-specific (event-based coordination):
+
+  a) Reliable Message Broker — reliable event delivery (events miss na ho)
+  b) Dead Letter Topic (DLT) — repeatedly failing events ko handle karne ke liye (retry limit ke baad)
+
+
+- Ye sab additional failure-handling aur operational logic implement karna padta hai — jisse overall implementation complexity badh jaati hai.
+
+
 
 --------------------------------
 ## SHARDING vs PARTITIONING ?
