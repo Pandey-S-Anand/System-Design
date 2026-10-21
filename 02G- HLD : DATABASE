@@ -1810,110 +1810,66 @@ i.e failure ke according compensation chain decide karna
 
 
 
---------------------------------
-## SHARDING vs PARTITIONING ?
---------------------------------
 
-Database Partitioning mein data ko Rows ya Columns ke basis par multiple
-logical partitions mein divide kiya jaata hai aur ye partitions same 
-database node ke andar manage hote hain.
+==========================================================================================
+# QUESTION: DATABASE ANDAR SE KAISE KAAM KARTA HAI — DATA STORAGE AUR QUERY PERFORMANCE? 
+==========================================================================================
 
-Sharding mein data ko generally Rows ke basis par horizontally divide karke
-multiple independent Database Nodes/Shards ke across distribute kiya jaata hai.
-Sharding ko broadly Horizontal Partitioning ka distributed form samjha jaa sakta hai.
+- Database rows ko fixed-size chunks (Pages) me organize karta hai. Ye pages physical disk ke data blocks 
+  me store hote hain. Ek physical block me ek ya zyada database pages fit ho sakte hain (depending on sizes).
 
+- Database ke perspective se DBMS database pages ko manage karta hai, jabki physical disk level par actual storage blocks (data blocks)
+  ko OS/filesystem/storage layer manage karti hai — dono ke beech mapping DBMS internally maintain karta hai, taaki required database
+  page ko locate kiya ja sake.
 
+- Ek page generally ek specific table ke rows ka subset contain karta hai — ek table ke saare rows ke liye multiple pages
+  chahiye hote hain . Page size DBMS/storage engine par depend — typically 4 KB, 8 KB, ya 16 KB.
 
-==============================================
-#9. DATABASE INTERNALS / QUERY PERFORMANCE
-==============================================
+- Structure of data page -
 
--------------------------------------------------------
-## QUESTION: DATABASE DATA KO STORE KAISE KARTA HAI?
--------------------------------------------------------
-Database data ko individual rows ke form mein directly disk par 
-store nahi karta hai.Instead, database table ke rows ko fixed-size
-chunks, called Pages , mein organize aur store karta hai.
-
-Database Pages eventually physical disk ke data blocks mein store hote hain.
-Physical disk par bahut saare data blocks hote hain, aur har block ka fixed size hota hai.
-Ek physical data block mein ek ya ek se zyada database pages store ho sakte hain, 
-depending on their respective sizes.
-
-Database ke perspective se DBMS database pages ko manage karta hai, jabki physical disk 
-level par actual storage blocks ko OS/filesystem/storage layer manage karti hai.
-
-DBMS internally database pages aur physical disk blocks ke beech mapping maintain karta hai,
-taaki required database page ko locate kiya ja sake.
-
-Ek data page generally ek specific table ke subset of rows contain krta hai, 
-Ek table ke saare rows ko store karne ke liye multiple database pages
-required ho sakte hain.
-
-Database page ka size DBMS/storage engine ke according different ho sakta hai,
-jaise 4 KB, 8 KB, ya 16 KB.
-
-DBMS in database pages ko create aur manage karta hai.
+  ┌──────────────────────────────────┐
+  │         HEADER                   │
+  │  Page No. | Free Space | Checksum│ 
+  ├──────────────────────────────────┤
+  │      DATA RECORDS                │
+  │                                  │
+  │  Row 1 → (1, Anand, 25)          │ ← Table ki actual Row 1
+  │  Row 2 → (2, Rahul, 26)          │ ← Table ki actual Row 2
+  │  Row 3 → (3, Amit, 24)           │ ← Table ki actual Row 3
+  │                                  │
+  ├──────────────────────────────────┤
+  │         OFFSET ARRAY             │
+  │                                  │
+  │  offset[0] → Pointer to Row 1    │
+  │  offset[1] → Pointer to Row 2    │
+  │  offset[2] → Pointer to Row 3    │
+  └──────────────────────────────────┘
 
 
-## STRUCTURE OF DATA PAGE
----------------------------
+----------------------------------------------------------
+# QUESTION: BUFFER POOL KYA HAI AUR KAISE KAAM KARTA HAI?
+----------------------------------------------------------
 
-┌──────────────────────────────────┐
-│         HEADER                   │
-│  Page No. | Free Space | Checksum│ 
-├──────────────────────────────────┤
-│      DATA RECORDS                │
-│                                  │
-│  Row 1 → (1, Anand, 25)          │ ← Table ki actual Row 1
-│  Row 2 → (2, Rahul, 26)          │ ← Table ki actual Row 2
-│  Row 3 → (3, Amit, 24)           │ ← Table ki actual Row 3
-│                                  │
-├──────────────────────────────────┤
-│         OFFSET ARRAY             │
-│                                  │
-│  offset[0] → Pointer to Row 1    │
-│  offset[1] → Pointer to Row 2    │
-│  offset[2] → Pointer to Row 3    │
-└──────────────────────────────────┘
+- Jab bhi kisi row/rows par koi bhi operation hota hai — READ, INSERT, UPDATE, ya DELETE — to database ko relevant data page(s) RAM me load karne padte
+  hain disk se (agar RAM me nahi hain). Aur agar us row ko locate karne wala column indexed hai, to us column ka index page bhi RAM me load karna padta 
+  hai disk se (agar RAM me nahi hai) phir required operation perform hota hai.
 
+- Jab kisi table ke kisi column par CREATE INDEX ki request aati hai, to database ko us table ke saare data pages sequentially scan karne padte hain kyunki 
+  index me column values daalne ke liye har row se wo column value nikaalni padti hai. Jo data pages already Buffer Pool me nahi hain, unhe disk se RAM me 
+  fetch karna padta hai. Phir naye index ke liye database free page pool se pages allocate karta hai (ye pages disk par already exist karte hain — previously used, ab free)
+  unhe RAM me load karta hai, aur unse B+ Tree build karta hai. B+ Tree ka har node (root, internal, leaf) ek index page represent karta hai kitne pages chahiye ye column 
+  data ki size par depend karta hai. Ye saare index pages dirty mark hote hain, aur eventually poora B+ Tree (i.e sabhi dirty pages) disk par flush ho jaate hai.
 
-Jab bhi kisi particular row ya rows par READ / INSERT / UPDATE operation perform karna hota hai, 
-database ko operation perform karne ke liye relevant page/pages ko RAM mein access karna hota hai.
+  NOTE: Indexed column ki actual values hamesha B+ Tree ke leaf nodes me hoti hain — internal nodes sirf un leaf nodes tak navigate karne ke liye use hote hain.
 
-RAM ka woh area jahan database pages temporarily store hote hain, Buffer Pool kehlata hai.
+- Jab kisi table ke kisi column par DROP INDEX ki request aati hai, to database ko sirf us particular index ke saare index pages RAM me chahiye hote hain (agar nahi hain to disk se load).
+  Phir us index ke saare pages ek saath free mark kar diye jaate hain (Metadata pages mai) ye physically delete nahi hote, aur page ke andar ki individual entries bhi delete nahi karni padti
+  (kyunki wo pages future me naye data/index se overwrite ho jaayenge). Isse pages future me naye indexes/data ke liye reuse ho jaate hain.
 
-Agar required page already RAM ke Buffer Pool mein available hai, 
-to database directly usi page par operation perform karta hai.
+  NOTE : Deleted index ke pages dirty mark nahi hote — hence wo disk par baad me flush bhi nahi hote, kyunki unka content change nahi hua. 
+  Sirf unhe free mark kiya gaya hai (ye free-mark entry metadata pages  (system catalog, free-list) me record hoti hai, un index pages ke andar nahi). 
+  Sirf metadata pages dirty hote hain, aur yehi metadata pages eventually disk par flush hote hain.
 
-Agar required page Buffer Pool mein available nahi hai, to database use disk
-se RAM mein load karta hai aur phir required operation perform karta hai.
-
-Operation ke baad, agar page mein changes hue hain (INSERT/UPDATE), toh woh dirty page ban jaata hai.
-Database eventually is modified page ko disk par flush karke persist kar deta hai.
-
-
-Database
-│
-├── Page 1
-│   ├── users table row 1
-│   ├── users table row 2
-│   └── users table row 3
-│
-├── Page 2
-│   ├── users table row 4
-│   ├── users table row 5
-│   └── users table row 6
-│
-└── Page 3
-│   ├── orders table row 1
-│   ├── orders table row 2
-│   └── orders table row 3
-│
-└── Page 4
-    ├── orders table row 4
-    ├── orders table row 5
-    └── orders table row 6
 
 
 -----------------------------------------------------------------
@@ -2851,31 +2807,6 @@ corruption, accidental deletion, ya natural disaster jaisi koi problem ho jaye.
 - Incremental se thoda slow, but Full se fast.
 - Incremental se zyada space leta hai but Full se kam.
 
-
---------------------------------------
-## QUESTION: WAL / REDO LOG KYA HAI?
---------------------------------------
-
-Jab kisi table mein row insert/update karne ki request aati hai, toh DBMS pehle us operation ki entry log mein record
-karta hai — PostgreSQL mein WAL (Write-Ahead Log) aur MySQL InnoDB mein Redo Log. Uske baad DBMS locate karta hai ki row 
-kis data page mein insert/update karni hai. Agar page Buffer Pool mein nahi hai, toh use disk se RAM mein load karta hai.
-Phir page mein change karta hai aur page ko dirty mark kar deta hai. Baad mein dirty page disk par flush hota hai.
-
-
-### QUESTION: DBMS DIRTY PAGE KO TURANT DISK PAR KYUN NAHI LIKHTA HAI ?
---------------------------------------------------------------------------
-
-Disk I/O RAM se bahut slow hota hai. Ek page ke Buffer Pool (RAM) mein load hone ke baad, multiple operations / DB transactions
-usi page par apne changes apply karte hain, page modify hota rehta hai aur dirty mark ho jaata hai. In sab changes ko batch mein 
-disk par flush karna efficient hota hai. Har change ko individually disk par write karne se random I/O badh jaati hai, jo costly hai.
-
-Ye batch flush generally checkpoint ke through hota hai — ek aisa point jahan DBMS saare accumulated 
-dirty pages (jo us point tak dirty hue hain) ko disk par persist kar deta hai.
-
-WAL/redo log bhi hamesha turant disk par store nahi hota — wo pehle log buffer (RAM) mein accumulate hota hai, aur jab bhi koi DB 
-transaction commit hota hai, tab mandatory flush hota hai. Isse guarantee milti hai ki committed data crash ke baad bhi recover ho sakega.
-
-Since WAL/redo log already durability guarantee kar raha hai, data page ko turant disk par likhne ki zaroorat nahi hoti.
 
 
 ### QUESTION: CRASH RECOVERY KAISE HOTA HAI ?
