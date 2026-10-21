@@ -1433,67 +1433,24 @@ Isse unnecessary retry overhead aur performance issues create hote hain.
 
 
 
-
-
 ---------------------------------------------
 ## QUESTION: TWO-PHASE LOCKING (2PL) KYA HAI?
 ---------------------------------------------
+- 2PL ek concurrency control protocol hai jo define karta hai ki transaction locks ko kis order me acquire aur release karegi 
+  jisse concurrent transactions safely coordinate hoti hain.
 
-Two-Phase Locking (2PL) ek Concurrency Control Protocol hai jo define karta hai
-ki ek Database Transaction Locks ko kis order mein Acquire aur Release karegi.
+- Locking behavior do phases me divided hota hai:
 
-Ye concurrent Transactions ko safely coordinate karne mein help karta hai.
+ 1. Growing Phase
+    → Transaction required locks acquire karti hai — but koi bhi acquired lock release nahi kar sakti.
 
-2PL ke according Transaction ka Locking behavior do phases mein divided hota hai:
+ 2. Shrinking Phase
+    → Jaise hi transaction growing phase ka pehla lock release karti hai, wo shrinking phase me enter ho jaati hai. 
+      Ab wo koi naya lock acquire nahi kar sakti — sirf acquired locks gradually release kar sakti hai (saare ek saath release karna zaroori nahi).
+      Eventually, transaction complete hone par uske saare acquired locks release ho jaate hain.
 
-1. Growing Phase
-2. Shrinking Phase
-
-
-1. GROWING PHASE
------------------
-
-Growing Phase mein Transaction required Locks acquire kar sakti hai.
-Lekin is Phase mein Transaction koi acquired Lock release nahi kar sakti.
-
-
-2. SHRINKING PHASE
--------------------
-
-Transaction jaise hi Growing Phase mein acquired Locks mein se pehla Lock
-release karti hai, woh Shrinking Phase mein enter kar jaati hai.
-
-Lekin ek baar Transaction Shrinking Phase mein enter kar jaaye, uske baad
-woh koi naya Lock acquire nahi kar sakti.
-
-Shrinking Phase enter karte hi Transaction ko apne saare Locks ek saath
-release karna zaroori nahi hai. Woh acquired Locks ko gradually release
-kar sakti hai.
-
-Eventually, Transaction complete hone par uske acquired Locks release ho
-jaate hain.
-
-
-
-## EXAMPLE
-----------
-
-Maan lo Transaction T1 ko Account A aur Account B update karne hain:
-
-Acquire X Lock → Account A
-↓
-Acquire X Lock → Account B
-↓
-Update A and B
-↓
-Release Lock → Account A
-↓
-Release Lock → Account B
-
-Ye 2PL follow karta hai kyunki Transaction ne pehle required Locks acquire kiye aur uske baad Locks release kiye.
-
-Lock release karna start karne ke baad Transaction ne koi naya Lock acquire nahi kiya.
-
+- Example : T1 ko Account A aur B update karne hain: → Acquire X lock on A → Acquire X lock on B → Update A, B → Release lock A → Release lock B
+            Ye 2PL follow karta hai — pehle saare locks acquire, phir release start
 
 
 ## LIMITATIONS
