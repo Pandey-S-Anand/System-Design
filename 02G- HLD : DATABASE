@@ -1588,11 +1588,12 @@ Example :
 
 - Success case: Teeno write operations success → overall business operation successful.
 
-- Failure case: Order creation ✅, Inventory reduction ✅, Payment processing ❌ — ab problem ye hai ki Order aur Inventory ke write operations apne local DB transactions ke through 
-  pehle hi independently commit ho chuki hain. Payment fail hone se wo automatically rollback nahi hote. System ko consistent state me laane ke liye pehle successful writes ke
-  business effects revert karne padte hain — Restore Inventory → Cancel Order → overall operation failed.
+- Failure case: Order creation ✅, Inventory reduction ✅, Payment processing ❌ — ab problem ye hai ki Order aur Inventory ke write operations apne local DB transactions ke
+  through pehle hi independently commit ho chuki hain. Payment fail hone se wo automatically rollback nahi hote. System ko consistent state me laane ke liye pehle successful 
+  writes ke business effects revert karne padte hain — Restore Inventory → Cancel Order → overall operation failed.
 
-- Yahi Distributed Transaction ka core challenge hai — multiple independent local transactions ko collectively manage karna, taaki failure ki situation me overall business consistency maintain rahe.
+- Yahi Distributed Transaction ka core challenge hai — multiple independent local transactions ko collectively manage karna, taaki failure ki situation me overall business
+  consistency maintain rahe.
 
 
 -----------------------------------------------------------------------------
@@ -1614,180 +1615,60 @@ Example :
 1: TWO-PHASE COMMIT (2PC) (Database-level coordination)
 ----------------------------------------------------------
 
-Cross-Shard Transaction ke Write Operations same logical Database ke
-multiple independent Shards par execute hote hain.
+- Cross-Shard Transaction me writes multiple independent shards (same logical database ke) par execute hote hain — inhe coordinate karne ke liye ek 
+  Transaction Coordinator use hota hai (database/transaction management layer ka component). 2PC ek distributed transaction protocol hai jisme 
+  coordinator transaction ko 2 phases me manage karta hai — PREPARE aur  COMMIT / ABORT PHASE.
 
-In write operations ko coordinated way mein manage karne ke liye
-ek Transaction Coordinator use kiya ja sakta hai.
+- NOTE : 2PC sirf same database ke shards tak limited nahi — multiple different databases ke across bhi use ho sakta hai, provided wo XA/distributed
+  transaction support karte hon. Lekin modern microservices me services ke across 2PC generally avoid kiya jaata hai — blocking/locks, tight coupling, 
+  aur network latency/failures ki wajah se.
 
-Transaction Coordinator Database / Transaction Management layer ka ek component
-hota hai jo sabhi participating Shards ko coordinate karta hai.
-
-Two-Phase Commit (2PC) ek Distributed Transaction Protocol hai jisme 
-Transaction Coordinator transaction ko do phases mein manage karta hai:
-
-- PREPARE PHASE
-- COMMIT / ABORT PHASE
+- Example:  Account A (Shard 1) se Account B (Shard 2) me ₹1,000 transfer — dono accounts same logical Account Database ke different Shards me stored hain.
 
 
-### IMPORTANT
-----------------
-
-2PC sirf same logical Database ke different Shards tak limited nahi hai.
-
-Ye multiple different Databases / Resource Managers ke across bhi use ho sakta hai,
-provided participating Databases / Resource Managers XA / Distributed Transaction support karte hon.
-
-Lekin modern Microservices architecture mein Services ke across 2PC/XA generally avoid kiya jaata hai because:
-
-1. Blocking / Resource Locking**
-2. Tight Coupling between Services**
-3. Network Latency and Failures**
-
-
-
-## EXAMPLE
------------
-
-Maan lo Account A se Account B mein ₹1,000 transfer karne hain.
-
-Dono Accounts same logical Account Database ke different Shards mein stored hain:
-
-Account A → Shard 1
-Account B → Shard 2
-
-
-## PHASE 1: PREPARE
+### PHASE 1: PREPARE
 ---------------------
 
-Transaction Coordinator participating Shards ko PREPARE request bhejta hai.
+Coordinator participating shards ko PREPARE bhejta hai. Har shard apna operation validate karta hai:
 
-Transaction Coordinator
-        |
-        +------> Shard 1 → PREPARE
-        |
-        +------> Shard 2 → PREPARE
+  → Shard 1 : (A se ₹1,000 deduct) — account exist? balance sufficient? frozen nahi?
+  → Shard 2 : (B me ₹1,000 add) — account exist? active? frozen nahi?
 
+   Outcome:
 
-Har participating Shard apne respective Write Operation ko validate karta hai
-aur check karta hai ki Transaction ko later successfully commit karna possible
-hai ya nahi.
+   a) Operation possible → Shard apni local transaction ko prepared state me rakhta hai, required locks isi phase me acquire karke leta hai, 
+                           aur coordinator ko READY response deta hai — changes abhi commit nahi hote, sirf commit ki guarantee ban jaati hai.
 
-
-### SHARD 1
-------------
-
-Shard 1 ka operation:
-
-Account A se ₹1,000 deduct karna.
-
-Shard 1 check karega:
-
-* Account exist karta hai?
-* Balance sufficient hai?
-* Account blocked/frozen nahi hai?
+   b) Operation possible nahi → FAIL response.
 
 
-### SHARD 2
--------------
 
-Shard 2 ka operation:
-
-Account B mein ₹1,000 add karna.
-
-Shard 2 check karega:
-
-* Account B exist karta hai?
-* Account active hai?
-* Account blocked/frozen nahi hai?
-
-
-### AGAR OPERATION POSSIBLE HAI:
----------------------------------
-
-Shard apni Local Database Transaction ko Prepared State mein rakh kar
-required resources / locks hold kar let hai aur Transaction Coordinator ko
-READY response deta hai.
-
-Yaani:
-
-"Main transaction commit karne ke liye ready hoon."
-
-Is stage par changes abhi final commit nahi hote.
-
-
-### AGAR OPERATION POSSIBLE NAHI HAI:
---------------------------------------
-
-Shard response deta hai:
-
-FAIL
-
-Yaani:
-
-"Main transaction commit karne ke liye ready nahi hoon."
-
-
-## PHASE 2: COMMIT / ABORT
+### PHASE 2: COMMIT / ABORT
 -----------------------------
 
-Prepare Phase complete hone ke baad Transaction Coordinator
-sabhi participating Shards ke responses receive karta hai.
+Prepare phase complete hone ke baad Coordinator saare shards ke responses receive karta hai:
 
-### AGAR SABHI SHARDS 'READY' STATE MEIN HAIN:
--------------------------------------------------
-
-Agar sabhi participating Shards READY response dete hain,
-to Transaction Coordinator sabhi Shards ko COMMIT command bhejta hai.
-
-Iske baad har Shard apni respective Local Database Transaction ko final COMMIT
-kar deta hai aur required changes permanently persist ho jaate hain.
+a) Sabhi READY → Coordinator sabhi shards ko COMMIT bhejta hai → har shard apni local DB transaction ko commit karta hai → changes permanently persist.
+b) Koi bhi FAIL → Coordinator sabhi shards ko ABORT bhejta hai → prepare phase me liye gaye locks/resources release ho jaate hain → transaction cancel.
 
 
-### AGAR KOI BHI PARTICIPATING SHARD 'FAIL' STATE MEIN HAI:
-------------------------------------------------------------
 
-Agar koi bhi participating Shard FAIL response deta hai,
-to Transaction Coordinator sabhi participating Shards ko ABORT
-command bhejta hai.
+### QUESTION: TWO-PHASE COMMIT (2PC) KA BENEFIT KYA HAI ? - IMMEDIATE CONSISTENCY
+------------------------------------------------------------------------------------
 
-Iske baad jin Shards ne Prepare Phase ke dauran locks / resources acquire
-kiye the, woh transaction ko abort karke acquired locks / resources release
-kar dete hain and Transaction cancel ho jaata hai.
+2PC me Coordinator saare shards ke responses ke basis par ek atomic decision leta hai — ya to sabhi shards ko COMMIT, ya sabhi ko ABORT. 
+Is atomic decision ki wajah se saare shards par changes ek saath reflect/persist ya rollback hote hain. Isliye 2PC Immediate Consistency deta hai.
 
 
-## CORE IDEA :
---------------
+### QUESTION: TWO-PHASE COMMIT (2PC) KA LIMITATIONS KYA HAI ?
+---------------------------------------------------------------
 
-All Shards Ready
-      ↓
-Commit Everywhere
+1. Higher latency: Coordinator ko multiple participating shards ke saath network communications karni padti hain — isse overall distributed transaction ki latency badh jaati hai.
 
-Any Shard Fails
-      ↓
-Abort Everywhere
+2. Stuck Transactions : Prepare phase me shards required locks/resources reserve karke rakhte hain. Agar Coordinator COMMIT/ABORT decision bhejne me delay kare ya crash ho jaaye,
+                        to shards khud se decision lekar locks release nahi kar sakte — isliye acquired resources unnecessarily blocked rehte hain, baaki transactions forever wait
+                        karti reh jaati hain, aur overall database throughput drop ho jaata hai.
 
-
-## MAIN BENIFIT - IMMEDIATE CONSISTENCY
--------------------------------------------
-
-2PC mein Coordinator sabhi participating shards ke responses ke base par ek 
-saath COMMIT ya ABORT execute karta hai. Is atomic decision ki wajah se saare 
-shards par changes ek saath reflect ya rollback hote hain, jisse Immediate Consistency milti hai.
-
-
-## LIMITATIONS :
-------------------
-
-1. Multiple shards ko coordinate karne ke liye Transaction Coordinator ko participants
-   ke saath multiple network communications karni padti hain. Is wajah se Distributed
-   transaction ki overall latency increase ho sakti hai.
-
-2. Prepare Phase ke dauran participating shards required locks / resources reserve karke rakhte hain.
-   Agar Transaction Coordinator COMMIT / ABORT decision bhejne mein delay kare ya crash ho jaaye, to shards
-   akele decision lekar locks release nahi kar sakte. Is wajah se resources unnecessarily locked rehte hain,
-   baaki transactions forever wait karti reh jaati hain (Hanging / Stuck Transactions), aur overall database 
-   throughput drop ho jata hai.
 
 
 
