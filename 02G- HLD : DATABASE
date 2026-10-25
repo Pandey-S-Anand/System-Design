@@ -2080,7 +2080,7 @@ Index `(city, age, gender)` par bana hai — column order important hai. B+ Tree
  Sorting hierarchy:
 
  a) Pehle `city` ke basis par sorted — Bangalore → Delhi → Mumbai (alphabetical)
- b) Same city ke andar `age`** ke basis par sorted — Bangalore me 20 → 25 → 30 (ascending)
+ b) Same city ke andar `age` ke basis par sorted — Bangalore me 20 → 25 → 30 (ascending)
  c) Same city + age ke andar `gender` ke basis par sorted — (Bangalore, 20, F) → (Bangalore, 20, M)
 
 
@@ -2228,23 +2228,18 @@ Few data pages sequentially padhna relatively fast hai compared to index ke thro
 ## QUESTION: COVERING INDEX KYA HOTA HAI?
 --------------------------------------------
 
-Covering Index ek aisa index hota hai jo query ke saare required columns (SELECT, WHERE, ORDER BY, GROUP BY, JOIN) ko khud hi cover kar leta hai —
-matlab query ke output aur filter/sort mai use hone wale columns ke liye hume actual table (row) tak jaane ki zaroorat hi nahi padti.
-Sirf B+ Tree ke relevant leaf node se hi saari required values mil jaati hain, kyunki wo columns leaf node par already stored hote hain.
-Isse extra disk I/O bachti hai (data page fetch karne ki zaroorat nahi) aur query fast hoti hai. Covering index koi alag type nahi hai — 
-ye ek property hai jo kisi bhi index mein ho sakti hai.
+Covering Index ek aisa index hota hai jo query ke saare required columns (SELECT, WHERE, ORDER BY, GROUP BY, JOIN) ko khud hi cover kar leta hai — matlab output aur filter/sort me use hone wale columns
+ki values ke liye actual table (row) tak jaane ki zaroorat hi nahi padti. Sirf B+ Tree ke relevant leaf node se hi saari values mil jaati hain, kyunki wo columns leaf me already stored hote hain. Agar 
+data page Buffer Pool me nahi hai, to disk I/O bachti hai; aur agar Buffer Pool me already hai, tab bhi covering index us page ko access nahi karta — Buffer Pool lookup, aur row parsing ka overhead 
+bhi avoid ho jaata hai. Dono cases me fayda. Covering index koi alag type nahi hai — ye ek property hai jo kisi bhi index me ho sakti hai.
 
-
-Agar tumhe pata hai ki ek particular query bahut frequent hai, toh uske saare columns ko mila ke ek composite index bana do:
+Agar tumhe pata hai ki ek particular query bahut frequent hai, to uske saare columns ko mila ke ek composite index bana do:
 
 -- Frequent query
 SELECT city, age FROM users WHERE city = 'Bangalore' ORDER BY age;
 
 -- Covering index
 CREATE INDEX idx_cover ON users(city, age);
-
-Yahan query ko sirf city aur age chahiye — aur dono index (city, age) mein hi maujood hain. 
-Isliye DBMS sirf B+ Tree leaf se hi answer de deta hai — table (actual row) touch hi nahi karta.
 
 
 
