@@ -1848,7 +1848,7 @@ i.e failure ke according compensation chain decide karna
 
 
 ----------------------------------------------------------
-# QUESTION: BUFFER POOL KYA HAI AUR KAISE KAAM KARTA HAI?
+## QUESTION: BUFFER POOL KYA HAI AUR KAISE KAAM KARTA HAI?
 ----------------------------------------------------------
 
 - Buffer Pool: RAM ka wo area hai jahan database data pages aur index pages ko temporarily store karta hai. Database aisa isliye karta hai kyunki disk (SSD/HDD) RAM
@@ -1899,6 +1899,36 @@ i.e failure ke according compensation chain decide karna
   update karta hai — wahan us index ke saare pages free mark kar deta hai. Ye index pages physically delete nahi hote, aur index page ke andar ki entries bhi delete
   nahi karni padti kyunki wo pages future me naye row/index se overwrite ho jaayenge. Isse pages future me naye indexes/row ke liye reuse ho jaate hain. Sirf metadata 
   pages dirty hote hain aur yehi eventually disk par flush hote hain.
+
+
+--------------------------------------
+## QUESTION: WAL / REDO LOG KYA HAI?
+--------------------------------------
+
+Jab kisi table me row INSERT/UPDATE/DELETE ki request aati hai, DBMS pehle us operation ki entry log me record karta hai — PostgreSQL me WAL (Write-Ahead Log), MySQL InnoDB me Redo Log.
+Uske baad DBMS relevant data page locate karta hai — index ya full table scan ke through (ye Query Optimizer ka decision hota hai) — aur us data page ko Buffer Pool me load karta hai
+(agar already nahi hai). Phir data page me change karta hai, aur page ko dirty mark kar deta hai. Baad me dirty page disk par flush hota hai.
+
+
+### QUESTION: DBMS DIRTY PAGE KO TURANT DISK PAR KYUN NAHI PERSIST KAR DETA?
+-------------------------------------------------------------------------------
+
+Kyunki ek data page par multiple transactions apne changes apply karte rehte hain. Aur disk I/O RAM se bahut slow hai — isliye har transaction ke commit hote hi modified data page ko individually
+disk par flush karna costly hai (har write random I/O create karti hai). Isliye in sab changes ko ek saath (batch me) flush karna efficient hota hai — ye batch flush checkpoint ke through hota hai, 
+matlab ek aisa point jahan DBMS saare accumulated dirty pages disk par persist kar deta hai.
+
+
+### QUESTION: WAL / REDO LOG KI ZARURAT KYA HAI?
+-------------------------------------------------
+
+- Kyunki jab bhi koi DB transaction kisi data page ko modify karna chahti hai, to wo us data page ko hamesha RAM (Buffer Pool) me laakar us par modification perform karti hai — aur ye data pages 
+  turant disk par persist nahi hote (batch flush / checkpoint pe flush hote hain). Maan lo ek transaction data page ko RAM me modify karke commit ho gayi — but us data page ka change abhi disk par
+  flush nahi hua. Agar us beech DB server (jis par database hosted hai) crash ho jaye — to us transaction ka wo committed change lost ho jaayega, kyunki RAM volatile hai.
+
+- Isliye transaction ke commit hone se pehle hi us operation ki entry log me persist ki jaati hai — phir data page me change hota hai, aur eventually data page disk par persist hota hai. 
+  Crash hone par committed changes log se replay karke corresponding data pages par apply kiye jaate hain — kyunki log entry already disk par safe hai.
+
+- Log bhi hamesha turant disk par nahi persist hota hai — pehle log buffer (RAM) me accumulate hota hai. But transaction commit hone par wo logs flush ho jaate hain disk par — isse durability guarantee milti hai.
 
 
 ----------------------------------------------------------------
