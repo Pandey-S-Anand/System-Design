@@ -1855,26 +1855,50 @@ i.e failure ke according compensation chain decide karna
   se bahut slow hai — disk se page fetch karne me milliseconds lagte hain, jabki RAM se access nanoseconds me hota hai. Agar har query ke liye required data/index
   pages disk se fetch karne padte, to har query bahut slow hoti.
 
-- Jab bhi kisi row/rows par koi bhi operation hota hai — READ, INSERT, UPDATE, ya DELETE — to database ko relevant data page(s) Buffer Pool me load karne padte
-  hain disk se (agar Buffer Pool me nahi hain). Aur agar us row ko locate karne wala column indexed hai, to us column ka index page bhi Buffer Pool me load karna 
-  padta hai disk se (agar Buffer Pool me nahi hai) phir required operation perform hota hai.
+- Jab bhi row INSERT ki request aati hai, DBMS Free Space Map se lookup karta hai (ye map track karta hai ki us table ke existing data pages me se har page me kitni free space hai)
+  aur us lookup ke basis par aisa page choose karta hai jisme ye row fit ho sake. Us page ko Buffer Pool me load karta hai (agar already nahi hai), row insert karta hai, aur page ko
+  dirty mark kar deta hai. Eventually wo dirty page disk par flush ho jaata hai aur data disk par persist ho jaata hai.
 
-- Jab kisi table ke kisi column par CREATE INDEX ki request aati hai, to database ko us table ke saare data pages sequentially scan karne padte hain kyunki index me 
+  Note: Agar us table ke different columns par indexes defined hain, to un saare index pages ko Buffer Pool me load kiya jaata hai (agar already nahi hain). Phir har B+
+  Tree ko traverse karke, naye row ke insert hone se introduce hone wali entry ko corresponding B+ Tree ke leaf node me insert kiya jaata hai — aur un index pages ko dirty mark
+  kar diya jaata hai. Wo bhi eventually disk par flush ho jaate hain aur persist ho jaate hain.
+
+- Jab bhi kisi row/rows par READ, UPDATE, ya DELETE operation hota hai — do phases hote hain:
+
+  1. Planning Phase: Query execution se pehle Query Optimizer statistics metadata (cardinality — column me kitni distinct values; selectivity — column kitna achha filter karta hai; 
+     histograms — column ki distribution, kaunsi values kitni baar aati hain) se estimate karta hai ki WHERE clause kitni rows match karegi. Optimizer us table ke liye defined saare 
+     indexes check karta hai:
+
+     a) Agar koi bhi suitable index defined nahi hai (query ke columns ke liye) → full table scan hi option hai
+
+     b) Agar ek ya zyada suitable indexes hain → optimizer estimate ke basis par decide karta hai — full scan ya index lookup (kaunsa zyada efficient hai) — aur agar index, to kaunsa index
+
+        → Example: Maan lo query ke WHERE clause me `city` aur `age` dono hain, aur table par 3 indexes hain — `idx_city`, `idx_age`, `idx_city_age` (composite). Optimizer chaaron options
+          full scan, idx_city, idx_age, idx_city_age — ka estimated rows compare karega. Composite index sabse kam rows scan karwayega — wohi choose karega.
+
+  2. Execution Phase (Page fetch): Jo plan choose hua, uske according:
+
+     a) Full table scan → saare data pages Buffer Pool me load hote hain (jo already nahi hain), sequentially padhe jaate hain
+
+     b) Index lookup → Corresponding index pages Buffer Pool me load hote hain disk se (agar already nahi hain buffer pool mai), phir B+ Tree traverse hota hai:
+        - Clustered index → leaf node khud data page hai — leaf tak pahunchte hi row mil jaati hai (koi alag data page load nahi)
+        - Non-clustered index → leaf node me data page ka reference hota hai — us data page ko bhi Buffer Pool me load karna padta hai disk se (agar already nahi hain),
+                                phir row retrieve hoti hai
+
+
+- Jab kisi table ke kisi column par CREATE INDEX ki request aati hai, to DBMS ko us table ke saare data pages sequentially scan karne padte hain kyunki index me 
   column values daalne ke liye har row se wo column value nikaalni padti hai. Jo data pages already Buffer Pool me nahi hain, unhe disk se fetch karna padta hai. 
-  Phir naye index ke liye database free page pool se pages allocate karta hai (ye pages disk par already exist karte hain — previously used, ab free) unhe Buffer Pool me load karta hai,
-  aur unse B+ Tree build karta hai. B+ Tree ka har node (root, internal, leaf) ek index page represent karta hai, kitne pages chahiye ye column data ki size par depend karta hai. 
-  Ye saare index pages dirty mark hote hain, aur eventually poora B+ Tree (i.e sabhi dirty pages) disk par flush ho jaate hai.
+  Phir naye index ke liye DBMS free page pool se pages allocate karta hai (ye pages disk par already exist karte hain — previously used, ab free) unhe Buffer Pool 
+  me load karta hai, aur unse B+ Tree build karta hai. B+ Tree ka har node (root, internal, leaf) ek index page represent karta hai, kitne pages chahiye ye column 
+  data ki size par depend karta hai. Ye saare index pages dirty mark hote hain, aur eventually poora B+ Tree (i.e sabhi dirty pages) disk par flush ho jaate hai.
 
   NOTE: Indexed column ki actual values hamesha B+ Tree ke leaf nodes me hoti hain — internal nodes sirf un leaf nodes tak navigate karne ke liye use hote hain.
 
-- Jab kisi table ke kisi column par DROP INDEX ki request aati hai, to database ko sirf us particular index ke saare index pages Buffer Pool me chahiye hote hain (agar nahi hain to disk se load).
-  Phir us index ke saare pages ek saath free mark kar diye jaate hain (Metadata pages mai) ye index physically delete nahi hote, aur page ke andar ki individual entries bhi delete nahi karni padti
-  (kyunki wo pages future me naye data/index se overwrite ho jaayenge). Isse pages future me naye indexes/data ke liye reuse ho jaate hain.
-
-  NOTE : Deleted index ke pages dirty mark nahi hote — hence wo disk par baad me flush bhi nahi hote, kyunki unka content change nahi hua. 
-  Sirf unhe free mark kiya gaya hai (ye free-mark entry metadata pages  (system catalog, free-list) me record hoti hai, un index pages ke andar nahi). 
-  Sirf metadata pages dirty hote hain, aur yehi metadata pages eventually disk par flush hote hain.
-
+- Jab kisi table ke kisi column par DROP INDEX ki request aati hai, to DBMS ko index pages Buffer Pool me load karne ki zaroorat nahi hoti wo sirf system catalog
+  (database ka internal register — jo metadata pages ke form me stored hota hai, jahan saare tables/indexes ki info hoti hai, aur free pages ki info bhi hoti hai)
+  update karta hai — wahan us index ke saare pages free mark kar deta hai. Ye index pages physically delete nahi hote, aur index page ke andar ki entries bhi delete
+  nahi karni padti kyunki wo pages future me naye row/index se overwrite ho jaayenge. Isse pages future me naye indexes/row ke liye reuse ho jaate hain. Sirf metadata 
+  pages dirty hote hain aur yehi eventually disk par flush hote hain.
 
 
 ----------------------------------------------------------------
@@ -2027,7 +2051,7 @@ i.e failure ke according compensation chain decide karna
 ----------------------
   Jab kisi indexed column mein new value add hoti hai, toh DBMS ko us indexed column ke corresponding B+ Tree index mein new entry add karni hoti hai.
           
-  STEP 1: DBMS root se leaf tak traverse karta hai (cost **O(log n)**) aur nayi value ke liye sorted position wala leaf node dhoondhta hai
+  STEP 1: DBMS root se leaf tak traverse karta hai (cost O(log n)) aur nayi value ke liye sorted position wala leaf node dhoondhta hai
 
   STEP 2: Agar leaf node me space hai to new entry simply insert ho jaati hai. Lekin agar leaf full hai to node split karna padta hai — leaf ko do nodes me
           todna padta hai, aur beech ki key parent node me promote hoti hai. Agar parent bhi full ho jaye to wo bhi split hota hai — ye process multiple levels
@@ -2196,34 +2220,17 @@ users table (10,000 rows)
 
 
 
-## QUESTION: HIGH SELECTIVITY PAR INDEX EFFICIENT KYUN, AUR LOW SELECTIVITY PAR INEFFICIENT KYUN? (INDEX SCAN vs FULL TABLE SCAN)
-------------------------------------------------------------------------------------------------------------------------------------
-- Query Optimizer execution se pehle statistics (DB me stored metadata — background me maintain hote hain) jaise cardinality (column me kitni distinct values), selectivity (column kitna achha filter karta hai),
-  aur histograms (column ki distribution, kaunsi values kitni baar aati hain) se estimate karta hai ki WHERE clause kitni rows match karegi. Agar query jis column ko use kar rahi hai us column par index available 
-  nahi hai → full table scan hi option hai. Aur agar index available hai → optimizer estimate ke basis par decide karta hai ki full scan ya index lookup — kaunsa is query ke liye zyada efficient hai — aur agar index 
-  use karna hai to kaunsa index. Planning phase me actual index/data pages nahi padhe jaate — sirf statistics metadata read hoti hai.
+## QUESTION: HIGH SELECTIVITY PAR INDEX EFFICIENT KYUN, AUR LOW SELECTIVITY PAR INEFFICIENT KYUN?
+--------------------------------------------------------------------------------------------------
 
-- Execution phase me plan ke according required pages (data aur index) disk se Buffer Pool me load hote hain (agar already nahi hain):
+- Index lookup se row locate karne me random I/O hota hai. Ye random I/O, full table scan ke sequential I/O se zyada expensive hota hai — kyunki sequential me pages disk par adjacently 
+  pade hote hain, aur unhe disk par stored order me hi ek ke baad ek Buffer Pool me laakar padha jaata hai; jabki random I/O me har row alag data page me ho sakti hai, aur har data page 
+  ke liye disk head ko seek karna padta hai, phir use Buffer Pool me laakar padhna hota hai — yahi extra cost (seek time + rotational delay) random I/O ko mehnga banati hai. Low selectivity
+  me opposite — bahut rows match hoti hain, matlab bahut zyada data pages fetch karne padte hain, isliye bahut zyada random I/Os hote hain — aur kyunki per-page random I/O sequential se mehnga 
+  hai, total random I/O cost sequential full scan se zyada ho jaata hai, isliye index inefficient ho jaata hai aur Query optimizer full table scan choose karta hai.
 
-  1) Full Table Scan: Table ke saare data pages Buffer Pool me load hote hain (jo pages already nahi hain, wo disk se load hote hain), aur sequentially padhe jaate hain 
-                      har page par filter apply hota hai. Index pages ki zarurat hi nahi padti — isliye index available hone par bhi use nahi kiya jaata.
-
-  2) Index scan plan: Pehle index pages Buffer Pool me load hote hain (agar already nahi hain to), phir B+ Tree traverse karke matching entries tak pahuncha jaata hai:
-
-    a) Clustered index me leaf node khud data page hota hai, isliye leaf tak pahunchte hi row mil jaati hai (koi alag data page load nahi karna padta).
-    b) Non-clustered index me leaf entry me row locator hota hai (clustered index ka reference — jaise MySQL me primary key ka reference, warna page number + slot), 
-      jisse corresponding data page load karke row retrieve ki jaati hai.
-
-- High selectivity pe index efficient hota hai kyunki kam rows match hoti hain — jis wajah se kam data pages fetch karne padte hain. Aur kyunki index ke through data pages ka lookup random hota hai
-  (har required row alag data page me ho sakti hai), kam rows ka matlab kam random I/O. Low selectivity pe full scan better hota hai — bahut rows match hoti hain, index se bahut zyada random data pages
-  fetch karne padte hain, jabki full scan me pages sequentially padhe jaate hain , aur sequential I/O random I/O se kaafi faster hota hai, even though zyada rows scan karni padti hain.
-
-
-## QUESTION: CHHOTI TABLE PAR INDEX HONE KE BAWAJOOD DB OPTIMIZER FULL TABLE SCAN KYUN PREFER KARTA HAI?
----------------------------------------------------------------------------------------------------------
-Chhoti table (few pages) me optimizer full scan prefer karta hai — kyunki index se data page lookup random I/O hota hai (pages disk par bikhre hote hain), jabki full scan me pages sequentially padhe jaate hain.
-Few data pages sequentially padhna relatively fast hai compared to index ke through random I/O. Random I/O tabhi faydemand hota hai jab rows zyada hon aur us column ki selectivity high ho.
-
+- Isi wajah se — jab query me use hone wale column ki low selectivity ho (bahut rows match hoti hain), ya phir table hi bahut chhoti ho (kam data pages hain) — aise cases me DB Query Optimizer 
+  full table scan (sequential I/O) choose karta hai, index lookup nahi.
 
 
 ## QUESTION: COVERING INDEX KYA HOTA HAI?
@@ -2507,7 +2514,7 @@ Backup ka purpose — data loss hone par database recover karna. Common causes:
 
 - Har incremental backup pichle backup par depend karta hai — agar beech ka koi incremental corrupt ho gaya, to uske baad wale saare backups restore nahi ho sakte.
 
-- Restore: Jis point tak restore karna hai — us se pehle ka most recent full backup + uske baad ke saare incremental backups chahiye.
+- Restore: Jis point tak restore karna hai — us se pehle ka most recent full backup + uske baad ke saare incremental backups chahiye us time tak.
    Example: Wednesday tak restore → Monday full (last full) + Tuesday + Wednesday incremental.
 
 - Backup creation fast — kyunki sirf changes copy hote hain isliye storage bhi kam. But restore slow — full + saare incrementals chain me chahiye. 
