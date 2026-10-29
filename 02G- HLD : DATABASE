@@ -2572,62 +2572,55 @@ Backup ka purpose — data loss hone par database recover karna. Common causes:
 - Incremental se Backup creation thoda slow (kyunki size badhta jaata hai — har differential last full se ab tak ka sab copy karta hai), but restore fast — sirf 2 files restore karni hoti hain (i.e full + latest differential).
 
 
+---------------------------------------------
+## QUESTION: CRASH RECOVERY KAISE HOTA HAI?
+---------------------------------------------
 
-### QUESTION: CRASH RECOVERY KAISE HOTA HAI ?
------------------------------------------------
+- Agar dirty page disk par persist hone se pehle system crash ho jaye, to volatile RAM ka data lost ho jaata hai — us committed transaction ke changes bhi jo abhi RAM (dirty page) me the, 
+  lost ho jaate hain (although us committed transaction ke changes log me record ho chuke hain aur wo log disk par persist ho chuka hai).
 
-Agar dirty page disk par write hone se pehle system crash ho jaye, to volatile RAM ka data lost ho jata hai. Recovery ke waqt
-DBMS log file padhta hai, us operation se juda data page(s) disk se RAM mein laata hai (agar pehle se nahi hai), log se committed 
-changes (jinke log entries disk par already persist ho chuke hain) ko page mein apply karta hai (Redo), aur phir checkpoint ke 
-through dirty pages ko disk par flush kar deta hai — is tarah database eventually consistent state mein aa jaata hai aur data recover ho jaata hai.
-
-
+- Recovery ke waqt DBMS pehle log file padhta hai (jisme committed transaction ki entries already disk par persist hain), phir us operation se juda data page(s) disk se RAM (Buffer Pool) me load karta hai 
+  (agar already nahi hain), uske baad log se committed changes un data pages ke andar concerned rows par re-apply karta hai , aur aakhir me checkpoint ke through dirty pages disk par flush kar deta hai. 
+  Is tarah database eventually consistent state me aa jaata hai aur data recover ho jaata hai.
 
 
 -------------------------------------------------------
 ## QUESTION: POINT-IN-TIME RECOVERY (PITR) KYA HAI?
 -------------------------------------------------------
 
-PITR (Point-in-Time Recovery) ka matlab hai database ko kisi specific past moment (date + time) ki state tak restore karna.
-Iske liye last full backup restore karte hain, phir WAL/redo log ko us target time tak replay karte hain, aur wahan rok dete hain.
+PITR (Point-in-Time Recovery) ka matlab hai database ko kisi specific past moment (date + time) ki state tak restore karna. Iske liye last full backup 
+restore karte hain, phir WAL/redo log ko us target time tak replay karte hain, aur wahan rok dete hain.
 
+Example :
 
-### EXAMPLE:
--------------
+- 2026-10-25, 02:00 AM → Full Backup
+- 2026-10-25, 10:30 AM → Galti se DELETE ho gaya
 
-02:00 AM  → Full Backup
-10:30 AM  → Galti se DELETE ho gaya
+### Recovery (target: 2026-10-25, 10:29 AM — DELETE se just pehle):**
 
-Recovery:
-
-02:00 AM Full Backup restore karo
-        ↓
-02:00 AM se 10:29 AM tak WAL / Redo Logs replay karo
-        ↓
-10:29 AM par recovery stop karo
-        ↓
-Database 10:29 AM wali state mein recover ho jayega
+1. 2026-10-25, 02:00 AM ka full backup restore karo
+2. WAL/Redo logs ko 2026-10-25, 02:00 AM se 2026-10-25, 10:29 AM tak replay karo
+3. 2026-10-25, 10:29 AM par recovery stop karo
+4. Database 2026-10-25, 10:29 AM wali state me recover ho jaayega — DELETE se pehle wali state
 
 
 ### IMPORTANT
 --------------
-PITR ke liye recovery logs available hone chahiye. Agar required logs available nahi hain ya delete/lost ho gaye hain,
-toh us point-in-time tak recovery possible nahi hogi.
+PITR ke liye recovery logs available hone chahiye. Agar required logs available nahi hain ya delete/lost ho gaye hain, to us point-in-time tak
+recovery possible nahi hogi.
 
 
 
-============================================================================
-#14. HOW SPRING DATA JPA, HIBERNATE, JDBC, AND JDBC DRIVER WORK TOGETHER
-============================================================================
+=====================================================================================================
+# QUESTION: SPRING DATA JPA, HIBERNATE, JDBC, AUR JDBC DRIVER — KYA HAIN AUR KAISE KAAM KARTE HAIN?
+=====================================================================================================
 
 1: SPRING DATA JPA:
 --------------------
-- JPA ek specification hai (rules ka set).
-- Spring Data JPA ek Spring module hai jo JPA ke upar abstraction deta hai jisse relational DB ke saath kaam karna easy banata hai. 
-- Spring Boot me by default Hibernate ko JPA provider (implementation) ke roop me use kiya jata hai, agar koi doosra JPA provider configure na kiya gaya ho.
-- Spring Data JPA humein JPA Repository provide karta hai,jisme kuch inbuilt database methods already milte hain,
-  aur hum apne custom repository methods bhi define kar sakte hain.
-
+- JPA ek specification hai (rules ka set) — JPA API eventually kisi provider (jaise Hibernate) ke through implement hoti hai. 
+- Spring Boot me by default Hibernate JPA provider hota hai (agar koi doosra configure na kiya ho).
+- Spring Data JPA ek Spring module hai jo JPA specification (API) ke upar abstraction deta hai — isliye ye sirf JPA API pe depend karta hai, kisi specific provider pe nahi.
+- Spring Data JPA hume JPA Repository provide karta hai — jisme kuch inbuilt database methods already milte hain, aur hum apne custom repository methods bhi define kar sakte hain.
 
 Ex:
 
@@ -2650,216 +2643,112 @@ List<Object[]> findNameAndEmailByCityNative(@Param("city") String city);
     
 2: HIBERNATE :
 --------------
+- Hibernate ek ORM tool hai jo Java objects/entities ko database tables se map karta hai. 
+- Ye JPA ka implementation hai — isliye JPA annotations (`@Entity`, `@Id`, `@Table`, etc.) support karta hai. 
+- Spring Data JPA ke repository methods ke liye Hibernate SQL generate karta hai, aur SQL execute karne ke liye JDBC ka use karta hai.
 
-Hibernate ek ORM tool hai jo Java objects/entities ko database tables se map karta hai.
-Hibernate JPA ka implementation hai, isliye ye JPA annotations (@Entity, @Id, @Table, etc.) ko support karta hai.
-Spring data JPA ke repository methods ke liye SQL generate karta hai , aur SQL execute karne ke liye JDBC ka use karta hai.
+Example: userRepository.findById(1L) → Hibernate internally SQL generate karta hai:
 
-Example:
-
-    userRepository.findById(1L);
-
-
-Internally Hibernate SQL generate kar sakta hai:
-
-    SELECT * FROM users WHERE id = 1;
-
-
-SQL execute karne ke liye Hibernate JDBC ka use karta hai.
+SELECT * FROM users WHERE id = 1;
 
 
 
-3: JDBC :
------------
+3. JDBC
+--------
 
-JDBC Java ka standard database API hai. 
-Hibernate database operations i.e equery execution perform karne ke liye JDBC API ka use karta hai. 
+- JDBC (Java Database Connectivity) Java ka standard database API hai.
+- Hibernate database operations (query execution) perform karne ke liye JDBC API ka use karta hai.
+- JDBC API sirf interfaces deta hai — in interfaces ke actual implementations JDBC Driver provide karta hai.
+- Actual query execution JDBC Driver karta hai — wo JDBC API calls ko database-specific protocol me convert karke database server se communicate karta hai.
+- JDBC API ke main interfaces:**
 
-JDBC ke main concepts hain:
+   a) Connection → DB ke saath ek session
+   b) PreparedStatement → SQL query execute karne ke liye (SQL injection se bachata hai)
+   c) ResultSet → Query ka result hold karta hai
 
-- Connection → DB ke saath ek session.
-- PreparedStatement → SQL query execute karne ke liye (SQL injection se bachata hai).
-- ResultSet → Query ka result hold karta hai.
-
-
-Lekin JDBC khud database-specific communication nahi karta.
-
-Actual database-specific communication JDBC Driver karta hai.
-
-
-
-4: JDBC DRIVER :
------------------
-
-JDBC Driver database-specific implementation hota hai.
-
-Example:
-
-    MySQL       → MySQL JDBC Driver
-    PostgreSQL  → PostgreSQL JDBC Driver
-
-JDBC Driver ka kaam: JDBC API calls ko database-specific protocol mein convert karke database server se communicate karna.
+- Examples:
+  a) MySQL → MySQL Connector/J (JDBC Driver)
+  b) PostgreSQL → PostgreSQL JDBC Driver
 
 
-## COMPLETE FLOW : 
--------------------
+## COMPLETE FLOW
+------------------
 
+Application Code → Spring Data JPA Repository → Hibernate ORM → JDBC API → JDBC Driver → TCP connection + Database-specific protocol → Database Server**
 
-    Application Code
-        |
-        v
-    Spring Data JPA Repository
-        |
-        v
-    Hibernate ORM
-        |
-        v
-    JDBC API
-        |
-        v
-    JDBC Driver
-        |
-        v
-    TCP connection + Database-specific protocol
-        |
-        v
-    Database Server
-
-
-
-## DATABSE DEFAULT PORTS :
+## DATABASE DEFAULT PORTS
 ---------------------------
 
-    MySQL:
-        Default port: 3306
-
-    PostgreSQL:
-        Default port: 5432
-
-    Redis:
-        Default port: 6379
+- MySQL → 3306
+- PostgreSQL → 5432
+- Redis → 6379
 
 
 
 
-====================================
-#15. DB CONNECTION POOL KYA HAI ?
-====================================
+===========================================
+# QUESTION: DB CONNECTION POOL KYA HAI ?
+===========================================
 
-Application har DB operation ke liye naya physical connection create nahi karti.
-Kyunki DB connection create karna expensive hota hai.
+- Application har DB operation ke liye naya physical DB connection create nahi karti — kyunki connection banana expensive hota hai. Isliye 
+  application connection pool se ek existing connection borrow karti hai, use karti hai, aur kaam ke baad pool ko wapas return kar deti hai.
 
-Isliye application connection pool se ek existing connection borrow karti hai,
-use karti hai, aur kaam ke baad pool ko wapas return kar deti hai
-
-
-## QUESTION : DATASOUCE AND HIKARI CP KYA HAI ?
+-------------------------------------------------
+## QUESTION : DATASOURCE AND HIKARI CP KYA HAI ?
 -------------------------------------------------
 
-Spring Boot me DataSource ek interface hai, aur uska default
-implementation HikariCP hota hai isliye commonly HikariCP ko
-connection pool ke roop me use kiya jata hai.
+- Spring Boot me DataSource ek interface hai — uska default implementation HikariCP hota hai.
 
-Agar tumne application.properties me kuch explicitly mention nahi kiya,
-lekin classpath me HikariCP present hai (kyunki spring-boot-starter-data-jpa
-ya spring-boot-starter-jdbc ke saath wo automatically aa jata hai),
-to Spring Boot automatically HikariCP ko as DataSource implementation
-configure kar deta hai.
+- Agar `application.properties` me `spring.datasource.type` explicitly set nahi kiya (jaise `spring.datasource.type=com.zaxxer.hikari.HikariDataSource`), 
+  but classpath me HikariCP present hai (`spring-boot-starter-data-jpa` / `spring-boot-starter-jdbc` ke saath automatically aata hai), to Spring Boot 
+  automatically HikariCP ko DataSource implementation ke roop me configure kar deta hai.
 
-Agar classpath me multiple connection pools hain, to Spring Boot
-is priority order me choose karta hai:
+- HikariCP ka kaam sirf database connections store karna nahi hai.
+  Wo unhe manage bhi karta hai —
 
-    1. HikariCP           (sabse pehle)
-    2. Tomcat JDBC Pool
-    3. Apache Commons DBCP2
-    4. Oracle UCP
+  a) Connection alive check — HikariCP verify karta hai ki connection database se baat kar sakta hai ya beech me toot gaya hai; 
+     dead connection milne par usse pool se hata deta hai. Naya connection do situations me create hota hai :
+       1) Borrow-driven, jab koi application thread borrow request karta hai but koi valid idle connection available nahi hota (tab turant naya connection banta hai, `maximum-pool-size` tak), 
+       2) Ya phir jab pool `minimum-idle` se neeche chala jaata hai (tab background me connections bante hain, sirf `minimum-idle` tak).
 
-HikariCP ka kaam sirf database connections store karna nahi hai.
-Wo unhe manage bhi karta hai —
+  b) Idle time check — bahut der se idle connection ko close kar deta hai, taaki pool me faltu connections na pade rahein.
 
-- Check karna ki connection abhi bhi zinda hai ya nahi
-  Matlab connection database se baat kar sakta hai ya beech me toot gaya hai.
-  Agar connection dead mila, to HikariCP usse hata kar naya bana deta hai.
+  c) Connection leak detection — koi connection borrow karke wapas return nahi kar raha (jaise developer ne `close()` nahi kiya) — HikariCP `leak-detection-threshold` ke through warning log print karta hai
 
-- Kitni der se idle hai
-  Matlab connection kitne time se use nahi hua.
-  Agar bahut der se idle hai, to HikariCP usse close kar deta hai,
-  taaki pool me faltu connections na pade rahein.
-
-- Connection leak hua hai ya nahi
-  Matlab koi connection borrow karke wapas return nahi kar raha —
-  jaise developer ne connection close karna bhool gaya,
-  finally block me connection.close() nahi likha,
-  jisse pool ke connections dheere-dheere khatam ho jaate hain.
-  HikariCP leak-detection-threshold ke through warning log print karta hai.
-
-- Connection timeout
-  Matlab agar pool me saare connections busy hain,
-  to naya request kitni der wait karega.
-  Agar timeout ke andar connection nahi mila,
-  to error aata hai: "Connection is not available, request timed out."
-
-Isse pool hamesha healthy aur efficient bana rehta hai.
+  d) Connection timeout** — jab pool ke saare connections busy hain (aur pool `maximum-pool-size` tak pahunch chuka hai), to naya borrow request karne wala thread kitni 
+     der wait karega — ye `connectionTimeout` decide karta hai (default 30 seconds). Agar timeout ke andar connection available nahi hua, to request fail ho jaati hai
+     with error: `"Connection is not available, request timed out after Xms."`
 
 
-## IMPORTANT :
-----------------
-Connection pool thread-safe hota hai — multiple threads simultaneously
-connections borrow kar sakte hain, but ek connection ek time par
-sirf ek hi thread ko milta hai.
+  Isse pool hamesha healthy aur efficient bana rehta hai.
 
 
-## QUESTION : JAB APPLICATION START HOTI HAI TO DATABASE CONNECTION POOL KE SAATH KYA HOTA HAI ?
--------------------------------------------------------------------------------------------------
-
-    1. Spring Boot application start hoti hai.
-
-    2. Spring Boot datasource configuration read karta hai.
-
-       Example:
-
-            DB URL = jdbc:mysql://localhost:3306/mydb
-            username = root
-            password = secret123
-            driver class =  com.mysql.cj.jdbc.Driver
-            maximum pool size = 10
-            minimum idle connections = 2
-
-    3. HikariCP connection pool initialize hota hai.
-
-    4. HikariCP database ke saath kuch initial connections create karta hai.
-
-       Example:
-
-            minimum-idle       = 2
-            maximum-pool-size  = 10
-
-       Iska matlab:
-            Application start ke time pool me 2 idle database connections ready honge, jisse application se aane wali DB request borrow kar sakti hai.
-            Need padne par pool total 10 database connections tak grow kar sakta hai.
-
-       ### NOTE :
-      
-            HikariCP me by default minimum-idle ki value
-            maximum-pool-size ke barabar hoti hai.
-
-            Matlab agar tum minimum-idle explicitly set na karo,
-            to application start hote hi pool maximum database 
-            connections tak create kar sakta hai.
+## NOTE : Connection pool **thread-safe hota hai — multiple threads simultaneously connections borrow kar sakte hain, but ek connection ek time par sirf ek hi thread ko milta hai.
 
 
-## BENEFITS:
--------------
+--------------------------------------------------------------------------------
+## QUESTION: APPLICATION STARTUP PE CONNECTION POOL KAISE INITIALIZE HOTA HAI?
+--------------------------------------------------------------------------------
 
-    - Faster DB access, kyunki har DB operation ke liye
-      naya DB connection create nahi karna padta
+1. Spring Boot application start hoti hai
+2. Spring Boot **datasource configuration read** karta hai — jaise DB URL, username, password, driver class, max pool size, min idle connections
+3. **HikariCP connection pool initialize** hota hai
+4. HikariCP database ke saath **initial connections create** karta hai — `minimum-idle` ke according:
 
-    - Existing DB connections reuse hote hain
+   Example:** `minimum-idle = 2`, `maximum-pool-size = 10`
 
-    - Controlled number of DB connections,
-      jisse DB overload prevent hota hai
+   Application start hote hi pool me 2 idle connections ready honge — incoming DB requests inhe borrow kar 
+   sakti hain Load badhne par pool maximum 10 connections tak grow kar sakta hai — but usse zyada nahi
 
-    - Application performance improve hoti hai
+
+--------------------------------------------------
+## QUESTION: CONNECTION POOL KE BENIFITS KYA HAI?
+--------------------------------------------------
+
+- Faster DB access — har DB operation ke liye naya connection create nahi karna padta
+- Connection reuse — existing connections dobara use hote hain
+- Controlled connection count — DB overload prevent hota hai
+- Better application performance — upar ke teeno benefits ka combined result
 
 
 
