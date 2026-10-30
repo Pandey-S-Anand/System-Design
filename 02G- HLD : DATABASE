@@ -2660,7 +2660,7 @@ SELECT * FROM users WHERE id = 1;
 - Hibernate database operations (query execution) perform karne ke liye JDBC API ka use karta hai.
 - JDBC API sirf interfaces deta hai — in interfaces ke actual implementations JDBC Driver provide karta hai.
 - Actual query execution JDBC Driver karta hai — wo JDBC API calls ko database-specific protocol me convert karke database server se communicate karta hai.
-- JDBC API ke main interfaces:**
+- JDBC API ke main interfaces:
 
    a) Connection → DB ke saath ek session
    b) PreparedStatement → SQL query execute karne ke liye (SQL injection se bachata hai)
