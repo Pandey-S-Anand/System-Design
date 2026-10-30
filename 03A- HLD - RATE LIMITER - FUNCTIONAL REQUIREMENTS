@@ -3,21 +3,34 @@
 ==========================================================================================
 
 Q1. Rate limit kis basis par lagana hai?
-Q2. Rate limit kahan baita hoga — API Gateway level, Service level, ya Hybrid?
-Q3. Ek hi request pe multiple rate limits apply hongi — jaise Global + Per-Service + Per-Endpoint?
+Q2. Rate limiting bilkul precise chahiye ya approximate chalega? Aur kya burst allow karna hai? 
+Q3. Limit cross hone par kya behavior hona chahiye — reject karo, queue me daalo, ya degraded/cached response do?
 Q4. User tier ke basis pe different limits hongi — Free, Premium, Enterprise?
 Q5. Rules static rahenge ya runtime pe configurable (dynamic) hone chahiye?
-Q6. Rate limiting bilkul precise chahiye ya thoda loose chalega? Aur kya burst allow karna hai?
-Q7. Limit cross hone par kya behavior hona chahiye — reject karo, queue me daalo, ya degraded/cached response do?
+
+
+====================================================================================================================
+# RATE LIMITER —  Design Decision (Tumhe propose karna chahiye, poochna nahi, interviewer correct karega if needed
+====================================================================================================================
+
+Q6. Rate limit kahan baita hoga — API Gateway level, Service level, ya Hybrid?
+Q7. Ek hi request pe multiple rate limits apply hongi — jaise Global + Per-Service + Per-Endpoint?
 Q8. Response me client ko kya headers bhejne hain?
 Q9. Agar Rate Limiter khud fail ho jaye (Redis down), to kya karna hai — Fail-Open ya Fail-Closed?
 
+## NOTE : Interviewer ne scenario diya hai (context clear) → ASSUME + JUSTIFY. Context blank hai (sirf topic diya) → ASK.
+
+Interviewer ne bola	                     Answer implied                                     	Tumhara move
+"Payment gateway ke liye rate limiter"	 Burst allowed (bulk payments, salary disbursement)	  Assume Token Bucket, justify — mat poochho "burst chahiye?"
+"OTP service ke liye rate limiter"	     Precise count (security-critical)                 	  Assume Sliding Window Log, justify — mat poochho "exact chahiye?"
+"Design a rate limiter" (bas itna)    	 Kuch implied nahi	                                  Poochho — "burst allowed hai ya strict count?"
 
 
 ===============================================
 # SELF-UNDERSTANDING (Har Question ka Answer)
 ===============================================
 
+------------------------------------------
 Q1: Rate limit kis basis par lagana hai?
 ------------------------------------------
 
@@ -35,7 +48,7 @@ Main Authenticated endpoints pe per-user, anonymous endpoints (login/OTP) pe per
 
 
 
-
+----------------------------------
 Q2. Rate limit kahan baita hoga?
 ----------------------------------
 
@@ -70,21 +83,21 @@ Option C: Hybrid (Recommended)
                             │
               ┌─────────────┼─────────────┐
               ▼             ▼             ▼
-      ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-      │User Service │ │Order Service│ │Payment Svc  │
-      │             │ │             │ │             │
-      │Service-level│ │Service-level│ │Service-level│
-      │per-user     │ │per-user     │ │per-user     │
-      │5000/min     │ │2000/min     │ │100/min      │
-      │(regardless  │ │(regardless  │ │(regardless  │
-      │ of endpoint)│ │ of endpoint)│ │ of endpoint)│
-      │             │ │             │ │             │
-      │Endpoint-    │ │Endpoint-    │ │Endpoint-    │
-      │level (if    │ │level (if    │ │level (if    │
-      │ needed):    │ │ needed):    │ │ needed):    │
-      │/users: 100  │ │/orders: 50  │ │/pay: 10/min │
-      │/profile: 50 │ │/history: 20 │ │/status: 100 │
-      └─────────────┘ └─────────────┘ └─────────────┘
+      ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐
+      │User Service │ │Order Service│ │Payment Service  │
+      │             │ │             │ │                 │
+      │Service-level│ │Service-level│ │Service-level    │
+      │per-user     │ │per-user     │ │per-user         │
+      │5000/min     │ │2000/min     │ │100/min          │
+      │(regardless  │ │(regardless  │ │(regardless      │
+      │ of endpoint)│ │ of endpoint)│ │ of endpoint)    │
+      │             │ │             │ │                 │
+      │Endpoint-    │ │Endpoint-    │ │Endpoint-        │
+      │level (if    │ │level (if    │ │level(if needed):│
+      │ needed):    │ │ needed):    │ │                 │
+      │/users: 100  │ │/orders: 50  │ │/pay: 10/min     │
+      │/profile: 50 │ │/history: 20 │ │/status: 100     │
+      └─────────────┘ └─────────────┘ └─────────────────┘
 
 
 ## Ideal Answer (interview me bolo):
@@ -96,21 +109,20 @@ limit us service ke andar. Isse centralized control bhi milega aur fine-grained 
 
 ### NOTE:
 ----------
-Kuch modern API Gateways (Kong, AWS API Gateway, Spring Cloud Gateway) route ke basis par per-service, per-user rate limit laga sakte hain. 
-Iska matlab hai ki gateway URL pattern dekh kar decide karta hai ki request kis service ke liye hai, aur us service ke corresponding per-user 
-rate limit apply karta hai. 
 
-Dhyan rahe: Yahan rate limit per-service, per-user hai — per-service, per-user, per-endpoint nahi. 
-Matlab ek user ki us service ke saare endpoints pe mila kar total requests count hongi, na ki har
-endpoint pe alag-alag.
+Modern API Gateways (Kong, AWS API Gateway, Spring Cloud Gateway) route ke basis par Per-Service, Per-User Rate Limiting support kar sakte hain.
+Gateway URL pattern se service identify karta hai aur us user ki us service ke sabhi endpoints ki requests ko collectively count karta hai.
 
 /api/users/**     (User Service)    → 5000 req/min per user (across all User Service endpoints)
 /api/payments/**  (Payment Service) → 100 req/min per user (across all Payment Service endpoints)
 /api/orders/**    (Order Service)   → 2000 req/min per user (across all Order Service endpoints)
 
+Important: Ye Per-Service, Per-User rate limiting hai, Per-Endpoint rate limiting nahi.
+Matlab ek service ke sabhi endpoints ka combined request count hota hai, har endpoint ka separate count nahi.
 
 
 
+---------------------------------------------------------
 Q3. Ek hi request pe multiple rate limits apply hongi?
 ---------------------------------------------------------
 
@@ -123,7 +135,7 @@ Example:
 Rule: Sabhi layers pass honi chahiye — ek bhi fail hui to request reject.
 
 
-
+--------------------------------------------------
 Q4. User tier ke basis pe different limits hongi?
 --------------------------------------------------
 
@@ -132,6 +144,7 @@ Premium: 1000 req/min per premium user
 Enterprise: unlimited per enterprise user
 
 User tier user ki identity ka part hota hai. Is tier ke basis par alag-alag limits different layers pe enforce hoti hain:
+
 - API Gateway level pe → Global tier-based limit apply hoti hai (across all services)
 - Service level pe → Per-user, per-service tier-based limit
 - Endpoint level pe → Per-user, per-service, per-endpoint tier-based limit
@@ -141,7 +154,7 @@ Tier JWT token claims se aata hai, agar hum JWT-based authentication use kar rah
 - Service pe: Header se tier read karti hai → apne rules ke according service-level aur endpoint-level tier-based rate limit apply karti hai.
 
 
-
+---------------------------------------
 Q5. Rules static rahenge ya dynamic?
 ---------------------------------------
 
@@ -193,7 +206,7 @@ STEP 1: Admin UI → Rules Controller
                20 req/min allow honi chahiye
 
 
-STEP 2: Rules Controller → Validate → Rules Service → Rules Database → DB INSERT
+STEP 2: Rules Controller → Rules Service → Rules Database → DB INSERT
 
     DB:
       id=1: { scope: "global-limit-per-user", limit: 1000, window: 60 }
@@ -369,7 +382,7 @@ STEP 1: Admin UI → Rules Controller
 
 
 
-STEP 2: Rules Controller → Validate → Rules Service → Rules Database → DB UPDATE
+STEP 2: Rules Controller  → Rules Service → Rules Database → DB UPDATE
 
     DB:
       id=1: { scope: "global-limit-per-user", limit: 1000 → 500, window: 60 }
