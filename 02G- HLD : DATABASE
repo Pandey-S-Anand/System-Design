@@ -2416,7 +2416,7 @@ type: ref + Using index + Using where            ✅ Covering index + filter —
    - GET user:123 — bas itna hi kaam
    - Example: Redis (caching, session store) 
 
-3: Examples: Chat apps, real-time analytics, caching, Logs, Social media feed
+4: Examples: Chat apps, real-time analytics, caching, Logs, Social media feed
 
 
 
