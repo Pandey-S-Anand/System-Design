@@ -448,46 +448,43 @@ STEP 7: Next Request Aayi (User → Payment Service)
 
     ─── API Gateway Level ───
 
-    a) Request API Gateway pe pahunchti hai
-    b) Gateway Local Cache check: "rule:1 hai?"
+    a) Request API Gateway Instance pe pahunchti hai
+    b) Gateway Instance → Local Cache check: "rule:1 hai?"
     c) → MISS (kyunki delete kar diya tha)
-    d) Gateway Redis check: "rule:1 hai?"
+    d) Gateway Instance → Redis check: "rule:1 hai?"
     e) → MISS (kyunki delete kar diya tha)
-    f) Gateway → DB Query: SELECT * FROM rules WHERE id=1
+    f) Gateway Instance → → DB Query: SELECT * FROM rules WHERE id=1
     g) → Fresh rule mila: { limit: 500, window: 60 }
-    h) Gateway Redis me store (TTL: 5 min)
-    i) Gateway Local Cache me store (TTL: 60 sec)
-    j) Gateway total count check: sab service ke acrrso si user ka 500 req/min limti cross cross hua?
+    h) Gateway Instance → Redis me store (TTL: 5 min)
+    i) Gateway Instance → Local Cache me store (TTL: 60 sec)
+    j) Gateway Instance → total count check: sab service ke acrrso si user ka 500 req/min limti cross cross hua?
     k) → Nahi → Request Payment Service ko forward
 
     ─── Payment Service Level ───
 
     l) Request Payment Service instance pe pahunchti hai
-    m) Instance Local Cache check: "rule:2 hai?"
+    m) Payment Service Instance → Local Cache check: "rule:2 hai?"
     n) → MISS
-    o) Instance Redis check: "rule:2 hai?"
+    o) Payment Service Instance → Redis check: "rule:2 hai?"
     p) → MISS
-    q) Service Instance → DB Query: SELECT * FROM rules WHERE id=2
+    q) Payment Service Instance  → DB Query: SELECT * FROM rules WHERE id=2
     r) → Fresh rule mila: { limit: 10, window: 60 }
-    s) Instance Redis me store (TTL: 5 min)
-    t) Instance Local Cache me store (TTL: 60 sec)
-    u) Instance per-user count check: user ki 10 req/min cross hui?
+    s) Payment Service Instance → Redis me store (TTL: 5 min)
+    t) Payment Service Instance → Local Cache me store (TTL: 60 sec)
+    u) Payment Service Instance → per-user count check: user ki 10 req/min cross hui?
     v) → Nahi → Request process
 
 
 STEP 8: Subsequent Requests
 
-    Ab dono caches freshly populated hain (naye values ke saath):
-      - API Gateway: rule:1 cached (limit: 500, TTL 60 sec)
-      - Payment Service: rule:2 cached (limit: 10, TTL 60 sec)
+    Ab updated rule Rules Redis me populated hai, aur jis instance ne update ke baad pehli request handle ki thi uske Local Cache bhi populated hai.
+    Ab next request ke 2 scenarios:
 
-    Next request pe:
-      - Gateway Local Cache → HIT → No DB call
-      - Payment Service Local Cache → HIT → No DB call
+     a) Scenario 1 — Same instance pe request aayi (jo pehle handle kar chuka):
+         Local Cache HIT → directly serve (no Redis call, no DB call)
 
-    Latency: ~1-2ms
-
-    TTL expire hone ke baad, phir wahi cache miss wala process repeat hoga.
+     b) Scenario 2 — Different instance pe request aayi:
+         Local Cache MISS → Redis HIT → Local Cache populate → serve
 
 
 
