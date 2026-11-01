@@ -1,0 +1,213 @@
+╔══════════════════════════════════════════════════════════════════╗
+║     1: DYNAMIC RULES CONFIG — CREATE / UPDATE FLOW               ║
+╚══════════════════════════════════════════════════════════════════╝
+
+                      ┌──────────────────┐
+                      │     ADMIN UI     │
+                      └────────┬─────────┘
+                               │
+          POST /rules (CREATE) │ PUT /rules/{id} (UPDATE)
+                               ▼
+              ┌──────────────────────────────────────┐
+              │        RULES APPLICATION             │
+              │  Rules Controller → Rules Service    │
+              └──────────────┬───────────────────────┘
+                             │
+              ┌──────────────┼──────────────┬
+              │              │              │             
+              ▼              ▼              ▼              
+      ┌──────────────┐ ┌───────────────┐ ┌──────────────┐
+      │   RULES DB   │ │ RULES REDIS   │ │    KAFKA     │
+      │              │ │ (shared,single│ │              │
+      │              │ │   node)       │ │              │
+      │ CREATE:      │ │ CREATE:       │ │ CREATE:      │
+      │   INSERT     │ │   NO-OP       │ │   publish    │
+      │              │ │               │ │   RULE_      │
+      │ UPDATE:      │ │ UPDATE:       │ │   CREATED    │
+      │   UPDATE     │ │   DEL rule:ID │ │              │
+      │              │ │               │ │ UPDATE:      │
+      │ ┌──────────┐ │ │               │ │   publish    │
+      │ │rules tbl │ │ │ratelimit:rule:│ │    RULE_     │
+      │ ├──────────┤ │ │ {rule_id} →   │ │    UPDATED   │
+      │ │id        │ │ │{limit, window}│ │              │
+      │ │scope     │ │ │               │ │{ruleId,scope}│
+      │ │limit     │ │ │               │ │              │
+      │ │window    │ │ │               │ └──────┬───────┘
+      │ │algorithm │ │ │               │        │
+      │ └──────────┘ │ └───────────────┘        │ broadcast
+      └──────────────┘                          │
+                                                ▼
+                              ┌──────────────────────────────────────────┐
+                              │       ALL INSTANCES                      │
+                              │  (API GW + Service instances)            │
+                              │  rule:{rule_id} → {limit, window}        │
+                              │ CREATE → Local Cache (Caffeine) NO-OP    │
+                              │ UPDATE → Local Cache (Caffeine) DEL      │
+                              └──────────────────────────────────────────┘
+
+
+
+╔══════════════════════════════════════════════════════════════════╗
+║     2: RULE FETCH FLOW — 3-LAYER CACHE RESOLUTION                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+
+                          Instance-A (API GW ya Service)
+                                    │
+                                    │
+                                    ▼
+        ┌───────────────────────────────────────────────────────────────┐
+        │                                                               │
+        │   REQUEST-1 (First Request)          REQUEST-2 (Subsequent)   │
+        │   ──────────────────────             ─────────────────────    │
+        │          │                                   │                │
+        │          ▼                                   ▼                │
+        │   ┌──────────────────┐                 ┌──────────────────┐   │
+        │   │ L1: Local Cache  │                 │ L1: Local Cache  │   │
+        │   │ (Instance-A ka   │                 │ (Instance-A ka   │   │
+        │   │  apna local      │                 │  apna local      │   │
+        │   │  cache)          │                 │  cache)          │   │
+        │   │                  │                 │                  │   │
+        │   │  → Instance-A    │                 │  → Instance-A    │   │
+        │   │    apne local    │                 │    apne local    │   │
+        │   │    cache me      │                 │    cache me      │   │
+        │   │    lookup kar    │                 │    lookup kar    │   │
+        │   │    raha hai      │                 │    raha hai      │   │
+        │   │                  │                 │                  │   │
+        │   │    MISS ❌       │                 │    HIT ✅        │   │
+        │   └────────┬─────────┘                 └────────┬─────────┘   │
+        │            │                                    │             │
+        │            │ MISS                               │ HIT         │
+        │            │                                    │             │
+        │            ▼                                    │             │
+        │   ┌──────────────────┐                          │             │
+        │   │ L2: Rules Redis  │                          │             │
+        │   │ (shared)         │                          │             │
+        │   │                  │                          │             │
+        │   │  → Ab Instance-A │                          │             │
+        │   │    shared Rules  │                          │             │
+        │   │    Redis ko      │                          │             │
+        │   │    lookup kar    │                          │             │
+        │   │    raha hai      │                          │             │
+        │   │                  │                          │             │
+        │   │    MISS ❌       │                          │             │
+        │   └────────┬─────────┘                          │             │
+        │            │                                    │             │
+        │            │ MISS                               │             │
+        │            │                                    │             │
+        │            ▼                                    │             │
+        │   ┌──────────────────┐                          │             │
+        │   │ L3: Rules DB     │                          │             │
+        │   │ (source of truth)│                          │             │
+        │   │                  │                          │             │
+        │   │  → Ab Instance-A │                          │             │
+        │   │    Rules DB ko   │                          │             │
+        │   │    query kar     │                          │             │
+        │   │    raha hai      │                          │             │               
+        │   │                  │                          │             │
+        │   │    HIT ✅        │                          │             │
+        │   │ {limit:10,       │                          │             │
+        │   │  window:60}      │                          │             │
+        │   └────────┬─────────┘                          │             │
+        │            │                                    │             │
+        │            │ DB se data milne ke baad           │             │
+        │            │ SAME TIME pe update kar raha hai   │             │
+        │            │ (write-back on the way back)       │             │
+        │            │                                    │             │
+        │            ├──► SET Rules Redis (TTL 5m)        │             │
+        │            │    [Instance-A shared Redis me     │             │
+        │            │     rule SET karta hai — future    │             │
+        │            │     me same entity ke doosre       │             │
+        │            │     instances ko benefit milega]   │             │
+        │            │                                    │             │
+        │            │                                    │             │
+        │            └──► SET Local Cache (TTL 60s)       │             │
+        │            │     [Instance-A apne local cache   │             │
+        │            │      me rule SET karta hai]        │             │
+        │            │                                    │             │
+        │            │                                    │             │
+        │            ▼                                    ▼             │
+        │   ┌────────────────────────────────────────────────────┐      │
+        │   │       Rule available → apply limit                 │      │
+        │   │       { limit: 10, window: 60 }                    │      │
+        │   └────────────────────────────────────────────────────┘      │
+        │                                                               │
+        │                                                               │
+        └───────────────────────────────────────────────────────────────┘
+
+
+
+
+
+
+╔══════════════════════════════════════════════════════════════════╗
+║     3: OVERALL RATE LIMITER REQUEST FLOW                         ║
+╚══════════════════════════════════════════════════════════════════╝
+
+
+   Client
+     │ GET /payments/initiate
+     ▼
+╔════════════════════════════════════════════════════════════════════════╗
+║              API GATEWAY INSTANCE (GW-2)                               ║
+║           (multiple GW instances behind a Load Balancer)               ║
+║                                                                        ║
+║  1. JWT verify → user_id=101, tier=PREMIUM                             ║
+║                                                                        ║
+║  2. Rule Fetch (3-LAYER):                                              ║
+║     ┌──────────────────────────────────────────────────────────────┐   ║
+║     │ L1: Local Cache (Caffeine) → HIT (~µs) / MISS                │   ║
+║     │ L2: Rules Redis (shared)   → HIT (1-3ms) / MISS              │   ║
+║     │ L3: Rules DB (source)      → HIT (10-50ms)                   │   ║
+║     │     → SET Rules Redis (TTL 5m) + SET Local Cache (TTL 60s)   │   ║
+║     └──────────────────────────────────────────────────────────────┘   ║
+║                              ▼                                         ║
+║        Global rule available → apply global per-user limit             ║
+║                                                                        ║
+║  3. Counter Redis check (Lua script): ──────────────────────────┐      ║
+║     ├─ if count ≤ allowed limit → ALLOW                         │      ║
+║     └─ if count >  allowed limit → REJECT (429 + Retry-After)   │      ║
+║                                                                 │      ║
+║  4. If ALLOWED → forward with X-User-Id, X-User-Tier            │      ║
+╚═════════════════════════════════════════════════════════════════╪══════╝
+             │                                                    │
+             │ URL-based routing                                  │
+             ▼                                                    │
+     ┌───────────────┐                                            │
+     │Payment Svc LB │                                            │
+     └───────┬───────┘                                            │
+             │                                                    │
+             ▼                                                    │
+╔══════════════════════════════════════════════════════════════╗  │
+║              PAYMENT SERVICE INSTANCE (PG-1)                 ║  │
+║          (multiple Payment service instances behind a LB)    ║  │
+║                                                              ║  │
+║   1. Read headers                                            ║  │
+║                                                              ║  │
+║   2. Rule Fetch (3-LAYER):                                   ║  │
+║      L1: Local Cache                                         ║  │
+║      L2: Rules Redis                                         ║  │
+║      L3: Rules DB                                            ║  │
+║         ▼                                                    ║  │
+║      Service/endpoint rules available → apply:               ║  │
+║      • per-user-per-svc limit                                ║  │
+║      • per-user-per-svc-ep limit                             ║  │
+║                                                              ║  │
+║   3. Counter Redis check (Lua script): ───────────────────┐  ║  │
+║      ├─ if count ≤ allowed limit → ALLOW                  │  ║  │
+║      └─ if count >  allowed limit → REJECT                │  ║  │
+║           (429 + Retry-After)                             │  ║  │
+║                                                           │  ║  │
+║   4. Business logic → Backend                             │  ║  │
+║                                                           │  ║  │
+║                                                           │  ║  │
+╚═══════════════════════════════════════════════════════════╪══╝  │
+                                                            │     │
+                       ┌────────────────────────────────────┘     │
+                       │                                          │
+                       │                                          │
+                       ▼                                          ▼
+              ┌────────────────────────────────────────────────────────┐
+              │         COUNTER REDIS CLUSTER                          │
+              │      (each node + own replica for HA)                  │
+              └────────────────────────────────────────────────────────┘
