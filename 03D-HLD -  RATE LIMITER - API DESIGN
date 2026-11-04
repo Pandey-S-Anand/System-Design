@@ -1,1 +1,171 @@
+Admin APIs (Rules Management)
 
+Rule Create API : 
+
+POST /api/v1/rules
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+
+Request :
+
+{
+  "scope": "GLOBAL / SERVICE / ENDPOINT",
+  "service": "payment-service",         // null if GLOBAL
+  "endpoint": "/payments/initiate",     // null if GLOBAL or across all endpoints of Payment Service i.e at Payment- servvice level
+  "entity_type": "USER / IP / API_KEY / DEVICE / IDENTIFIER",
+  "tier": "FREE / PREMIUM / ENTERPRISE", // null if not USER, or if all tiers to have same limit or tier classificatuon itslef is niot a part of architecture
+  "limit": 100,
+  "window_seconds": 60,
+  "algorithm": "TOKEN_BUCKET / FIXED_WINDOW / SLIDING_LOG / SLIDING_COUNTER / LEAKY_BUCKET",
+  "enabled": true
+}
+
+
+Response (201 Created)
+
+{
+  "rule_id": "rule-abc-123",
+  "scope": "GLOBAL / SERVICE / ENDPOINT",
+  "service": "payment-service", // null if GLOBAL
+  "endpoint": "/payments/initiate", // null if GLOBAL or across all endpoints of Payment Service i.e at Payment- servvice level
+  "entity_type": "USER / IP / API_KEY / DEVICE / IDENTIFIER", 
+  "tier": "FREE / PREMIUM / ENTERPRISE", // null if not USER, or if all tiers to have same limit or tier classificatuon itslef is niot a part of architecture
+  "limit": 100,
+  "window_seconds": 60,
+  "algorithm": "TOKEN_BUCKET / FIXED_WINDOW / SLIDING_LOG / SLIDING_COUNTER / LEAKY_BUCKET",
+  "enabled": true,
+  "created_at": "2026-11-02T10:30:00Z",
+  "updated_at": "2026-11-02T10:30:00Z",
+  "created_by": "admin-101"
+}
+
+
+Validation rules : 
+
+scope=GLOBAL but service non-null  -> Error : 400 — GLOBAL me service nahi
+scope=SERVICE but service null -> Error : 400 — service required
+scope=ENDPOINT but endpoint null	-> Error : 400 — endpoint required
+entity_type ≠ USER but tier present  -> Error : 400 — tier only for USER
+limit <= 0 -> Error : 400 
+window_seconds <= 0 -> Error : 400 
+
+
+Unique constraint (DB):
+
+UNIQUE (scope, service, endpoint, entity_type, tier)
+
+
+
+Rule Update API:
+
+
+PUT /api/v1/rules/{rule_id}
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+If-Match: "v3"        // optimistic locking
+
+
+Request :
+
+{
+  "limit": 200,
+  "window_seconds": 60,
+  "algorithm": "SLIDING_COUNTER",
+  "enabled": true,
+  "tier": "PREMIUM"
+}
+
+
+
+Response (200 OK)
+
+{
+  "rule_id": "rule-abc-123",
+  "scope": "ENDPOINT",
+  "service": "payment-service",
+  "endpoint": "/payments/initiate",
+  "entity_type": "USER",
+  "tier": "PREMIUM",
+  "limit": 200,
+  "window_seconds": 60,
+  "algorithm": "SLIDING_COUNTER",
+  "enabled": true,
+  "version": 4,
+  "created_at": "2026-11-02T10:30:00Z",
+  "updated_at": "2026-11-03T14:20:00Z",
+  "created_by": "admin-101",
+  "updated_by": "admin-102"
+}
+
+
+NOTE : Optimistic locking — banking me must
+----------------------------------------------
+
+Problem: : Do admins same rule ko simultaneously update karein — last-write-wins ho jaata hai, aur pehle admin ka change silently lost ho jaata hai.
+
+Solution: Rule table me ek version column maintain karo. Update karte waqt client If-Match header me wahi version bheje jo usne us rule ko read karte waqt dekha tha.
+
+Flow:
+
+- Admin A rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB match karta hai → update success → version 4 ho jaata hai.
+- Admin B bhi rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB check karta hai ki current version 4 hai, 
+  request wala 3 → mismatch → 412 Precondition Failed return hota hai. Admin B ko force re-fetch karna padega (fresh version = 4), phir retry karega.
+
+
+
+
+RULE DELETE API — soft delete recommended
+
+
+Request :
+
+DELETE /api/v1/rules/{rule_id}
+Authorization: Bearer <admin_token>
+
+
+Important sceanrios :
+
+Scenario 1: Tier change conflict
+
+Admin FREE rule ko PREMIUM me change karna chahta, but already PREMIUM rule exists. 409 Conflict. Admin ko pehle PREMIUM rule delete karna padega.
+
+
+Scenario 3: Delete active rule ?
+
+Rule cache (Local + Rules Redis): Immediately delete karo — DEL rule:{rule_id}. Stale rule use nahi hona chahiye.
+
+Counters Redis: Immediately delete mat karo — TTL expire hone do.
+
+Kyun?
+
+Manlo Rule: 100 req/min per user. User ne window me 50 requests kar li (counter = 50). Ab admin rule delete karta hai — agar counter bhi delete kar diya,
+aur admin wahi rule recreate kar de (same scope + service + endpoint + entity_type + tier, same limit = 100), to usi window me user ko fresh counter mil
+jaayega. User ne 50 aur requests bheji → counter 0 se start → poore 100 allow ho gaye. Actual me user ko sirf 50 aur milne chahiye the (100 - 50).
+
+Result: Rate limit bypass — recreate karte hi counter reset.
+
+Solution: Counter ko TTL expire hone do (max = window_seconds). Rule recreate ya restore ho jaaye mid-window to old counter still available → sahi enforcement hoti hai.
+
+
+
+Scenario 4: Critical rule delete — 2-person approval
+
+
+Scenario 5: Update consistency across instances
+
+DB write ke baad rule service rule update ka event publish karti hai kafka mai, 
+
+a) Kafka down hai:
+
+Rule service DB mai event update karta hai and ebent kafka mai publish karta hai ab manlo kafka down hai to wo event lost ho jaega.
+so is cas emai hum outbiox pattern use karenge ....is me kya hoga ki jyun hi rule servcie ne DB mai rule update kiya tab hi wo outbox
+table mai wo event insert — ek hi DB transaction me karo. Agar transaction commit hui, dono persist ho gaye. Agar fail hui, dono rollback.
+Uske baad ek separate publisher (background job ya CDC — Debezium) Outbox table se events pick karke Kafka pe publish karta hai. Publish 
+success hone par Outbox se delete (ya published=true mark) isliye  Kafka recover hone par publisher eventually publish kar dega. Koi event
+lost nahi hota.
+
+
+b) Comsuemr (Instnce hi down hai) :
+
+Agar same consumer restsrt ho jata to wo last missed event read kar lega apne piche conmmite dke baad se.
