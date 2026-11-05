@@ -13,37 +13,69 @@
               │  Rules Controller → Rules Service    │
               └──────────────┬───────────────────────┘
                              │
-              ┌──────────────┼──────────────┬
-              │              │              │             
-              ▼              ▼              ▼              
-      ┌──────────────┐ ┌───────────────┐ ┌──────────────┐
-      │   RULES DB   │ │ RULES REDIS   │ │    KAFKA     │
-      │              │ │ (shared,single│ │              │
-      │              │ │   node)       │ │              │
-      │ CREATE:      │ │ CREATE:       │ │ CREATE:      │
-      │   INSERT     │ │   NO-OP       │ │   publish    │
-      │              │ │               │ │   RULE_      │
-      │ UPDATE:      │ │ UPDATE:       │ │   CREATED    │
-      │   UPDATE     │ │   DEL rule:ID │ │              │
-      │              │ │               │ │ UPDATE:      │
-      │ ┌──────────┐ │ │               │ │   publish    │
-      │ │rules tbl │ │ │ratelimit:rule:│ │    RULE_     │
-      │ ├──────────┤ │ │ {rule_id} →   │ │    UPDATED   │
-      │ │id        │ │ │{limit, window}│ │              │
-      │ │scope     │ │ │               │ │{ruleId,scope}│
-      │ │limit     │ │ │               │ │              │
-      │ │window    │ │ │               │ └──────┬───────┘
-      │ │algorithm │ │ │               │        │
-      │ └──────────┘ │ └───────────────┘        │ broadcast
-      └──────────────┘                          │
-                                                ▼
-                              ┌──────────────────────────────────────────┐
-                              │       ALL INSTANCES                      │
-                              │  (API GW + Service instances)            │
-                              │  rule:{rule_id} → {limit, window}        │
-                              │ CREATE → Local Cache (Caffeine) NO-OP    │
-                              │ UPDATE → Local Cache (Caffeine) DEL      │
-                              └──────────────────────────────────────────┘
+              ┌──────────────┴──────────────┐
+              │                             │
+              ▼                             ▼
+      ┌──────────────┐              ┌───────────────┐
+      │   RULES DB   │              │ RULES REDIS   │
+      │              │              │ (shared,      │
+      │ CREATE:      │              │  single node) │
+      │  INSERT rule │              │               │
+      │  INSERT      │              │ CREATE:       │
+      │  outbox_evt  │              │  SET rule:ID  │
+      │  (same txn)  │              │  (proactive)  │
+      │              │              │               │
+      │ UPDATE:      │              │ UPDATE:       │
+      │  UPDATE rule │              │  OVERWRITE    │
+      │  INSERT      │              │  rule:ID      │
+      │  outbox_evt  │              │  (proactive)  │
+      │  (same txn)  │              │               │
+      └──────┬───────┘              └───────────────┘
+             │
+             │ outbox_event table
+             │ (published = false)
+             ▼
+      ┌──────────────────┐
+      │  OUTBOX TABLE    │
+      │  (in RULES DB)   │
+      └────────┬─────────┘
+               │
+               │ polled by
+               ▼
+      ┌──────────────────────────┐
+      │  OUTBOX SCHEDULER JOB    │
+      │  (background job —       │
+      │   NOT Rules Service)     │
+      │                          │
+      │  - pick published=false  │
+      │  - publish to Kafka      │
+      │  - on ACK:               │
+      │    mark published=true   │
+      └────────────┬─────────────┘
+                   │
+                   │ publish
+                   ▼
+      ┌──────────────────────────┐
+      │         KAFKA            │
+      │  topic: rule_event_topic │
+      │  payload: FULL rule data │
+      │  key: ruleId (ordering)  │
+      └────────────┬─────────────┘
+                   │
+                   │ broadcast
+                   ▼
+      ┌──────────────────────────────────────────────────┐
+      │       ALL INSTANCES                              │
+      │  (API GW + Service instances)                    │
+      │                                                  │
+      │  Each instance has own consumer group            │
+      │  → every instance receives every event           │
+      │  → local filter by scope                         │
+      │                                                  │
+      │  CREATE → SET Local Cache (from event)           │
+      │  UPDATE → OVERWRITE Local Cache (from event)     │
+      │                                                  │
+      └──────────────────────────────────────────────────┘
 
 
 
