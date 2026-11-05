@@ -112,24 +112,38 @@ If-Match: "v3"        // optimistic locking
 }
 
 
-### NOTE — Optimistic Locking (Banking me Must)
+
+---------------------
+## 3. RULE FETCH API
+---------------------
+
+GET /api/v1/rules/{rule_id}        → Single rule fetch
+
+GET /api/v1/rules?scope=ENDPOINT&service=payment&page=1&size=20 → List with filters + pagination
+
+
+### RESPONSE:
+---------------
+
+{
+  "rules": [...],
+  "pagination": {
+    "page": 1, "size": 20, "total": 156, "total_pages": 8
+  }
+}
+
+
+
+
+-------------------------------------------------
+## 4. RULE DELETE API — soft delete recommended
 -------------------------------------------------
 
-Problem: Do admins same rule ko simultaneously update karein — last-write-wins ho jaata hai, aur pehle admin ka change silently lost ho jaata hai.
+Hard delete kyun nahi?
 
-Solution: Rule table me ek version column maintain karo. Update karte waqt client If-Match header me wahi version bheje jo usne us rule ko read karte waqt dekha tha.
+- Audit — compliance ke liye historical record chahiye (deleted_at, deleted_by)
+- Accidental delete recovery 
 
-Flow:
-
-- Admin A rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB match karta hai → update success → version 4 ho jaata hai.
-- Admin B bhi rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB check karta hai ki current version 4 hai, 
-  request wala 3 → mismatch → 412 Precondition Failed return hota hai. Admin B ko force re-fetch karna padega (fresh version = 4), phir retry karega.
-
-
-
--------------------------------------------------
-## 3. RULE DELETE API — soft delete recommended
--------------------------------------------------
 
 ### ENDPOINT :
 ---------------
@@ -187,20 +201,8 @@ SCENARIO 4: UPDATE CONSISTENCY ACROSS INSTANCES
 
 DB write ke baad Rule Service rule update ka event publish karti hai Kafka topic me. Do failure scenarios handle karne hain:
 
-a) Kafka Down Hai
--------------------
-
-- Rule Service DB me event update karta hai, aur event Kafka topic me publish karta hai. Maan lo Kafka down hai to wo event lost ho jaayega. 
-  Is case me Transactional Outbox Pattern use karenge.
-- Jaise hi Rule Service ne DB me rule update kiya, usi DB transaction me Outbox table me event insert karo.
-    —> Agar transaction commit hui → dono persist ho gaye (rule update + outbox event)
-    —> Agar transaction fail hui → dono rollback ho gaye
-
-- Uske baad ek separate publisher (background job) Outbox table se events pick karke Kafka pe publish karta hai. Publish success hone par wo 
-  event Outbox se delete kar deta hai (ya published=true mark kar deta hai). Isliye Kafka recover hone par publisher eventually missed events
-  bhi publish kar dega — koi event lost nahi hota.
-
-
+a) Kafka Down Hai -  Transactional Outbox Pattern use karenge (already discussed)
+-----------------------------------------------------------------------------------
 
 b) Consumer Instance Hi Down Hai
 ----------------------------------
@@ -217,14 +219,8 @@ Case 2: Naya instance spin up (naya dynamic consumer group ID)
    —> earliest → consumer topic ke start se saare events process karega. Ye redundant hai kyunki wo events already pichle consumer instance ne process kar diye the.
    —> latest (recommended) → consumer sirf future events receive karega — matlab last missed event kabhi process nahi hoga.
 
-- Lekin latest me missed event koi problem create nahi karta kyunki Naya instance ka Local Cache empty hai and Shared rule Redis already existing instances
-  ne invalidate kar diya hoga (unhe events mil gaye the). Naya instance ki pehli request pe: Local Cache MISS → Redis HIT (already fresh) → serve ho jaayega. 
-  DB tabhi jaayega jab Redis bhi miss ho.
-
-- EDGE CASE : Agar saare instances simultaneously crash ho jaayein rule update ke exact time pe → kisi ne shared rule redis  invalidate nahi kiya → Redis stale.  
-  Yahan TTL safety net bachata hai (Local Cache TTL: 60s, Redis TTL: 5 min) Redis TTL expire hone par DB se fresh fetch hota hai. Worst case 5 min stale, uske
-  baad eventually consistent. 
-
+- Lekin latest me missed event koi problem create nahi karta kyunki Naya instance ka Local Cache empty hai and rule Redis already rule service ne populate / update
+  kar diya hoga. Naya instance ki pehli request pe: Local Cache MISS → Redis HIT (already fresh) → serve ho jaayega. DB tabhi jaayega jab Redis bhi miss ho.
 
 
 
