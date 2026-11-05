@@ -206,37 +206,98 @@ STEP 1: Admin UI → Rules Controller
                20 req/min allow honi chahiye
 
 
-STEP 2: Rules Controller → Rules Service → Rules Database → DB INSERT
+STEP 2: Rules Controller → Rules Service → DB INSERT (with Outbox) + Rules Redis populate
 
-    DB:
-      id=1: { scope: "global-limit-per-user", limit: 1000, window: 60 }
-      id=2: { scope: "payment-service-per-user", limit: 20, window: 60 }
+2A. DB Transaction (atomic)
+----------------------------
+
+  - Rules Service ek single DB transaction me rules table me rule INSERT karta hai aur outbox_event table me event INSERT karta hai. Single DB transaction me hone ki wajah se dono 
+    atomically commit ya rollback hote hain — yaani agar rule rules table me insert hoga to outbox table me bhi insert hoga; otherwise agar koi error aaya to dono jagah insert nahi hoga. 
+ 
+   DB state after transaction commit:
+
+    rules table:
+     id=1: { scope: "GLOBAL",  limit: 1000, window: 60, version: 1 }
+     id=2: { scope: "SERVICE", service: "payment-service", limit: 20, window: 60, version: 1 }
+
+   outbox_event table:
+     id=1: { eventType: "RULE_CREATED", ruleId: 1, payload: {full rule 1}, published: false }
+     id=2: { eventType: "RULE_CREATED", ruleId: 2, payload: {full rule 2}, published: false }
 
 
-STEP 3: Rules Service DB INSERT ke baad Kafka topic mai 2 events publish karti hai:
+2B. Rules Redis populate (DB commit ke baad)
+---------------------------------------------
 
-    Topic: "rule_event_topic"
+   DB commit successful hone ke baad, Rules Service Rules Redis me rule SET karta hai:
 
+    SET ratelimit:rule:1 → {full rule 1}   TTL: 5 min
+    SET ratelimit:rule:2 → {full rule 2}   TTL: 5 min
+
+
+    ⚠️ IMPORTANT - CREATE case me Rules Service Rules Redis ko proactively populate karta hai — DB commit ke turant baad. Lazy loading nahi karta. 
+                  - Lazy loading ka matlab hota hai ki jab koi request Redis miss encounter karti hai, tab DB se data laake Redis me populate kiya jaata hai. 
+                  - Lazy loading tab useful hota hai jab rule object bada ho ya rule count 10,000+ ho — rate limiter me dono applicable nahi.
+                  - Proactive SET se thundering herd problem avoid hota hai. Agar high-traffic rule ke liye bahut saari requests ek saath aa jaayein aur Redis me
+                    rule available na ho, to saari requests Redis MISS encounter karengi aur DB ko hit karengi — jisse DB par sudden spike aa jaayega. Proactive SET
+                    se pehli request pe hi Redis HIT milta hai, DB hit zero.
+
+
+ 
+STEP 3: Outbox Table → Scheduler → Kafka 
+
+   Ab ek separate publisher (background scheduler job) chalta hai jo outbox table se published = false wale events pick karta hai aur Kafka pe publish karta hai.
+
+     - Agar publish successful ho (Kafka se ACK aa gaya) → scheduler us event ko published = true mark kar deta hai (ya delete kar deta hai).
+     - Agar ACK nahi aaya → event published = false hi rehta hai, aur scheduler next cycle me retry karta hai.
+
+   Outbox table ki wajah se Kafka down hone par bhi event DB me safe rehta hai — Kafka recover hone par scheduler use publish kar deta hai, koi event lost nahi hota.
+
+   
     Event 1:
-      { eventType: "RULE_CREATED", ruleId: 1, scope: "global-limit-per-user" }
+     {
+        "eventType": "RULE_CREATED",
+        "ruleId": 1,
+        "rule": {                         ← FULL DATA
+        "scope": "GLOBAL",
+        "service": null,
+        "endpoint": null,
+        "entity_type": "USER",
+        "tier": null,
+        "limit": 1000,
+        "window_seconds": 60,
+        "algorithm": "SLIDING_COUNTER",
+        "enabled": true,
+        "version": 1
+     }
 
-    Event 2:
-      { eventType: "RULE_CREATED", ruleId: 2, scope: "payment-service-per-user" }
 
-    ⚠️ IMPORTANT - Event payload me sirf ruleId aur scope — actual rule content (limit, window) nahi.
-       Kyunki Pura rule data bhejne se payload size bada hoga → network bandwidth waste.
+     Event 2:
+     {
+        "eventType": "RULE_CREATED",
+        "ruleId": 1,
+        "rule": {                         ← FULL DATA
+        "scope": "SERVICE",
+        "service": payment-service,
+        "endpoint": null,
+        "entity_type": "USER",
+        "tier": null,
+        "limit": 20,
+        "window_seconds": 60,
+        "algorithm": "TOKEN_BUCKET",
+        "enabled": true,
+        "version": 1
+     }
 
-    ⚠️ IMPORTANT -  CREATE case me Rules Service rule wala Redis populate nahi karta — lazy loading karta hai. Rule ki pehli request pe populate
-       hota hai, jab Instance Local Cache aur Rules Redis dono MISS ho jaayein. Kyunki rule create to ho gaya hai, but uska use turant hona zaruri 
-       nahi isliye proactively Redis me rakhna RAM unnecessarily waste karega. Isliye on-demand lazy populate karte hain.
+    ⚠️ IMPORTANT — Event me ruleId ke bajaye full rule data bhejte hain. Payload thoda bada ho jaata hai (~300 bytes vs ~50 bytes), but ye negligible hai 
+                  kyunki rules rarely change hote hain (10–100 events/day).
+                  Fayda: Instances event aate hi directly Local Cache populate/overwrite kar sakte hain — koi DB fetch nahi.
 
 
-STEP 4: Kafka → Deliver events to "rule_event_topic"
+STEP 4: Kafka → Broadcast to all instances
 
     ##IMPORTANT : Kafka me ek consumer group ke andar, ek message sirf EK consumer ko deliver hota hai. Sabko nahi.
                   Isliye jis event ko saare instances tak pahunchana hai (broadcast), wahan har instance ka apna alag 
                   consumer group ID hona chahiye — taaki har instance ko event ki ek copy mile.
-
 
     API Gateway ke instances:
     - API Gateway Instance 1 → consumer group: api-gateway-rule-consumer-1
@@ -248,112 +309,72 @@ STEP 4: Kafka → Deliver events to "rule_event_topic"
     - Payment Service Instance 2 → consumer group: payment-service-rule-consumer-2
     - Payment Service Instance 3 → consumer group: payment-service-rule-consumer-3
 
+    ⚠️ Broadcast setup me SAARE events SAARE instances ko milte hain (har instance 
+      ki apni consumer group hai). Har instance apne interest ke events LOCALLY 
+      filter karta hai:
 
-    Event 1: { ruleId: 1, scope: "global-limit-per-user" }
-     → API Gateway ke saare instances ko deliver hota hai
-       (ye generic limit hai — per user across all services)
+   Event 1: scope: "GLOBAL" 
+     - GW instances: sirf scope=GLOBAL process karte hain
 
-    Event 2: { ruleId: 2, scope: "payment-service-per-user" }
-     → Payment Service ke saare instances ko deliver hota hai
-       (ye service-specific limit hai — per user)
-
-    Har instance ko saare events milte hain. Wo apne interest ke events locally filter karta hai:
-      - API Gateway Instances sirf "global-limit-per-user" scope wale events
-      - Payment Service Instances sirf "payment-service-per-user" wale
+   Event 2: scope: "SERVICE" and Service : "payment-service"
+     - Payment Service instances: sirf scope=SERVICE (payment-service) ya 
+       scope=ENDPOINT (payment-service) process karte hain.
 
 
-STEP 5: Har Instance respective Event Consume Karta Hai
 
-    API Gateway Instance (Event 1 receive kiya):
-      - Local Cache check: "Kya rule:1 hai?"
-      - → NAHI (nayi rule hai — pehli baar configure ho rahi hai)
-      - → No-op (kuch invalidate nahi)
+STEP 5: Instances → Local Cache SET 
 
-    Payment Service Instance (Event 2 receive kiya):
-      - Local Cache check: "Kya rule:2 hai?"
-      - → NAHI
-      - → No-op
+  API Gateway Instance (Event 1 receive kiya):
+     - Scope match: GLOBAL → mera interest hai ✅
+     - SET Local Cache: rule:1 → {full rule}  TTL: 60 sec
 
-    ⚠️ Note:
-    Event me sirf ruleId tha, pura rule data nahi.
-    Isliye instance directly cache populate nahi kar sakta.
-    Usko DB se fetch karna padega — next request pe (lazily).
+ Payment Service Instance (Event 2 receive kiya):
+   - Scope match: SERVICE = payment-service → mera interest hai ✅
+   - SET Local Cache: rule:2 → {full rule}  TTL: 60 sec
 
 
-STEP 6: First Request Aayi (User → Payment Service)
-
-    ─── API Gateway Level ───
-
-    a) Request API Gateway pe pahunchti hai
-    b) Gateway Instance → Local Cache check: "rule:1 hai?"
-    c) → MISS
-    d) Gateway Instance → Redis check: "rule:1 hai?"
-    e) → MISS
-    f) Gateway Instance → DB Query: SELECT * FROM rules WHERE id=1
-    g) → Rule mila: { limit: 1000, window: 60 }
-    h) Gateway Instance → Redis me store (TTL: 5 min)
-    i) Gateway Instance → apne Local Cache me store (TTL: 60 sec)
-    j) Gateway Instance total count check: user ki request count 1000 req/min cross hua across all services ?
-    k) → Nahi → Request Payment Service ko forward
-
-    ─── Payment Service Level ───
-
-    l) Request Payment Service instance pe pahunchti hai
-    m) Payment Service Instance → Local Cache check: "rule:2 hai?"
-    n) → MISS
-    o)  Payment Service Instance → Redis check: "rule:2 hai?"
-    p) → MISS
-    q)  Payment Service Instance → DB Query: SELECT * FROM rules WHERE id=2
-    r) → Rule mila: { limit: 20, window: 60 }
-    s) Payment Service Instance  → Redis me store (TTL: 5 min)
-    t) Payment Service Instance  → apne Local Cache me store (TTL: 60 sec)
-    u) Payment Service Instance  → per-user count check: user ki 20 req/min cross hui?
-    v) → Nahi → Request process
+  ⚠️ Rules Redis touch NAHI — Rules Service ne already SET kar diya hai
 
 
-STEP 7: TTL Kyun Required Hai?
+## QUESTION: TTL Kyun Required Hai?
+------------------------------------
 
     TTL event-based invalidation ka safety net hai.
 
     Maan lo update ke dauran event miss ho gaya — kyunki:
+
       • Instance down tha
       • Network failure tha
       • Consumer lag tha
+      • Admin ne directly DB update kiya (Rules Service bypass → event publish nahi hua)
 
-    To us instance ko pata hi nahi chalega ki rule update hua hai.
+    TTL ensure karta hai:
+     - Local Cache TTL: 60 sec → max 60 sec stale
+     - Rules Redis TTL: 5 min → max 5 min stale (agar Rules Service ka Redis write (Update) miss ho gaya)
 
-    Ya phir admin ne directly DB update kiya instead of going
-    through Rules Controller and Rules Service —
-    to Kafka pe event publish hi nahi hua.
+    TTL expire hone ke baad: next request pe Local MISS → Redis MISS → DB fetch → fresh data populate.
 
-    TTL ensure karta hai ki max defined TTL (e.g. 60 sec) me
-    cache entry expire ho jaye.
-
-    Cache entry expire hone ke baad, next request pe:
-      Local Cache MISS → Redis MISS → DB se fresh data fetch
-      → Redis populate → Local Cache populate → fresh rule se check
-
-    Isliye koi bhi instance agar update event receive nahi hua
-    (due to whatever reason), to purane rate limit rule ko
-    defined TTL expiry time se zyada use nahi kar sakta.
-
-    ⚠️ TTL ke bina kya hota:
-    Agar event miss ho jaye aur TTL bhi na ho, to us instance pe
-    purana rule indefinitely cached rahega.
-    Matlab customer ko galat limit enforce hoti rahegi —
-    jo production me bahut dangerous hai.
+    ⚠️ TTL ke bina: event miss ho to purana rule indefinitely cached rahega — customer ko galat limit enforce hogi. Production me bahut dangerous.
 
 
-STEP 8: Subsequent Requests
 
-    Ab rule Rules Redis me populated hai, aur jo instances pehli request handle kar chuke hain unke Local Cache bhi populated hain.
-    Ab next request ke 2 scenarios:
+STEP 6: First Request Aayi (User → Payment Service)
 
-     a) Scenario 1 — Same instance pe request aayi (jo pehle handle kar chuka):
-         Local Cache HIT → directly serve (no Redis call, no DB call)
+   ─── API Gateway Level ───
 
-     b) Scenario 2 — Different instance pe request aayi:
-         Local Cache MISS → Redis HIT → Local Cache populate → serve
+   a) Request API Gateway instance pe pahunchti hai
+   b) Local Cache check: rule:1 → HIT ✅ (event se already populated)
+   c) Global rate limit apply: user ka total count 1000 req/min cross hua? → Nahi
+   d) Request Payment Service ko forward
+
+   ─── Payment Service Level ───
+
+   e) Request Payment Service instance pe pahunchti hai
+   f) Local Cache check: rule:2 → HIT ✅ (event se already populated)
+   g) Per-user rate limit apply: user ki 20 req/min cross hui? → Nahi
+   h) Request process
+
+
 
 
 
@@ -361,9 +382,10 @@ CASE 2: RULE UPDATE FLOW
 ------------------------------
 
 SCENARIO:
+
   Pehle se rule exist karta hai:
-    id=1: { scope: "payment-service", limit: 1000, window: 60 }
-    id=2: { scope: "payment-service-per-user", limit: 20, window: 60 }
+    id=1: { scope: "GLOBAL",  limit: 1000, window: 60, version: 1 }
+    id=2: { scope: "SERVICE", service: "payment-service", limit: 20, window: 60, version: 1 }
 
   Ab admin chahta hai:
     id=1: 1000 → 500
@@ -372,119 +394,148 @@ SCENARIO:
 
 STEP 1: Admin UI → Rules Controller
 
-    PUT /rules/1
-    Payload: { scope: "global-limit-per-user", limit: 500, window: 60s }
+  PUT /rules/1
+  If-Match: "v1"
+  Payload: { scope: "GLOBAL", limit: 500, window: 60s }
 
-    PUT /rules/2
-    Payload: { scope: "payment-service-per-user", limit: 10, window: 60s }
-
-
-
-STEP 2: Rules Controller  → Rules Service → Rules Database → DB UPDATE
-
-    DB:
-      id=1: { scope: "global-limit-per-user", limit: 1000 → 500, window: 60 }
-      id=2: { scope: "payment-service-per-user", limit: 20 → 10, window: 60 }
-
-    ⚠️ Important:
-    DB me rule ID same rehta hai (primary key change nahi hoti),
-    sirf rule ka content (limit, window) update hota hai.
+  PUT /rules/2
+  If-Match: "v1"
+  Payload: { scope: "SERVICE", service: "payment-service", limit: 10, window: 60s }
 
 
-STEP 3: Rules Service → Kafka Publish (do events)
+## NOTE — Optimistic Locking (Banking me Must)
+-------------------------------------------------
 
-    Topic: "rule_event_topic"
+Problem: Do admins same rule ko simultaneously update karein — last-write-wins ho jaata hai, aur pehle admin ka change silently lost ho jaata hai.
 
-    Event 1:
-      { eventType: "RULE_UPDATED", ruleId: 1, scope: "global-limit-per-user" }
+Solution: Rule table me ek version column maintain karte hai. Update karte waqt client If-Match header me wahi version bheje jo Admin ne us rule ko read karte waqt dekha tha.
 
-    Event 2:
-      { eventType: "RULE_UPDATED", ruleId: 2, scope: "payment-service-per-user" }
+Flow:
 
-    ⚠️ IMPORTANT:
-    Update event me bhi sirf ruleId aur scope diya —
-    actual updated rule content (naya limit) nahi diya.
-
-
-STEP 4: Kafka → Deliver events to "rule_event_topic"
-
-     Event 1: { ruleId: 1, scope: "global-limit-per-user" }
-     → API Gateway ke saare instances ko deliver hota hai
-       (ye generic limit hai — per user across all services)
-
-    Event 2: { ruleId: 2, scope: "payment-service-per-user" }
-     → Payment Service ke saare instances ko deliver hota hai
-       (ye service-specific limit hai — per user)
-
-    Har instance ko saare events milte hain. Wo apne interest ke events locally filter karta hai:
-      - API Gateway Instances sirf "global-limit-per-user" scope wale events
-      - Payment Service Instances sirf "payment-service-per-user" wale
+- Admin A rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB match karta hai → update success → version 4 ho jaata hai.
+- Admin B bhi rule read karta hai (version = 3) → update bhejta hai If-Match: "v3" → DB check karta hai ki current version 4 hai, 
+  request wala 3 → mismatch → 412 Precondition Failed return hota hai. Admin B ko force re-fetch karna padega (fresh version = 4), phir retry karega.
 
 
-STEP 6: Har Instance respective Event Consume Karta Hai
-
-    API Gateway Instance (Event 1 receive kiya):
-      - Local Cache check: "Kya rule:1 cached hai?"
-      - → HAAN (purana value cached hai — limit: 1000)
-      - → Local Cache se rule:1 DELETE karo
-      - → Redis se bhi rule:1 DELETE karo
-      - → Kuch aur nahi karta (no re-populate)
-
-    Payment Service Instance (Event 2 receive kiya):
-      - Local Cache check: "Kya rule:2 cached hai?"
-      - → HAAN (purana value cached hai — limit: 20)
-      - → Local Cache se rule:2 DELETE karo
-      - → Redis se bhi rule:2 DELETE karo
-      - → Kuch aur nahi karta (no re-populate)
-
-    ⚠️ Note:
-    Event me sirf ruleId tha, naya value nahi.
-    Isliye instance directly cache populate nahi kar sakta.
-    Wo sirf purana value DELETE karta hai.
-    Fresh data DB se fetch hoga — next request pe (lazily).
 
 
-STEP 7: Next Request Aayi (User → Payment Service)
-
-    ─── API Gateway Level ───
-
-    a) Request API Gateway Instance pe pahunchti hai
-    b) Gateway Instance → Local Cache check: "rule:1 hai?"
-    c) → MISS (kyunki delete kar diya tha)
-    d) Gateway Instance → Redis check: "rule:1 hai?"
-    e) → MISS (kyunki delete kar diya tha)
-    f) Gateway Instance → → DB Query: SELECT * FROM rules WHERE id=1
-    g) → Fresh rule mila: { limit: 500, window: 60 }
-    h) Gateway Instance → Redis me store (TTL: 5 min)
-    i) Gateway Instance → Local Cache me store (TTL: 60 sec)
-    j) Gateway Instance → total count check: sab service ke acrrso si user ka 500 req/min limti cross cross hua?
-    k) → Nahi → Request Payment Service ko forward
-
-    ─── Payment Service Level ───
-
-    l) Request Payment Service instance pe pahunchti hai
-    m) Payment Service Instance → Local Cache check: "rule:2 hai?"
-    n) → MISS
-    o) Payment Service Instance → Redis check: "rule:2 hai?"
-    p) → MISS
-    q) Payment Service Instance  → DB Query: SELECT * FROM rules WHERE id=2
-    r) → Fresh rule mila: { limit: 10, window: 60 }
-    s) Payment Service Instance → Redis me store (TTL: 5 min)
-    t) Payment Service Instance → Local Cache me store (TTL: 60 sec)
-    u) Payment Service Instance → per-user count check: user ki 10 req/min cross hui?
-    v) → Nahi → Request process
+STEP 2: Rules Controller → Rules Service → DB UPDATE (with Outbox) + Rules Redis populate
 
 
-STEP 8: Subsequent Requests
+2A. DB Transaction (atomic)
 
-    Ab updated rule Rules Redis me populated hai, aur jis instance ne update ke baad pehli request handle ki thi uske Local Cache bhi populated hai.
-    Ab next request ke 2 scenarios:
+  Rules Service ek single DB transaction me rules table UPDATE karta hai aur outbox_event table me event INSERT karta hai — dono atomically commit ya rollback.
 
-     a) Scenario 1 — Same instance pe request aayi (jo pehle handle kar chuka):
-         Local Cache HIT → directly serve (no Redis call, no DB call)
+  DB state after transaction commit:
 
-     b) Scenario 2 — Different instance pe request aayi:
-         Local Cache MISS → Redis HIT → Local Cache populate → serve
+  rules table:
+   id=1: { scope: "GLOBAL",  limit: 500, window: 60, version: 2 }   ← 1000 → 500, v1 → v2
+   id=2: { scope: "SERVICE", service: "payment-service", limit: 10, window: 60, version: 2 }   ← 20 → 10, v1 → v2
+
+  outbox_event table:
+   id=3: { eventType: "RULE_UPDATED", ruleId: 1, payload: {full rule 1 (v2)}, published: false }
+   id=4: { eventType: "RULE_UPDATED", ruleId: 2, payload: {full rule 2 (v2)}, published: false }
+
+
+2B. Rules Redis populate (DB commit ke baad)
+
+  DB commit successful hone ke baad, Rules Service Rules Redis me updated rule OVERWRITE karta hai (SET — DELETE nahi):
+
+  SET ratelimit:rule:1 → {full rule 1 (limit: 500)}   TTL: 5 min
+  SET ratelimit:rule:2 → {full rule 2 (limit: 10)}    TTL: 5 min
+    
+  ⚠️ IMPORTANT — UPDATE case me bhi Rules Service Rules Redis ko proactively populate karta hai (lazy loading nahi).
+
+
+
+
+STEP 3: Outbox Table → Scheduler → Kafka (full rule data)
+
+  Background scheduler published = false wale events pick karta hai aur Kafka pe publish karta hai.
+   - Publish successful (ACK) → published = true
+   - ACK nahi aaya → retry next cycle
+
+  Topic: rule_event_topic (partition_key = ruleId — ⚠️ same rule ke events same partition me, ordering maintain karne ke liye)
+
+  Event 1:
+   {
+     "eventType": "RULE_UPDATED",
+     "ruleId": 1,
+     "rule": {                          ← FULL DATA (updated)
+       "scope": "GLOBAL",
+       "service": null,
+       "endpoint": null,
+       "entity_type": "USER",
+       "tier": null,
+       "limit": 500,                    ← naya limit
+       "window_seconds": 60,
+       "algorithm": "SLIDING_COUNTER",
+       "enabled": true,
+       "version": 2
+   }
+
+
+  Event 2:
+  {
+    "eventType": "RULE_UPDATED",
+    "ruleId": 2,
+    "rule": {
+      "scope": "SERVICE",
+      "service": "payment-service",
+      "endpoint": null,
+      "entity_type": "USER",
+      "tier": null,
+      "limit": 10,                     ← naya limit
+      "window_seconds": 60,
+      "algorithm": "TOKEN_BUCKET",
+      "enabled": true,
+      "version": 2
+   }
+
+
+
+STEP 4: Kafka → Broadcast to all instances
+
+    Event 1: scope: "GLOBAL" 
+     - GW instances: sirf scope=GLOBAL process karte hain
+
+   Event 2: scope: "SERVICE" and Service : "payment-service"
+     - Payment Service instances: sirf scope=SERVICE (payment-service) ya 
+       scope=ENDPOINT (payment-service) process karte hain.
+
+
+
+STEP 5: Instances → Local Cache OVERWRITE
+
+ API Gateway Instance (Event 1 receive kiya):
+   - Scope match: GLOBAL → mera interest hai ✅
+   - OVERWRITE Local Cache: rule:1 → {full rule (limit: 500)}  TTL: 60 sec
+   - Purana value (limit: 1000) replace ho gaya
+
+
+ Payment Service Instance (Event 2 receive kiya):
+   - Scope match: SERVICE = payment-service → mera interest hai ✅
+   - OVERWRITE Local Cache: rule:2 → {full rule (limit: 10)}  TTL: 60 sec
+   - Purana value (limit: 20) replace ho gaya
+
+
+
+STEP 6: First Request Aayi (User → Payment Service) — after update event
+
+  ─── API Gateway Level ───
+
+  a) Request API Gateway instance pe pahunchti hai
+  b) Local Cache check: rule:1 → HIT ✅ (event se already overwritten, limit: 500)
+  c) Global rate limit apply: user ka total count 500 req/min cross hua? → Nahi
+  d) Request Payment Service ko forward
+
+  ─── Payment Service Level ───
+
+  e) Request Payment Service instance pe pahunchti hai
+  f) Local Cache check: rule:2 → HIT ✅ (event se already overwritten, limit: 10)
+  g) Per-user rate limit apply: user ki 10 req/min cross hui? → Nahi
+  h) Request process
+
 
 
 
