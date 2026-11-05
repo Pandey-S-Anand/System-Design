@@ -228,3 +228,56 @@ Case 2: Naya instance spin up (naya dynamic consumer group ID)
 
 
 
+======================================================
+# RATE LIMITER — RATE LIMIT ENFORCEMENT APIs DESIGN
+======================================================
+
+Humare setup me rate limiting embedded hai — koi public rate-limit check endpoint nahi hai.
+
+API Gateway level — global per-user limit (filter/middleware ke through)
+Service level — per-user-per-service + per-user-per-service-per-endpoint (service ke andar filter)
+
+
+---------------------
+1. RESPONSE HEADERS 
+---------------------
+
+Har business API ke response me — 200 aur 429 dono — ye headers bhejo:
+
+Header	                   Value	        Kab bhejna
+X-RateLimit-Limit	         100          	Har response (200 + 429) — total allowed limit
+X-RateLimit-Remaining	     42	            Har response (200 + 429) — bachi hui requests
+X-RateLimit-Reset	         1728000060	    Har response (200 + 429) — Unix timestamp, kab window reset hogi
+Retry-After	               30	            Sirf 429 — kitne seconds baad retry karna hai
+
+
+## NOTE :
+----------
+Gateway global headers set karta hai and service ko forward karta hai → respective service apni values calculate karti hai aur existing 
+header value se compare karti hai — agar uski X-RateLimit-Remaining chhoti hai to hi overwrite karti hai → endpoint bhi same tarah
+compare-and-replace karta hai → final headers me wo layer jeetti hai jiska X-RateLimit-Remaining minimum hai — kyunki wahi actual 
+bottleneck hai jo pehle 429 trigger karega. Yehi signal client ko chahiye taaki wo proactively back off kar sake.
+
+
+-------------------------------
+2. ERROR (429) RESPONSE FORMAT 
+-------------------------------
+
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+
+Retry-After: 30 
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1728000060
+
+
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "scope": "endpoint",
+    "message": "Rate limit exceeded. Retry after 30 seconds.",
+    "request_id": "req-xyz-789",
+    "timestamp": "2026-11-02T10:30:00Z"
+  }
+}
