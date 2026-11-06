@@ -159,7 +159,7 @@ Authorization: Bearer <admin_token>
 
 
 ------------------------
-## IMPORTANT SCENARIO :
+## IMPORTANT SCENARIOS :
 ------------------------
 
 SCENARIO 1: TIER CHANGE CONFLICT
@@ -224,6 +224,8 @@ Case 2: Naya instance spin up (naya dynamic consumer group ID)
 
 
 
+
+
 ======================================================
 # RATE LIMITER — RATE LIMIT ENFORCEMENT APIs DESIGN
 ======================================================
@@ -277,3 +279,80 @@ X-RateLimit-Reset: 1728000060
     "timestamp": "2026-11-02T10:30:00Z"
   }
 }
+
+
+
+------------------------
+## IMPORTANT SCENARIOS :
+------------------------
+
+QUESTION 1: Two concurrent requests same user ke liye aa rahi hain — kya limit se zyada allow ho sakta hai? Kaise prevent karoge?
+-----------------------------------------------------------------------------------------------------------------------------------
+
+Har request ke sabhi counter operations (GET, INCR, EXPIRE, ZADD — jo bhi algorithm use ho) Redis pe separate calls ke roop me nahi jaate. 
+Saare operations ek single Lua script ke andar execute hote hain — atomicity ensure karne ke liye.
+
+Kyun zaroori hai: Simple GET → check → INCR approach me race condition hai. Maan lo limit = 100, counter = 99 — do concurrent requests same user ke liye aa gayi.
+Dono threads same value (99) read karengi, dono 99 < 100 decide karengi, aur dono INCR karengi → counter 101 ho jaayega — limit 100 hai but 101 requests allow ho gayi. 
+Ye over-counting hai.
+
+Solution: GET + check + INCR + EXPIRE — sab ek Lua script me wrap karta hoon. Lua script Redis me atomically execute hoti hai — execution ke dauran kisi doosri request
+ka Redis command interleave nahi kar sakta, kyunki Redis single-threaded hai aur Lua script us single thread par exclusively run hoti hai. Isliye dono concurrent requests
+sequentially execute hongi — pehli script counter 99 → 100 karegi, doosri script 100 dekh ke reject kar degi.
+
+
+
+QUESTION 2: Maan lo ek particular user pe suddenly 1M req/sec aa rahi hai — attack ya flash sale ke wajah se. Redis Cluster me us user ka counter ek hi shard pe store hoga (same key = same shard). 
+            Wo shard overload ho jaayega, baaki shards idle rahenge. Aise hot key scenario ko kaise handle karoge?
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Hot key problem solve karne ke liye hum key salting karte hain — hot key ki multiple physical copies banate hain aur unhe different Redis nodes across the cluster me distribute kar dete hain,
+  jisse load evenly distribute ho jaata hai. Kitni copies banengi — N = total RPS on hot key / single shard capacity. 
+
+- Maan lo hot key pe 1M req/sec aa rahi hai aur ek shard ki safe capacity ~50K ops/sec hai — to N = 20 (headroom ke saath 25 tak). Constraint: N cluster ke total shards se zyada nahi ho sakta,
+  warna copies wapas same shards pe concentrate ho jaayengi — us case me pehle cluster scale karna hoga.
+
+- Har request pe (first ho ya subsequent — koi farak nahi) application pehle N keys construct karti hai — key ke saath number 1 se N tak append karke. Iske baad application in N keys ko Redis 
+  cluster pe GET bhejti hai — Redis client (Lettuce/Jedis) har key ka hash calculate karta hai, hash se slot nikaalta hai, slot-to-node mapping se correct shard identify karta hai, aur us shard 
+  pe GET bhejta hai user ka current count paane ke liye. Ye N calls parallel jaati hain.
+
+- Pehli request pe koi key exist nahi karti, isliye saare N shards nil/0 return karte hain. Application cumulative sum calculate karti hai (jo 0 hai) aur allowed limit ke against check karti hai.
+  Kyunki 0 < limit hai, request allow ho jaati hai aur application ek random shard pe INCR request bhejti hai user ka counter badhane ke liye. Ab sirf wahi ek shard par key exist karti hai (value = 1, TTL set), 
+  jabki baaki N−1 shards par abhi koi key exist nahi karti.
+
+- Subsequent requests pe bhi same key construction hoti hai aur same N GET requests jaati hain. Ab kuch shards par key exist karti hain (jinpe pehle INCR hua tha), aur jo exist karti hain unki value mil jaati hai,
+  jabki jo nahi karti unka 0 maana jaata hai. Application in sabki cumulative sum calculate karti hai aur limit se compare karti hai. Agar sum limit se kam hai to request allow hoti hai aur ek random shard pe INCR 
+  bheja jaata hai; agar sum limit ke barabar ya usse zyada hai to request reject ho jaati hai (429). Jaise-jaise requests aati hain, alag-alag random shards par keys dheere-dheere populate hoti jaati hain.
+
+- Trade-off: User ka request count accumulate karne ke liye  N Redis calls lagti hain — isliye N chhota rakhna better hai (4–8), kyunki N badhne se latency badhti hai.
+
+
+
+QUESTION 3: Production me kaise pata chalega rate limiter sahi kaam kar raha hai?
+-----------------------------------------------------------------------------------
+
+Production me rate limiter ki health monitoring ke liye Prometheus + Grafana dashboards use kar sakte hai , jahan ye key metrics track hote hain:
+
+1. Counter Redis - Allow vs Reject rate (per endpoint, per user)
+
+   Case 1 — Reject rate bahut high:
+     - Ya to attack aa raha hai (ek specific user/IP/identifier se abnormal traffic), ya limit bahut tight configure hui hai.
+
+   Case 2 — Reject rate bilkul zero (consistently):
+     Rate limiter kaam hi nahi kar raha ho sakta. Teen reasons ho sakte hain:
+      - Bypass — rate limiter filter actually apply nahi ho raha (deployment/config issue).
+      - Circuit Breaker OPEN (fail-open mode active) — Redis down hai, requests bina rate limit check ke allow ho rahi hain. Ye production me sabse common reason hai.
+      - Rate limit bahut loose — limit itni high hai ki actual traffic usse kabhi cross hi nahi karta (jaise 1M/min configured, traffic 10K/min). Ye misconfiguration hai — limit useless hai.
+
+2. Counter Redis latency (p99)
+   - Har request pe counter Redis call hoti hai — uska p99 1-3ms hona chahiye.
+   - Agar p99 spike kare (5-10ms+) — Redis node overloaded ya network issue. Ye seedha rate limiter check ki latency ko degrade karega.
+
+
+3. Circuit Breaker state transitions
+   - CLOSED → OPEN kitni baar hua (Frequent OPEN = Redis unstable).
+   - OPEN → HALF_OPEN → CLOSED recovery kitni jaldi hui.
+
+4. Rule cache hit ratio (Local Cache + Rules Redis) :
+   - Local Cache hit ~99% hona chahiye (hot path).
+   - Agar hit ratio kam ho — TTL galat configure hua, ya rule frequently update ho rahe hain. Isse rule fetching latency badh jaayegi.
