@@ -1,1 +1,183 @@
+==================================================================================================
+# NOTIFICATION SYSTEM — FUNCTIONAL REQUIREMENTS (kya karega system?)  - Ye interveiwer se pucho 
+==================================================================================================
+
+Q1. Notification ka trigger kaise aayega?
+
+- Event-driven only? (payment success, order placed, KYC approval)
+- Scheduled? (marketing at 9 AM, appointment reminders)
+- User-initiated? (forgot password OTP, resend verification)
+- Admin broadcast? (service outage alert)
+
+
+Q2. Kaunse channels in-scope hain? - Email / SMS / Push / In-app / WhatsApp — sabhi ya subset?
+
+Q3. Ek notification ke liye channel kaise decide hoga — user preference se, notification type se, ya fallback chain se?
+
+     a) User preference se? (user ne bola "sirf email bhejo" ya "email + SMS dono bhejo") — aur user ke paas ise change karne ka option hoga?
+     b) Ya notification sabhi channels ke through jaayega? (user ko har channel se notification milega?)
+     c) Ya fallback chain se? (push fail → SMS → fail → email)
+     d) Ya notification type se decide hoga? (OTP → SMS mandatory, marketing → email only, transaction alert → SMS + Email dono mandatory)
+
+
+Q4. Notification ki priority/criticality kya hai?
+     - Kya OTP/transaction alerts ki priority marketing alerts se zyada rakhni hai? (i.e. OTP/transaction jaldi process ho, marketing thodi der se process ho to chalega)
+     - Kya marketing notifications ko per user rate limit karna hai? (spam prevention)
+
+
+Q5. Delivery guarantee kya chahiye?
+     - At-least-once (duplicate possible, but loss nahi) — ya at-most-once (duplicate nahi, but loss possible)?
+     - Ya notification type par depend karta hai? (jaise transaction alert → at-least-once, duplicate acceptable; marketing alert → at-most-once, message loss acceptable)
+
+Q6. Kya user category-wise opt-out kar sakta hai? (marketing band, regulatory chalu)
+
+
+
+====================================================================================================================
+# RATE LIMITER —  Design Decision (Tumhe propose karna chahiye, poochna nahi, interviewer correct karega if needed
+====================================================================================================================
+
+Q7. Kya template changes ka audit trail chahiye? (banking compliance ke liye — kab, kisne, kya change kiya)
+
+Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
+
+
+
+===============================================
+# SELF-UNDERSTANDING (Har Question ka Answer)
+===============================================
+
+-----------------------------------------------------------------------------------------------------
+Question 1 : Kyun synchronous communication galat approach hai notification process karne ke liye?
+-----------------------------------------------------------------------------------------------------
+
+    Upstream Service
+    │
+    ├── Template DB se fetch karo
+    ├── Template populate karo
+    ├── SMS Provider REST API call karo
+    └── Response ka wait karo... (thread blocked)
+
+    Problems :
+
+    1. Tight Coupling
+       Tight coupling ka matlab — upstream service provider-specific details (URL, timeout, retry, response format) khud handle kar rahi hai. 
+       Provider change ho, naya provider add ho (naya channel add hone par) — har case me upstream service ka code change karna padega.
+
+    2. Thread Blocking
+       REST call synchronous hai — upstream service ka thread provider ke response ka wait karta hai. Us duration me wo thread kuch aur nahi kar sakta.
+
+    3. Cascading Failure
+       Provider down hai → upstream service retries karti hai → retries fail → upstream service bhi fail ho jaati hai. Ek non-critical cheez (notification)
+       critical service (Order) ko down kar deti hai.
+
+    4. High Traffic Pe Collapse
+       Bulk notifications (10K users ko ek saath) → har notification ke liye thread block → thread pool exhaust → nayi requests ke liye koi thread nahi → system hang.
+   
+    
+
+----------------------------------------------------
+Question 2 : Notification ka trigger kaise aayega?
+----------------------------------------------------
+
+1. Event-Driven (payment success, order placed, KYC approval)
+
+ - Upstream service event publish karti hai, notification service event ko consume karti hai and alert trigger karti hai.
+ - Scenario: User ne order place kiya. Order Service ko "Order Placed" notification trigger karni hai.
+
+   a) Order Service order place karti hai  
+
+   b) Order Service Kafka topic("business_events") me event publish karti hai
+
+          Topic: business_events    
+
+          Event: ORDER_PLACED        
+          {
+            event_id: "evt-123",
+            transCode: "1001",        ← transaction code (mostly numerical, sometimes string)
+            transType: "ORD",         ← transaction type
+            channelId: "2",           ← kis upstream system ne event generate kiya (mobile banking / net banking etc)
+            user_id: 101,
+            order_id: "ORD-456",
+            amount: 5000,
+            timestamp: "..."
+            ......
+            ...other placeholders   ← jo template me populate honge (orderId, amount, name, etc.)
+          }      
+
+   c) Notification Service ke 3 instances hain (HA ke liye):
+      - Notification Instance 1
+      - Notification Instance 2
+      - Notification Instance 3
+
+      Teeno subscribe karte hain SAME topic "business_events" ko
+      Teeno ka consumer group ID = "notification-service"
+
+     # NOTE:
+      → Agar multiple consumers same topic ko subscribe karte hain aur sabhi ek hi Consumer Group ka part hain, toh topic  ka ek partition ek time par sirf ek consumer ko assign hota hai,
+       agar consumers ki sankhya partitions se zyada ho, toh extra consumers idle rahenge. Isliye, agar topic mein 3 partitions hain aur 3 consumers (pods) hain, toh har consumer ko ek 
+       partition milega aur woh apne partition ke events process karega.
+
+      → Agar teeno consumers ke alag-alag Consumer Groups hote (e.g. notification-1, notification-2, notification-3), toh har Consumer Group ko saare events ki apni copy milti aur teeno 
+        independently process karte. Isse same events 3 baar process hote (duplicate processing).
+   
+   d) Manlo Notification Instance 1 event (evt-123) consume karta hai. Ab Instance 1 ko ye event process karna hai. Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
+
+   e) Alert Setup Retrieval
+      → Instance 1 ke paas ab event payload hai, jisme transCode, transType aur channelId present hain. Ye teeno milkar decide karte hain ki kaunsa alert trigger karna hai.
+      → Instance 1 alert_setup table me lookup karta hai is composite key ke basis par
+      → Same (transCode + transType + channelId) combination ke corresponding multiple alert_setup rows exist kar sakti hain — agar us alert ke liye multiple languages
+        allowed hain. Har row ek language ke liye hai.
+
+         alert_setup:
+           ┌─────┬───────────┬──────────┬───────────┬──────────┬
+           │ id  │ transCode │ transType│ channelId │ language │
+           ├─────┼───────────┼──────────┼───────────┼──────────┼
+           │ 501 │ 1001      │ ORD      │ 2         │ en       │
+           │ 502 │ 1001      │ ORD      │ 2         │ hi       │ 
+           └─────┴───────────┴──────────┴───────────┴──────────┴
+
+        Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo, offset commit karo).
+
+    f) Customer Language Preference Lookup :
+          Instance 1 1 ke paas alert_setup rows hain — ek per allowed language. Ab decide karna hai kaunsa language version use karein.
+
+          Iske liye Pod 1 customer_preference table me lookup karta hai, event payload me aaye user_id ke basis par:
+
+          Case 1 — Preference exist karti hai:
+                → Preferred language wala alert_setup row filter ho jaata hai → baaki languages ke alert_setup reject ho jaate hain.
+
+          Case 2 — Preference exist nahi karti:
+                → Default language wala alert_setup row filter ho jaata hai. Ye default language bhi customer_preference table me hi saved hoti hai — alag se hardcoded nahi hai.
+        
+
+
+    g) Template Fetch (Redis Cache — No Local Cache) and Template Rendering
+
+       — Ab Notification Instance 1 ke paas relevant alert_setup_id hai (language resolve hone ke baad). Template fetch directly DB se nahi karte — latency badh jaayegi. 
+         Templates read-heavy hoti hain, write-heavy nahi. Isliye application aur DB ke beech Redis as distributed cache use karte hain — koi local/instance-level cache nahi,
+         consistency aur simplicity ke liye.
+
+         Fetch flow:
+
+           L1: Template Redis (shared)          → HIT 1-3ms
+           L2: Template DB (source of truth)    → HIT 10-50ms
+           └─→ SET Redis (TTL 5min)          ← first request pe populate
+
+       — Local cache isliye nahi rakhte kyunki us case me har template update pe saare instances ka local cache invalidate karna padega — jiske liye event-based invalidation (Kafka) chahiye,
+         jaise rate limiter design me kiya tha. Template update ke waqt ye invalidation fail ho sakti hai, aur templates compliance-adherent hote hain — to stale template trigger hona breach hai.
+         Isliye Redis as shared cache use karte hain:
+
+       — Template Service (separate service):
+          → Template create, update, delete karne ke liye ek alag Template Service hai. Flow:
+          → Create: Template Service DB me template insert karti hai → Redis me entry create karti hai → TTL set karti hai (5 min).
+          → Update: Template Service DB me template update karti hai → Redis me bhi template update karti hai. Yahan invalidate (delete) nahi, update karte hain — kyunki invalidation se thundering 
+            herd problem aa sakti hai. Update karne se har instance ko ko Redis se hi latest template milta hai.
+
+       — Agar Redis SET fail ho jaye (rare — network issue) , to TTL as a safety net hai: TTL expire hone pe next request DB se fresh template fetch karke Redis repopulate kar degi. Aur kyunki sabhi instances 
+         same Redis se read hain, fix bhi same time pe hota hai — inconsistent state nahi banti. Templates rare update hote hain, to agar Redis update kabhi miss bhi ho jaye, to manual invalidate/update bhi 
+         possible hai — koi critical issue nahi. Isliye decision: Redis-only rakhte hain — simple, consistent, compliance-safe. 1-3ms local cache savings ke liye compliance risk lena worth nahi.
+
+       - Ab relevant template fetch hone ke baad, template ke placeholders populate hote hain — event payload aur user data se (ye user data user_id se hum database se fetch kar lete hain). Isse template final
+         ready ho jaata hai.
 
