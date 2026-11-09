@@ -105,21 +105,20 @@ Question 2 : Notification ka trigger kaise aayega?
             ...other placeholders   ← jo template me populate honge (orderId, amount, name, etc.)
           }      
 
-   c) Notification Service ke 3 instances hain (HA ke liye):
-      - Notification Instance 1
-      - Notification Instance 2
-      - Notification Instance 3
+   c) Notification Service ke 3 instances (pod) hain (HA ke liye) . Har instance ke andar @KafkaListener annotation wala method configured hai. Jis method par @KafkaListener annotation laga hota hai, 
+      Spring Kafka uske liye internally Kafka Consumer object create aur manage karta hai. Ye consumer topic se events poll karke listener method ko pass karta hai. By default, har listener ke 
+      liye ek consumer hota hai. Lekin concurrency configure karke ek pod ke andar multiple consumers create kar sakte hain.
 
-      Teeno subscribe karte hain SAME topic "business_events" ko
-      Teeno ka consumer group ID = "notification-service"
+      Example:
 
-     # NOTE:
-      → Agar multiple consumers same topic ko subscribe karte hain aur sabhi ek hi Consumer Group ka part hain, toh topic ka ek partition ek time par sirf ek consumer ko assign hota hai,
-       agar consumers ki sankhya partitions se zyada ho, toh extra consumers idle rahenge. Isliye, agar topic mein 3 partitions hain aur 3 consumers (pods) hain, toh har consumer ko ek 
-       partition milega aur woh apne partition ke events process karega.
+      @KafkaListener(topics = "business_events", groupId = "notification-service", concurrency = "2")
+       public void consume(BusinessEvent event) {
+         processNotification(event);
+       }
 
-      → Agar teeno consumers ke alag-alag Consumer Groups hote (e.g. notification-1, notification-2, notification-3), toh har Consumer Group ko saare events ki apni copy milti aur teeno 
-        independently process karte. Isse same events 3 baar process hote (duplicate processing).
+      Is configuration mein har pod ke andar 2 Kafka Consumers create honge. Teeno pods mein total 3 × 2 = 6 Kafka Consumers** honge. Ye sabhi same Consumer Group (`notification-service`) 
+      ka part honge aur collectively `business_events` topic ke partitions ko parallelly consume aur process karenge.
+  
    
    d) Manlo Notification Instance 1 event (evt-123) receive karta hai and business_events topic pe offset commit karta hai. Ab Instance 1 ko ye event process karna hai. 
       Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
