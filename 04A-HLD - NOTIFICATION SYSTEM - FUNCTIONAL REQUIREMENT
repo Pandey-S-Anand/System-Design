@@ -125,6 +125,7 @@ Question 2 : Notification ka trigger kaise aayega?
       Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
 
    e) Alert Setup Retrieval
+
       → Instance 1 ke paas ab event payload hai, jisme transCode, transType aur channelId present hain. Ye teeno milkar decide karte hain ki kaunsa alert trigger karna hai.
       → Instance 1 alert_setup table me lookup karta hai is composite key ke basis par
       → alert_setup table mein (transCode + transType + channelId) ka combination ek unique alert_setup_id generate karta hai. Is alert_setup_id ke corresponding template table
@@ -157,6 +158,7 @@ Question 2 : Notification ka trigger kaise aayega?
 
 
     f) Template Fetch and Template Rendering
+
          — Ab Notification Instance 1 ke paas relevant `alert_setup_id` hai.
           
          - Iske baad Instance 1, event payload mein aaye `user_id` ke basis par `user_preference` table se user's language preference check karta hai.
@@ -197,7 +199,8 @@ Question 2 : Notification ka trigger kaise aayega?
           Isse template final ready ho jaata hai.
 
 
-      h) 
+      h) Contact Details Fetching & Channel-Specific Payload Construction
+
          - Ab Notification Instance 1 ke paas teeno channels (EMAIL, SMS, PUSH) ke liye rendered template content ready hai. 
          - Ab 3 naye topics (sms_events, email_events, push_events) Admin/DevOps team manually create karti hai.
          - Instance 1 ab user_profile table se user_id ke basis par DB ya user cache se contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
@@ -208,12 +211,25 @@ Question 2 : Notification ka trigger kaise aayega?
            {
             content: "<rendered content>",                                     ← kya bhejna hai - SMS / EMAIL / PUSH content
             to: "8528702513 / anurag@example.com / fcm_device_token_abc"       ← kis mobile / email / device par bhejna hai
-            event_id: "evt-123",                                               ← audit + idempotency
+            event_id: "evt-123",                                               ← audit + idempotency 
+            notification_id: "evt-123:SMS" / "evt-123:EMAIL" / "evt-123:PUSH", ← Notification ko uniquely identify karne ke liye (unique per channel)  // webhook and audit ke liye
             template_id: "tpl-001-email",                                      ← audit ke liye // kis template se notification gaya
             user_id: "user_101",                                               ← audit ke liye // kis user ko ye email gaya
             language: "EN / HI / CH"                                           ← audit ke liye // kis language mai ye email bheja gaya user ko 
           }
-         
+
+
+           notification_audit:
+           ┌──────────────────┬─────────┬─────────┬────────┐
+           │ notification_id  │ channel │ status  │ ...    │
+           ├──────────────────┼─────────┼─────────┼────────┤
+           │ evt-123:EMAIL    │ EMAIL   │ SENT    │ ...    │
+           │ evt-123:SMS      │ SMS     │ SENT    │ ...    │
+           │ evt-123:PUSH     │ PUSH    │ FAILED  │ ...    │
+           └──────────────────┴─────────┴─────────┴────────┘
+
+
+      i) Channel-wise Event Publishing & Processing
 
          - Ab Instance 1 producer ki tarah act karta hai aur 3 alag Kafka topics (email_events, sms_events aur push_events) mein respective payloads/events publish karta hai.
 
@@ -234,25 +250,10 @@ Question 2 : Notification ka trigger kaise aayega?
            ## Important Nuance — 202 Accepted ≠ Delivered to User
               → 202 Accepted ka matlab sirf itna hai ki aggregator ne message receive kar liya hai ("maine SMS/Email/Push receive kar liya hai, main process karunga") — ye guarantee nahi ki
                 message user tak pahunch gaya. Actual delivery ki tracking webhook ke through asynchronously hoti hai. Isi wajah se worker 202 Accepted aane pe hi offset commit kar deta hai, 
-                actual delivery ka wait nahi karta — kyunki provider ne message ki responsibility le li hai, aur andar se fail hone pe wo apna retry khud handle karta hai.
+                actual delivery ka wait nahi karta — kyunki provider ne message ki responsibility le li hai.
 
 
-           Topic: email_events
-           ├── Consumer Group: "email-workers"
-               ├── Email Worker 1 (Partition-0) → email_events se payload uthata hai → SendGrid/AWS SES ko bhejta hai → successfully send hone par email_events pe offset commit karta hai
-               └── Email Worker 2 (Partition-1) → → email_events se payload uthata hai → SendGrid/AWS SES ko bhejta hai → successfully send hone par email_events pe offset commit karta hai
-
-
-           Topic: sms_events
-           ├── Consumer Group: "sms-workers"
-               ├── SMS Worker 1 (Partition-0) → sms_events se payload uthata hai → Twilio/MSG91 ko bhejta hai → successfully send hone par sms_events pe offset commit karta hai
-               └── SMS Worker 2 (Partition-1) → sms_events se payload uthata hai → Twilio/MSG91 ko bhejta hai → successfully send hone par sms_events pe offset commit karta hai
-
-
-           Topic: push_events
-           ├── Consumer Group: "push-workers"
-               ├── Push Worker 1 (Partition-0) → push_events se payload uthata hai → FCM/APNs ko bhejta hai → successfully send hone par push_events pe offset commit karta hai
-               └── Push Worker 2 (Partition-1) → push_events se payload uthata hai → FCM/APNs ko bhejta hai → successfully send hone par push_events pe offset commit karta hai
+          - ## Webhook Flow — Aggregator Ne notification Successfully Bheja Ya Nahi, Kaise Pata Chalega? 
 
 
 
