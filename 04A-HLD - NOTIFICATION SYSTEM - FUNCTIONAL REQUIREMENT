@@ -187,7 +187,7 @@ Question 2 : Notification ka trigger kaise aayega?
            → Template create, update, delete karne ke liye ek alag Template Service hai.
            → Create: Template Service DB me template insert karti hai → Redis me entry create karti hai → TTL set karti hai (5 min).
            → Update: Template Service DB me template update karti hai → Redis me bhi template update karti hai. Yahan invalidate (delete) nahi, update karte hain — kyunki invalidation se thundering 
-            herd problem aa sakti hai. Update karne se har instance ko ko Redis se hi latest template milta hai.
+             herd problem aa sakti hai. Update karne se har instance ko ko Redis se hi latest template milta hai.
 
         — Agar Redis SET fail ho jaye (rare — network issue) , to TTL as a safety net hai: TTL expire hone pe next request DB se fresh template fetch karke Redis repopulate kar degi. Aur kyunki sabhi instances 
           same Redis se read hain, fix bhi same time pe hota hai — inconsistent state nahi banti. Templates rare update hote hain, to agar Redis update kabhi miss bhi ho jaye, to manual invalidate/update bhi 
@@ -199,38 +199,62 @@ Question 2 : Notification ka trigger kaise aayega?
 
       h) 
          - Ab Notification Instance 1 ke paas teeno channels (EMAIL, SMS, PUSH) ke liye rendered template content ready hai. 
-         - Ab 3 naye topics (sms_events, email_events, push_events) manually create kiya jaega. Prod. mai generally manually hi topics create kiye jaate hai.
+         - Ab 3 naye topics (sms_events, email_events, push_events) Admin/DevOps team manually create karti hai.
          - Instance 1 ab user_profile table se user_id ke basis par DB ya user cache se contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
          - Contact details milne ke baad Instance 1 teen channel-specific payloads construct karta hai:
 
+           sms_events / email_events / push_events sample payload:
+
            {
-            event_id: "evt-123",           ← audit + idempotency
-            template_id: "tpl-002-email",  ← audit ke liye
-            content: "<rendered content>", ← kya bhejna hai
-            to: "anurag@example.com"       ← kahan bhejna hai
+            content: "<rendered content>",                                     ← kya bhejna hai - SMS / EMAIL / PUSH content
+            to: "8528702513 / anurag@example.com / fcm_device_token_abc"       ← kis mobile / email / device par bhejna hai
+            event_id: "evt-123",                                               ← audit + idempotency
+            template_id: "tpl-001-email",                                      ← audit ke liye // kis template se notification gaya
+            user_id: "user_101",                                               ← audit ke liye // kis user ko ye email gaya
+            language: "EN / HI / CH"                                           ← audit ke liye // kis language mai ye email bheja gaya user ko 
           }
          
 
+         - Ab Instance 1 producer ki tarah act karta hai aur 3 alag Kafka topics (email_events, sms_events aur push_events) mein respective payloads/events publish karta hai.
+
+         - Har topic ka apna independent Consumer Group hota hai — email-workers, sms-workers, push-workers. Har Consumer Group ke andar multiple consumers ho sakte hain - inhe worker
+           bhi kehte hain, jo respective topic ke partitions se events parallelly consume aur process karte hain. Isse multiple events parallelly process ho sakte hain, jisse overall event 
+           processing throughput improve hota hai.
+
+         - In consumers ka high-level responsibility respective payloads ko corresponding external client/aggregator tak forward karna hota hai — API call (sync HTTP POST) ke through 
+           taaki user ko Email, SMS ya Push Notification deliver ho sake.
+
+         - Worker aggregator se success acknowledgement ka configured timeout tak synchronously wait karta hai. Agar timeout exceed ho jaata hai, toh notification delivery ko failed maana jaata hai.
+           Agar retries configured hain, toh worker maximum 3 attempts tak retry karta hai (Exponential Backoff + Jitter ke saath). Timeout configure karna mandatory hai, kyunki agar aggregator ki API 
+           down ho aur timeout configured na ho, toh worker ka thread indefinitely blocked reh sakta hai.
+
+         - Aggregator se success acknowledgement (`200 OK` ya `202 Accepted`) milne ke baad worker apne respective Kafka topic ka offset commit karta hai. Iske baad worker next available message 
+           consume karke process karta hai.
+
+           ## Important Nuance — 202 Accepted ≠ Delivered to User
+              → 202 Accepted ka matlab sirf itna hai ki aggregator ne message receive kar liya hai ("maine SMS/Email/Push receive kar liya hai, main process karunga") — ye guarantee nahi ki
+                message user tak pahunch gaya. Actual delivery ki tracking webhook ke through asynchronously hoti hai. Isi wajah se worker 202 Accepted aane pe hi offset commit kar deta hai, 
+                actual delivery ka wait nahi karta — kyunki provider ne message ki responsibility le li hai, aur andar se fail hone pe wo apna retry khud handle karta hai.
 
 
-         Ab Instance 1 consumer se producer ban jaata hai aur 3 alag topics me produce karti hai with respective paylaods — email_events, sms_events, push_events. 
-         Har topic ke liye alag consumer group hai — email-workers, sms-workers, push-workers.
-         har cosumer groups ke andar respective workers ke kai instances hote hai jo ki resepective topic ke partions ko consume karte hai isse pareely events cosmuem and proices shtoe hai.
-         ab email_worker email_events topic se payload uthaya → email cleint jaise ko SendGrid  ko bhej diya → offset commit
-         similarly sms_worker sms_events topic se payload uthaya → sms cleint jaise ko Twilio ko bhej diya → offset commit
-         similarly push_worker push_events topic se payload uthaya → push cleint jaise ki FCM ko bhej diya → offset commit
+           Topic: email_events
+           ├── Consumer Group: "email-workers"
+               ├── Email Worker 1 (Partition-0) → email_events se payload uthata hai → SendGrid/AWS SES ko bhejta hai → successfully send hone par email_events pe offset commit karta hai
+               └── Email Worker 2 (Partition-1) → → email_events se payload uthata hai → SendGrid/AWS SES ko bhejta hai → successfully send hone par email_events pe offset commit karta hai
 
-         Topic: email_events
-├── Consumer Group: "email-workers"
-│   ├── Email Worker 1 (Partition-0)
-│   └── Email Worker 2 (Partition-1)
 
-Topic: sms_events
-├── Consumer Group: "sms-workers"
-│   └── SMS Worker 1 (Partition-0)
+           Topic: sms_events
+           ├── Consumer Group: "sms-workers"
+               ├── SMS Worker 1 (Partition-0) → sms_events se payload uthata hai → Twilio/MSG91 ko bhejta hai → successfully send hone par sms_events pe offset commit karta hai
+               └── SMS Worker 2 (Partition-1) → sms_events se payload uthata hai → Twilio/MSG91 ko bhejta hai → successfully send hone par sms_events pe offset commit karta hai
 
-Topic: push_events
-├── Consumer Group: "push-workers"
-│   └── Push Worker 1 (Partition-0)
+
+           Topic: push_events
+           ├── Consumer Group: "push-workers"
+               ├── Push Worker 1 (Partition-0) → push_events se payload uthata hai → FCM/APNs ko bhejta hai → successfully send hone par push_events pe offset commit karta hai
+               └── Push Worker 2 (Partition-1) → push_events se payload uthata hai → FCM/APNs ko bhejta hai → successfully send hone par push_events pe offset commit karta hai
+
+
+
 
          
