@@ -268,11 +268,12 @@ Question 2 : Notification ka trigger kaise aayega?
                        a) Created webhook URL configure kar dete hain.
                        b) Dashboard mein select karte hain ki kin events par SendGrid webhook trigger karega.
                           For example:
-                            delivered → Email recipient ke mail server tak successfully pahunch gaya.
-                            bounce → Email deliver nahi ho paya.
-                            dropped → SendGrid ne email send hi nahi kiya.
-                            deferred → Temporary issue ki wajah se email delivery delay ho rahi hai.
-                            processed → SendGrid ne email ko processing ke liye accept kar liya hai.
+                            Delivered → Email recipient ke mail server (Gmail/Yahoo) ne successfully accept kar liya hai.
+                            Bounced → Email deliver nahi ho paaya, jaise invalid email address hone par.
+                            Spam → user ne spam mark kiya
+                            Dropped → SendGrid ne email send hi nahi kiya.
+                            Deferred → Temporary issue ki wajah se email delivery delay ho rahi hai.
+                            Processed → SendGrid ne email ko processing ke liye accept kar liya hai.
 
                     → Ab SendGrid ko hamara webhook URL pata hai aur ye bhi pata hai ki kin events par webhook trigger karna hai. Isliye jab bhi selected event occur hota hai,
                       SendGrid hamare configured URL par HTTP POST request bhejta hai, jisme us email ka delivery status aur related details hoti hain.
@@ -280,14 +281,65 @@ Question 2 : Notification ka trigger kaise aayega?
             STEP 3: Worker ne SendGrid ko email bhejne ka request kiya:
 
                     Worker → POST https://api.sendgrid.com/v3/mail/send
+                           
                     {
-                        to: "anurag@example.com",
-                        subject: "Order Confirmed",
-                        html: "<html>...</html>"
+                       to: "anurag@example.com",
+                       content: "<html>...",
+                       custom_args: {
+                          notification_id: "evt-123:EMAIL"   ← explicitly bhejna
+                       }
                     }
+
+                    custom_args : SendGrid ka feature hai — tum koi bhi key-value pair bhej sakte ho, SendGrid usse store karta hai, aur webhook call me same custom_args wapas bhejta hai.
 
                     SendGrid → 202 Accepted  ← "Maine request receive kar li" → Worker offset commit kar deta hai, next message uthata hai.
 
                     
-            STEP 4: Worker ne SendGrid ko email bhejne ka request kiya:
-         
+            STEP 4: SendGrid Background Processing & Webhook Callback
+                    → Background me SendGrid:
+                        a) User ke email server (Gmail, Yahoo) se SMTP handshake karta hai
+                        b) Email deliver karta hai
+                        c) Result pata chalta hai: Delivered / Bounced / Spam etc.
+                    →  SendGrid ye status updates hamare Notification Service ko configured webhook URL ke through bhejta hai.   
+                         SendGrid → POST https://notification-service.yourbank.com/webhook/sendgrid
+
+                       Headers:
+                         Content-Type: application/json
+                         X-Twilio-Email-Event-Webhook-Signature: <HMAC signature>
+                         X-Twilio-Email-Event-Webhook-Timestamp: 1699876543
+
+                       Body:
+                       [
+                          {
+                            "event": "delivered",
+                            "email": "anurag@example.com",
+                            "timestamp": 1699876543,
+                           "sg_message_id": "sendgrid-msg-xyz",
+                           "notification_id": "evt-123:EMAIL"    ← humne bheja tha custom_args me
+                         }
+                      ]
+
+            STEP 5: Webhook Signature Verification & Delivery Status Audit Update
+                     - Notification Service ka publicly accessible webhook endpoint SendGrid se aane wali HTTP POST request receive karta hai. 
+                     
+                     - Webhook URL publicly accessible hone ki wajah se koi bhi fake POST request bhej sakta hai. Isliye SendGrid har request ke
+                       saath HMAC signature bhejta hai. SendGrid Dashboard mein Signed Event Webhook enable karke generate hua shared secret
+                       Notification Service ke secure configuration mein store karte hain. Webhook endpoint isi secret ka use karke signature verify
+                       karta hai. Invalid signature par 401 Unauthorized return hota hai, jabki valid signature par payload process karke notification_audit
+                       table update hoti hai.
+
+                      @PostMapping("/webhook/sendgrid")
+                      public ResponseEntity<Void> handle(@RequestBody String payload, @RequestHeader("X-Twilio-Email-Event-Webhook-Signature") String signature) {
+                         if (!verifySignature(payload, signature, sharedSecret)) {
+                             return ResponseEntity.status(401).build();
+                         }
+
+                         // Process webhook and update notification_audit
+                         return ResponseEntity.ok().build();
+                       }
+
+                      UPDATE notification_audit 
+                      SET status = 'DELIVERED', delivered_at = <timestamp>
+                      WHERE notification_id = 'evt-123:EMAIL'
+
+        
