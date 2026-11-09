@@ -165,7 +165,7 @@ Question 2 : Notification ka trigger kaise aayega?
             Case 1: User ki language preference exist karti hai:
                  → template table mein us preferred language ke corresponding row ko lookup karta hai aur us row se teeno channels (Email, Push aur SMS) ke templates retrieve kar leta hai.
 
-           Case 2: User ki language preference exist nahi karti:
+            Case 2: User ki language preference exist nahi karti:
                  → user_preference table mein stored default language ke basis par template table se corresponding row lookup karta hai aur us row se teeno channels ke templates retrieve kar leta hai. 
                    Default language hardcoded nahi hoti.
  
@@ -254,7 +254,40 @@ Question 2 : Notification ka trigger kaise aayega?
 
           - ## Webhook Flow — Aggregator Ne notification Successfully Bheja Ya Nahi, Kaise Pata Chalega? 
 
+             STEP 1: Webhook Endpoint Creation
+                     → Developer Notification Service mein /webhook/sendgrid REST endpoint create karta hai, jise SendGrid HTTP POST request ke through call karega.
+                         Example URL: https://notification-service.yourbank.com/webhook/sendgrid
 
+                     → Ye URL publicly accessible hona chahiye, taaki SendGrid internet ke through is endpoint ko access kar sake.
 
+                     → Endpoint incoming payload receive karega, webhook signature verify karega aur signature valid hone par notification_audit table update karega, taaki 
+                       notification ka actual delivery status track kiya ja sake (DELIVERED, BOUNCED, FAILED etc.).
 
+             STEP 2: SendGrid Dashboard Configuration
+                    → Ab SendGrid Dashboard mein jaakar:
+                       a) Created webhook URL configure kar dete hain.
+                       b) Dashboard mein select karte hain ki kin events par SendGrid webhook trigger karega.
+                          For example:
+                            delivered → Email recipient ke mail server tak successfully pahunch gaya.
+                            bounce → Email deliver nahi ho paya.
+                            dropped → SendGrid ne email send hi nahi kiya.
+                            deferred → Temporary issue ki wajah se email delivery delay ho rahi hai.
+                            processed → SendGrid ne email ko processing ke liye accept kar liya hai.
+
+                    → Ab SendGrid ko hamara webhook URL pata hai aur ye bhi pata hai ki kin events par webhook trigger karna hai. Isliye jab bhi selected event occur hota hai,
+                      SendGrid hamare configured URL par HTTP POST request bhejta hai, jisme us email ka delivery status aur related details hoti hain.
+
+            STEP 3: Worker ne SendGrid ko email bhejne ka request kiya:
+
+                    Worker → POST https://api.sendgrid.com/v3/mail/send
+                    {
+                        to: "anurag@example.com",
+                        subject: "Order Confirmed",
+                        html: "<html>...</html>"
+                    }
+
+                    SendGrid → 202 Accepted  ← "Maine request receive kar li" → Worker offset commit kar deta hai, next message uthata hai.
+
+                    
+            STEP 4: Worker ne SendGrid ko email bhejne ka request kiya:
          
