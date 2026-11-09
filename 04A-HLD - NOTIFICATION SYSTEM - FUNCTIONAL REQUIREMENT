@@ -114,70 +114,123 @@ Question 2 : Notification ka trigger kaise aayega?
       Teeno ka consumer group ID = "notification-service"
 
      # NOTE:
-      → Agar multiple consumers same topic ko subscribe karte hain aur sabhi ek hi Consumer Group ka part hain, toh topic  ka ek partition ek time par sirf ek consumer ko assign hota hai,
+      → Agar multiple consumers same topic ko subscribe karte hain aur sabhi ek hi Consumer Group ka part hain, toh topic ka ek partition ek time par sirf ek consumer ko assign hota hai,
        agar consumers ki sankhya partitions se zyada ho, toh extra consumers idle rahenge. Isliye, agar topic mein 3 partitions hain aur 3 consumers (pods) hain, toh har consumer ko ek 
        partition milega aur woh apne partition ke events process karega.
 
       → Agar teeno consumers ke alag-alag Consumer Groups hote (e.g. notification-1, notification-2, notification-3), toh har Consumer Group ko saare events ki apni copy milti aur teeno 
         independently process karte. Isse same events 3 baar process hote (duplicate processing).
    
-   d) Manlo Notification Instance 1 event (evt-123) consume karta hai. Ab Instance 1 ko ye event process karna hai. Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
+   d) Manlo Notification Instance 1 event (evt-123) receive karta hai and business_events topic pe offset commit karta hai. Ab Instance 1 ko ye event process karna hai. 
+      Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
 
    e) Alert Setup Retrieval
       → Instance 1 ke paas ab event payload hai, jisme transCode, transType aur channelId present hain. Ye teeno milkar decide karte hain ki kaunsa alert trigger karna hai.
       → Instance 1 alert_setup table me lookup karta hai is composite key ke basis par
-      → Same (transCode + transType + channelId) combination ke corresponding multiple alert_setup rows exist kar sakti hain — agar us alert ke liye multiple languages
-        allowed hain. Har row ek language ke liye hai.
+      → alert_setup table mein (transCode + transType + channelId) ka combination ek unique alert_setup_id generate karta hai. Is alert_setup_id ke corresponding template table
+        mein multiple rows ho sakti hain — agar us alert ke liye multiple languages supported hain. template table ki har row us particular language ke teeno channel templates
+        store karti hai — SMS, Email, aur Push — matlab ek language = ek row
 
-         alert_setup:
-           ┌─────┬───────────┬──────────┬───────────┬──────────┬
-           │ id  │ transCode │ transType│ channelId │ language │
-           ├─────┼───────────┼──────────┼───────────┼──────────┼
-           │ 501 │ 1001      │ ORD      │ 2         │ en       │
-           │ 502 │ 1001      │ ORD      │ 2         │ hi       │ 
-           └─────┴───────────┴──────────┴───────────┴──────────┴
+        alert_setup table:
 
-        Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo, offset commit karo).
+           ┌────────────────┬───────────┬──────────┬───────────┐
+           │ alert_setup_id │ transCode │ transType│ channelId │
+           ├────────────────┼───────────┼──────────┼───────────┤
+           │ 501            │ 1001      │ ORD      │ 2         │
+           │ 502            │ 1001      │ ORD      │ 3         │  ← same event, different upstream
+           └────────────────┴───────────┴──────────┴───────────┘
 
-    f) Customer Language Preference Lookup :
-          Instance 1 1 ke paas alert_setup rows hain — ek per allowed language. Ab decide karna hai kaunsa language version use karein.
+           (transCode + transType + channelId) → UNIQUE alert_setup_id
 
-          Iske liye Pod 1 customer_preference table me lookup karta hai, event payload me aaye user_id ke basis par:
+        template table:
 
-          Case 1 — Preference exist karti hai:
-                → Preferred language wala alert_setup row filter ho jaata hai → baaki languages ke alert_setup reject ho jaate hain.
+          Composite Key: (alert_setup_id, language)
 
-          Case 2 — Preference exist nahi karti:
-                → Default language wala alert_setup row filter ho jaata hai. Ye default language bhi customer_preference table me hi saved hoti hai — alag se hardcoded nahi hai.
-        
+          ┌─────────────┬───────────────┬──────────┬───────────────────┬──────────────────┬───────────────┐
+          │ template_id │ alert_setup_id│ language │ sms_template      │ email_template   │ push_template │
+          ├─────────────┼───────────────┼──────────┼───────────────────┼──────────────────┼───────────────┤
+          │ tpl-001     │ 501           │ en       │ "Hi {name}..."    │ "Dear {name}..   │ "Order {id}.."│
+          │ tpl-002     │ 501           │ hi       │ "Namaste {name}"  │"Aapka order..    │"Order {id}..."│
+          └─────────────┴───────────────┴──────────┴───────────────────┴──────────────────┴───────────────┘
+
+        Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo /  exceptin throw karo).
 
 
-    g) Template Fetch (Redis Cache — No Local Cache) and Template Rendering
+    f) Template Fetch and Template Rendering
+         — Ab Notification Instance 1 ke paas relevant `alert_setup_id` hai.
+          
+         - Iske baad Instance 1, event payload mein aaye `user_id` ke basis par `user_preference` table se user's language preference check karta hai.
 
-       — Ab Notification Instance 1 ke paas relevant alert_setup_id hai (language resolve hone ke baad). Template fetch directly DB se nahi karte — latency badh jaayegi. 
-         Templates read-heavy hoti hain, write-heavy nahi. Isliye application aur DB ke beech Redis as distributed cache use karte hain — koi local/instance-level cache nahi,
-         consistency aur simplicity ke liye.
+            Case 1: User ki language preference exist karti hai:
+                 → template table mein us preferred language ke corresponding row ko lookup karta hai aur us row se teeno channels (Email, Push aur SMS) ke templates retrieve kar leta hai.
 
-         Fetch flow:
+           Case 2: User ki language preference exist nahi karti:
+                 → user_preference table mein stored default language ke basis par template table se corresponding row lookup karta hai aur us row se teeno channels ke templates retrieve kar leta hai. 
+                   Default language hardcoded nahi hoti.
+ 
+         - Template fetch directly DB se nahi karte — latency badh jaayegi. 
 
-           L1: Template Redis (shared)          → HIT 1-3ms
-           L2: Template DB (source of truth)    → HIT 10-50ms
-           └─→ SET Redis (TTL 5min)          ← first request pe populate
+           Templates read-heavy hoti hain, write-heavy nahi. Isliye application aur DB ke beech Redis as distributed cache use karte hain — koi local/instance-level cache nahi,
+           consistency aur simplicity ke liye.
 
-       — Local cache isliye nahi rakhte kyunki us case me har template update pe saare instances ka local cache invalidate karna padega — jiske liye event-based invalidation (Kafka) chahiye,
-         jaise rate limiter design me kiya tha. Template update ke waqt ye invalidation fail ho sakti hai, aur templates compliance-adherent hote hain — to stale template trigger hona breach hai.
-         Isliye Redis as shared cache use karte hain:
+           Fetch flow:
+ 
+             L1: Template Redis (shared)          → HIT 1-3ms
+             L2: Template DB (source of truth)    → HIT 10-50ms
+             └─→ SET Redis (TTL 5min)          ← first request pe populate
 
-       — Template Service (separate service):
-          → Template create, update, delete karne ke liye ek alag Template Service hai. Flow:
-          → Create: Template Service DB me template insert karti hai → Redis me entry create karti hai → TTL set karti hai (5 min).
-          → Update: Template Service DB me template update karti hai → Redis me bhi template update karti hai. Yahan invalidate (delete) nahi, update karte hain — kyunki invalidation se thundering 
+        — Local cache isliye nahi rakhte kyunki us case me har template update pe saare instances ka local cache invalidate karna padega — jiske liye event-based invalidation (Kafka) chahiye,
+          jaise rate limiter design me kiya tha. Template update ke waqt ye invalidation fail ho sakti hai, aur templates compliance-adherent hote hain — to stale template trigger hona breach hai.
+          Isliye Redis as shared cache use karte hain:
+
+        — Template Service (separate service):
+           → Template create, update, delete karne ke liye ek alag Template Service hai.
+           → Create: Template Service DB me template insert karti hai → Redis me entry create karti hai → TTL set karti hai (5 min).
+           → Update: Template Service DB me template update karti hai → Redis me bhi template update karti hai. Yahan invalidate (delete) nahi, update karte hain — kyunki invalidation se thundering 
             herd problem aa sakti hai. Update karne se har instance ko ko Redis se hi latest template milta hai.
 
-       — Agar Redis SET fail ho jaye (rare — network issue) , to TTL as a safety net hai: TTL expire hone pe next request DB se fresh template fetch karke Redis repopulate kar degi. Aur kyunki sabhi instances 
-         same Redis se read hain, fix bhi same time pe hota hai — inconsistent state nahi banti. Templates rare update hote hain, to agar Redis update kabhi miss bhi ho jaye, to manual invalidate/update bhi 
-         possible hai — koi critical issue nahi. Isliye decision: Redis-only rakhte hain — simple, consistent, compliance-safe. 1-3ms local cache savings ke liye compliance risk lena worth nahi.
+        — Agar Redis SET fail ho jaye (rare — network issue) , to TTL as a safety net hai: TTL expire hone pe next request DB se fresh template fetch karke Redis repopulate kar degi. Aur kyunki sabhi instances 
+          same Redis se read hain, fix bhi same time pe hota hai — inconsistent state nahi banti. Templates rare update hote hain, to agar Redis update kabhi miss bhi ho jaye, to manual invalidate/update bhi 
+          possible hai — koi critical issue nahi. Isliye decision: Redis-only rakhte hain — simple, consistent, compliance-safe. 1-3ms local cache savings ke liye compliance risk lena worth nahi.
 
-       - Ab relevant template fetch hone ke baad, template ke placeholders populate hote hain — event payload aur user data se (ye user data user_id se hum database se fetch kar lete hain). Isse template final
-         ready ho jaata hai.
+        - Ab relevant template fetch hone ke baad, template ke placeholders populate hote hain — event payload aur user data se (ye user data user_id se hum database se fetch kar lete hain). 
+          Isse template final ready ho jaata hai.
 
+
+      h) 
+         - Ab Notification Instance 1 ke paas teeno channels (EMAIL, SMS, PUSH) ke liye rendered template content ready hai. 
+         - Ab 3 naye topics (sms_events, email_events, push_events) manually create kiya jaega. Prod. mai generally manually hi topics create kiye jaate hai.
+         - Instance 1 ab user_profile table se user_id ke basis par DB ya user cache se contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
+         - Contact details milne ke baad Instance 1 teen channel-specific payloads construct karta hai:
+
+           {
+            event_id: "evt-123",           ← audit + idempotency
+            template_id: "tpl-002-email",  ← audit ke liye
+            content: "<rendered content>", ← kya bhejna hai
+            to: "anurag@example.com"       ← kahan bhejna hai
+          }
+         
+
+
+
+         Ab Instance 1 consumer se producer ban jaata hai aur 3 alag topics me produce karti hai with respective paylaods — email_events, sms_events, push_events. 
+         Har topic ke liye alag consumer group hai — email-workers, sms-workers, push-workers.
+         har cosumer groups ke andar respective workers ke kai instances hote hai jo ki resepective topic ke partions ko consume karte hai isse pareely events cosmuem and proices shtoe hai.
+         ab email_worker email_events topic se payload uthaya → email cleint jaise ko SendGrid  ko bhej diya → offset commit
+         similarly sms_worker sms_events topic se payload uthaya → sms cleint jaise ko Twilio ko bhej diya → offset commit
+         similarly push_worker push_events topic se payload uthaya → push cleint jaise ki FCM ko bhej diya → offset commit
+
+         Topic: email_events
+├── Consumer Group: "email-workers"
+│   ├── Email Worker 1 (Partition-0)
+│   └── Email Worker 2 (Partition-1)
+
+Topic: sms_events
+├── Consumer Group: "sms-workers"
+│   └── SMS Worker 1 (Partition-0)
+
+Topic: push_events
+├── Consumer Group: "push-workers"
+│   └── Push Worker 1 (Partition-0)
+
+         
