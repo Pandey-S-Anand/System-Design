@@ -239,9 +239,9 @@ Question 2 : Notification ka trigger kaise aayega?
          - In consumers ka high-level responsibility respective payloads ko corresponding external client/aggregator tak forward karna hota hai — API call (sync HTTP POST) ke through 
            taaki user ko Email, SMS ya Push Notification deliver ho sake.
 
-         - Worker aggregator se success acknowledgement ka configured timeout tak synchronously wait karta hai. Agar timeout exceed ho jaata hai, toh notification delivery ko failed maana jaata hai.
-           Agar retries configured hain, toh worker maximum 3 attempts tak retry karta hai (Exponential Backoff + Jitter ke saath). Timeout configure karna mandatory hai, kyunki agar aggregator ki API 
-           down ho aur timeout configured na ho, toh worker ka thread indefinitely blocked reh sakta hai.
+         - Worker aggregator se success acknowledgement ka configured timeout tak synchronously wait karta hai. Agar aggregator se configured timeout ke andar success acknowledgement nahi milta, 
+           toh worker configured retry policy ke according request retry karta hai. Retries ke beech Exponential Backoff + Jitter apply hota hai. Configured maximum retry attempts exhaust hone ke
+           baad bhi request fail hoti hai, toh worker failed event ko DLT (Dead Letter Topic) mein publish kar deta hai.
 
          - Aggregator se success acknowledgement (`200 OK` ya `202 Accepted`) milne ke baad worker apne respective Kafka topic ka offset commit karta hai. Iske baad worker next available message 
            consume karke process karta hai.
@@ -251,8 +251,9 @@ Question 2 : Notification ka trigger kaise aayega?
                 message user tak pahunch gaya. Actual delivery ki tracking webhook ke through asynchronously hoti hai. Isi wajah se worker 202 Accepted aane pe hi offset commit kar deta hai, 
                 actual delivery ka wait nahi karta — kyunki provider ne message ki responsibility le li hai.
 
-
-          - ## Webhook Flow — Aggregator Ne notification Successfully Bheja Ya Nahi, Kaise Pata Chalega? 
+          ----------------------------------------------------------------------------------------------------------
+           ## QUESTION : WEBHOOK FLOW — AGGREGATOR NE NOTIFICATION SUCCESSFULLY BHEJA YA NAHI, KAISE PATA CHALEGA?
+          ----------------------------------------------------------------------------------------------------------
 
              STEP 1: Webhook Endpoint Creation
                      → Developer Notification Service mein /webhook/sendgrid REST endpoint create karta hai, jise SendGrid HTTP POST request ke through call karega.
@@ -342,4 +343,67 @@ Question 2 : Notification ka trigger kaise aayega?
                       SET status = 'DELIVERED', delivered_at = <timestamp>
                       WHERE notification_id = 'evt-123:EMAIL'
 
+
         
+            j) Idempotency - Duplicate Event Handling - 
+
+               - Worker kisi bhi notification ko aggregator (SendGrid/Twilio/FCM) ko bhejne se pehle check karta hai ki wo notification already bhej to nahi diya gaya. Ye check zaroori hai kyunki duplicate 
+                 notification possible hai agar upstream system (Order Service) ne business_events topic me event (evt-123) publish kiya, Kafka broker se ACK bhi mil gaya, but offset commit karne se pehle 
+                 wo crash ho gaya. Agar upstream idempotent nahi hai, to restart hone ke baad wo same event_id (evt-123) ko dubara publish kar sakta hai. Ab business_events topic me evt-123 do baar hai  
+                 (do alag offsets pe). Notification Instance 1 dono ko process karega, aur dono baar 3 channel topics (email_events, sms_events, push_events) me produce karega → worker ko evt-123:EMAIL, 
+                 evt-123:SMS, evt-123:PUSH do baar milenge → bina idempotency ke user ko duplicate email/SMS/push jaayegi. Isliye worker-level idempotency check must hai — ye duplicate scenario
+                 rokta hai jo upstream ki non-idempotency ki wajah se create hota hai.
+
+               - Worker topic se message uthata hai (say notification_id = "evt-123:EMAIL"). Aggregator (SendGrid/Twilio/FCM) ko call karne se pehle, Redis me idempotency key check karta hai:
+
+                  Key format: idem:send:{notification_id}
+                  Example: idem:send:evt-123:EMAIL
+
+                  Redis GET idem:send:evt-123:EMAIL
+
+                 --------------------------------------------------------------------
+                  CASE 1 — Key Does NOT Exist (Fresh Message, Pehli Baar Processing)
+                 --------------------------------------------------------------------
+
+                  → Redis GET par key nahi milti (nil), iska matlab notification pehle process nahi hui hai.
+
+                  → Worker Redis mein SET command ke through idempotency key create karta hai aur uska status IN_PROGRESS set karta hai:
+                       SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600
+
+                  → Iske baad worker aggregator (SendGrid/Twilio/FCM) ko HTTP REST API call bhejta hai aur configured timeout tak response ka wait karta hai.
+
+                  → Ab aggregator ke response ke basis par 2 sub-cases hote hain:
+
+                     CASE 1 — SUCCESS (MOST CASES MEIN AGGREGATOR 202 ACCEPTED RESPONSE DETA HAI, JABKI 200 OK RESPONSE RELATIVELY RARE HOTA HAI):
+                     ------------------------------------------------------------------------------------------------------------------------------
+
+                        STEP 1 : Worker Redis me key update karta hai: SET idem:send:evt-123:EMAIL "ACCEPTED" EX 86400 (TTL 24 hours).
+                                 SET idem:send:evt-123:EMAIL "ACCEPTED" EX 86400
+
+                        STEP 2 : notification_audit table me entry insert karta hai — status = "ACCEPTED", sent_at, notification_id, channel, template_id, user_id, language, provider = "SendGrid/Twilio/FCM".
+
+                        STEP 3 :  Iske baad worker corresponding topic mai offset commit karta hai aur next message process karne lagta hai.
+
+                        IMPORTANT: 202 Accepted ka matlab hai ki aggregator ne notification request accept kar li hai aur use deliver karne ke liye queue kar diya hai. Iska matlab ye nahi 
+                                   hai ki actual email/SMS/push user tak pahunch chuka hai. Jab notification ka actual delivery result milta hai, aggregator webhook ke through Notification
+                                   Service ko status update bhejta hai. Webhook payload ke basis par hum notification_audit table mein status accordingly update karte hain.
+
+                     CASE 2 — FAILURE (5xx / timeout / network error):
+                     --------------------------------------------------
+
+                        Agar aggregator 5xx error (server-side failure) return karta hai ya connection timeout hota hai, toh retry generally safe hoti hai. Lekin Read Timeout ke case mein retry hamesha safe
+                        nahi hoti, kyunki possible hai ki aggregator ne notification request accept kar li ho, lekin response worker tak nahi pahucha ho. Aise mein retry karne par duplicate notification send
+                        ho sakti hai. Isliye duplicate notification prevent karne ke liye aggregator side par bhi idempotency mechanism hona chahiye. 
+
+                        STEP 1 : Worker Redis se apni idempotency key delete karta hai (DEL idem:send:evt-123:EMAIL) Taaki next retry ke time key IN_PROGRESS state mein na mile. Otherwise, retry worker 
+                                 IN_PROGRESS status dekhkar message ko skip kar sakta hai.
+
+                        STEP 2 : Worker configured retry policy ke according Exponential Backoff + Jitter ke saath aggregator API ko dobara call karta hai. Har retry attempt mein Redis mein IN_PROGRESS key 
+                                 create hoti hai (SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600). Aggregator se success response milne par Redis mein status ACCEPTED (TTL: 24 hours) set hota hai aur 
+                                 notification_audit table mein bhi status ACCEPTED update hota hai. Failure par Redis key delete karke next retry ki jaati hai. Ye process configured maximum retry attempts
+                                 tak continue hota hai, jisme har attempt ke beech backoff duration increase hota hai aur jitter add kiya jata hai.
+
+                        STEP 3 : Agar configured saare retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker Redis mein status FAILED (TTL: 7 days) set karta hai aur notification_audit
+                                 table mein FAILED status aur failure_reason update karta hai. Iske baad Kafka offset commit karke worker next message process karta hai. DLT ka flow alag se dekhenge.
+
+                
