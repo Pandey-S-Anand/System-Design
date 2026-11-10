@@ -256,6 +256,7 @@ Question 2 : Notification ka trigger kaise aayega?
           ----------------------------------------------------------------------------------------------------------
 
              STEP 1: Webhook Endpoint Creation
+
                      → Developer Notification Service mein /webhook/sendgrid REST endpoint create karta hai, jise SendGrid HTTP POST request ke through call karega.
                          Example URL: https://notification-service.yourbank.com/webhook/sendgrid
 
@@ -265,6 +266,7 @@ Question 2 : Notification ka trigger kaise aayega?
                        notification ka actual delivery status track kiya ja sake (DELIVERED, BOUNCED, FAILED etc.).
 
              STEP 2: SendGrid Dashboard Configuration
+
                     → Ab SendGrid Dashboard mein jaakar:
                        a) Created webhook URL configure kar dete hain.
                        b) Dashboard mein select karte hain ki kin events par SendGrid webhook trigger karega.
@@ -297,10 +299,12 @@ Question 2 : Notification ka trigger kaise aayega?
 
                     
             STEP 4: SendGrid Background Processing & Webhook Callback
+
                     → Background me SendGrid:
                         a) User ke email server (Gmail, Yahoo) se SMTP handshake karta hai
                         b) Email deliver karta hai
                         c) Result pata chalta hai: Delivered / Bounced / Spam etc.
+
                     →  SendGrid ye status updates hamare Notification Service ko configured webhook URL ke through bhejta hai.   
                          SendGrid → POST https://notification-service.yourbank.com/webhook/sendgrid
 
@@ -321,6 +325,7 @@ Question 2 : Notification ka trigger kaise aayega?
                       ]
 
             STEP 5: Webhook Signature Verification & Delivery Status Audit Update
+
                      - Notification Service ka publicly accessible webhook endpoint SendGrid se aane wali HTTP POST request receive karta hai. 
                      
                      - Webhook URL publicly accessible hone ki wajah se koi bhi fake POST request bhej sakta hai. Isliye SendGrid har request ke
@@ -377,16 +382,17 @@ Question 2 : Notification ka trigger kaise aayega?
                      CASE 1 — SUCCESS (MOST CASES MEIN AGGREGATOR 202 ACCEPTED RESPONSE DETA HAI, JABKI 200 OK RESPONSE RELATIVELY RARE HOTA HAI):
                      ------------------------------------------------------------------------------------------------------------------------------
 
-                        STEP 1 : Worker Redis me key update karta hai: SET idem:send:evt-123:EMAIL "ACCEPTED" EX 86400 (TTL 24 hours).
-                                 SET idem:send:evt-123:EMAIL "ACCEPTED" EX 86400
+                        STEP 1 : Worker Redis me key update karta hai: SET idem:send:evt-123:EMAIL "SENT" EX 86400 (TTL 24 hours).
+                                 SET idem:send:evt-123:EMAIL "SENT" EX 86400
 
-                        STEP 2 : notification_audit table me entry insert karta hai — status = "ACCEPTED", sent_at, notification_id, channel, template_id, user_id, language, provider = "SendGrid/Twilio/FCM".
+                        STEP 2 : notification_audit table me entry insert karta hai — status = "SENT", sent_at, notification_id, channel, template_id, user_id, language, provider = "SendGrid/Twilio/FCM".
 
                         STEP 3 :  Iske baad worker corresponding topic mai offset commit karta hai aur next message process karne lagta hai.
 
-                        IMPORTANT: 202 Accepted ka matlab hai ki aggregator ne notification request accept kar li hai aur use deliver karne ke liye queue kar diya hai. Iska matlab ye nahi 
-                                   hai ki actual email/SMS/push user tak pahunch chuka hai. Jab notification ka actual delivery result milta hai, aggregator webhook ke through Notification
-                                   Service ko status update bhejta hai. Webhook payload ke basis par hum notification_audit table mein status accordingly update karte hain.
+
+                       ## IMPORTANT: 202 Accepted ka matlab hai ki aggregator ne notification request accept karke delivery ke liye queue kar di hai. Iska matlab actual notification abhi user tak deliver nahi hui hai.
+                                     Jab aggregator ko actual delivery status milta hai, toh woh webhook ke through Notification Service ko update bhejta hai. Notification Service webhook payload ke basis par 
+                                     notification_audit table mein delivery status update karta hai.
 
                      CASE 2 — FAILURE (5xx / timeout / network error):
                      --------------------------------------------------
@@ -406,4 +412,26 @@ Question 2 : Notification ka trigger kaise aayega?
                         STEP 3 : Agar configured saare retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker Redis mein status FAILED (TTL: 7 days) set karta hai aur notification_audit
                                  table mein FAILED status aur failure_reason update karta hai. Iske baad Kafka offset commit karke worker next message process karta hai. DLT ka flow alag se dekhenge.
 
-                
+
+                 ---------------------------------------------------------------
+                  CASE 2 — Key Exists (SENT / In-Progress / Previously Failed)
+                 ---------------------------------------------------------------
+
+                   → Agar Redis GET par key mil jaati hai, toh worker uski value check karta hai. Value ke basis par 3 possible cases handle kiye jaate hain:
+
+                      CASE 1 — VALUE = "SENT" (DUPLICATE — PEHLE HI SUCCESSFULLY PROCESS HO CHUKA HAI)
+                      --------------------------------------------------------------------------------
+
+                       Iska matlab notification pehle hi successfully aggregator ko bheji ja chuki hai. Isliye worker aggregator ko dobara call nahi karta, directly corresponding Kafka topic ka offset commit karta hai
+                       aur notification_audit table mein koi change nahi karta, kyunki existing entry already SENT hai. Iske baad worker next message process karna start karta hai. Ye case tab occur hota hai jab 
+                       upstream service same business event ko duplicate publish kar deti hai business_events topic mein. Consequently, Notification Service bhi same event ko process karke sabhi relevant channels
+                       (SMS, EMAIL, PUSH) ke respective topics par duplicate notifications publish kar deti hai.
+
+
+                      CASE 2 — VALUE = FAILED (RETRIES EXHAUST HO CHUKI HAIN, EVENT DLT MEIN HAI):
+                      ------------------------------------------------------------------------------
+
+                       Iska matlab hai ki is notification ko bhejne ke saare configured retry attempts exhaust ho chuke hain aur failed message ko notification type ke according respective DLT topic
+                       (email_events_dlt / sms_events_dlt / push_events_dlt) mein publish kar diya gaya hai. Ab Ops team decide karegi ki in failed notifications ko kaise reprocess karna hai
+                       (DLT flow mein detail mein dekhenge). Is case mein worker aggregator ko dobara call nahi karta, directly corresponding Kafka topic ka offset commit karta hai aur next message
+                       process karna start kar deta hai.
