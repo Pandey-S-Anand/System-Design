@@ -405,13 +405,14 @@ Question 2 : Notification ka trigger kaise aayega?
                         STEP 1 : Worker Redis se apni idempotency key delete karta hai (DEL idem:send:evt-123:EMAIL) Taaki next retry ke time key IN_PROGRESS state mein na mile. Otherwise, retry worker 
                                  IN_PROGRESS status dekhkar message ko skip kar sakta hai.
 
-                        STEP 2 : Worker configured retry policy ke according Exponential Backoff + Jitter ke saath aggregator API ko dobara call karta hai. Har retry attempt mein Redis mein IN_PROGRESS key 
-                                 create hoti hai (SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600). Aggregator se success response milne par Redis mein status ACCEPTED (TTL: 24 hours) set hota hai aur 
-                                 notification_audit table mein bhi status ACCEPTED update hota hai. Failure par Redis key delete karke next retry ki jaati hai. Ye process configured maximum retry attempts
+                        STEP 2 : Worker configured retry policy ke according Exponential Backoff + Jitter ke saath aggregator API ko dobara call karta hai. Har retry attempt mein Redis mein IN_PROGRESS status
+                                 ke saath key create hoti hai (SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600). Aggregator se success response milne par Redis mein status ACCEPTED (TTL: 24 hours) set hota hai
+                                 aur notification_audit table mein bhi status ACCEPTED update hota hai. Failure par Redis key delete karke next retry ki jaati hai. Ye process configured maximum retry attempts
                                  tak continue hota hai, jisme har attempt ke beech backoff duration increase hota hai aur jitter add kiya jata hai.
 
-                        STEP 3 : Agar configured saare retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker Redis mein status FAILED (TTL: 7 days) set karta hai aur notification_audit
-                                 table mein FAILED status aur failure_reason update karta hai. Iske baad Kafka offset commit karke worker next message process karta hai. DLT ka flow alag se dekhenge.
+                        STEP 3 : Agar configured saare retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker Redis mein status FAILED (TTL: 7 days) set karta hai aur notification_audit table
+                                 mein FAILED status aur failure_reason update karta hai. Iske baad notification ko channel ke according respective DLT (Dead letter topic) (email_events_dlt / sms_events_dlt / push_events_dlt) 
+                                 mein publish karta hai. DLT mein successful publishing ke baad worker corresponding topic partition ka offset commit karta hai aur next message process karna start kar deta hai.
 
 
                  ---------------------------------------------------------------
@@ -432,10 +433,10 @@ Question 2 : Notification ka trigger kaise aayega?
                       CASE 2 — VALUE = "FAILED" (RETRIES EXHAUST HO CHUKI HAIN, EVENT DLT MEIN HAI):
                       ------------------------------------------------------------------------------
 
-                       Iska matlab hai ki is notification ko bhejne ke saare configured retry attempts exhaust ho chuke hain aur failed message ko notification type ke according respective DLT topic
+                       Iska matlab hai ki is notification ko bhejne ke saare configured retry attempts exhaust ho chuke hain aur failed message ko notification type ke according respective DLT 
                        (email_events_dlt / sms_events_dlt / push_events_dlt) mein publish kar diya gaya hai. Ab Ops team decide karegi ki in failed notifications ko kaise reprocess karna hai
-                       (DLT flow mein detail mein dekhenge). Is case mein worker aggregator ko dobara call nahi karta, directly corresponding Kafka topic ka offset commit karta hai aur next message
-                       process karna start kar deta hai.
+                       (DLT flow mein detail mein dekhenge). Is case mein worker aggregator ko dobara call nahi karta, directly corresponding topic partition ka offset commit karta hai aur next 
+                       message process karna start kar deta hai.
 
 
                       
@@ -463,6 +464,7 @@ Question 2 : Notification ka trigger kaise aayega?
                       - Ab worker ke paas sirf ye 2 choice hain:
 
                         1) Option 1: Skip + Offset Commit
+                        ----------------------------------
 
                            → Worker Redis mein IN_PROGRESS state dekhkar notification skip kar deta hai, corresponding Kafka topic ke partition ka offset commit karta hai aur next message process karna start kar deta hai.
                            
@@ -470,6 +472,7 @@ Question 2 : Notification ka trigger kaise aayega?
                              deliver kar chuka tha, toh koi issue nahi hoga, kyunki notification user ko sirf ek baar hi deliver hui hai.
 
                         2) Option 2: TTL Wait + Retry
+                        -------------------------------
 
                            → Worker Redis mein IN_PROGRESS state dekhkar key ka TTL expire hone ka wait karta hai. TTL expire hone ke baad Redis key automatically delete ho jaati hai, jiske baad worker aggregator API ko
                              dobara call karta hai. Kyunki worker synchronously wait karta hai, toh TTL expire hone tak uska thread blocked rahega. Isliye IN_PROGRESS key ka TTL aggregator ke expected processing time ko 
@@ -491,18 +494,29 @@ Question 2 : Notification ka trigger kaise aayega?
 
             k) DLT Flow 
 
-                - Worker apne respective Kafka topic se message (notification_id = "evt-123:EMAIL") consume karke aggregator API ko call karta hai. Agar configured retry attempts exhaust hone ke baad bhi request
-                  5xx error, connection timeout ya read timeout ki wajah se fail hoti hai, toh worker sabse pehle Redis mein (idempotency ke liye) notification ka status FAILED mark karta hai. Iske baad 
-                  notification_audit table mein bhi status FAILED update karta hai aur message ko channel ke according respective DLT (Dead letter topic) (email_events_dlt / sms_events_dlt / push_events_dlt) 
-                  mein publish karta hai. DLT mein successful publishing ke baad original topic ka offset commit karta hai aur next message process karna start kar deta hai.
-
                - Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple Consumers (workers) 
-                 hote hain, jo respective DLT topic ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke dlt_table (DB) mein store karte hain.
-                 dlt_table mein har failed notification ka failure_reason, channel, aggregator_name aur notification_id jaise details store hote hain. Successful DB insertion ke baad respective DLT topic ke partition 
-                 ka offset commit kar dete hain aur next failed notification process karna start karte hain. Ye DLT consumers aggregator ko call NAHI karte. 
+                 hote hain, jo respective DLT ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke dlt_table (DB) mein store karte hain.
+                 Successful DB insertion ke baad respective DLT ke partition ka offset commit kar dete hain aur next failed notification process karna start karte hain. Ye DLT consumers aggregator ko call NAHI karte. 
 
-                 IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective Kafka partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
+                  dead_letters table me INSERT:
+
+                  ┌──────────────────┬─────────┬──────────────────┬──────────┬──────────────────┐
+                  │ notification_id  │ channel │ failure_reason   │ status   │ dlt_received_at  │
+                  ├──────────────────┼─────────┼──────────────────┼──────────┼──────────────────┤
+                  │ evt-123:EMAIL    │ EMAIL   │ SENDGRID_5XX     │ PENDING  │ 10:35:05         │
+                  └──────────────────┴─────────┴──────────────────┴──────────┴──────────────────┘
+
+                 IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective topic partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
                             Group ka koi doosra consumer us partition ko assign hoga aur wahi event dobara consume karega. Isliye DB insertion idempotent honi chahiye — notification_id par UNIQUE constraint lagana
                             zaroori hai, taaki duplicate records create na hon.
 
+             - Jab dead_letters table mein koi naya failed notification insert hota hai, toh Monitoring System (Prometheus + Grafana) periodically PENDING status wale records ka count check karta hai. Agar pending
+               failures ka count configured threshold se exceed karta hai (SELECT COUNT(*) FROM dead_letters WHERE status = 'PENDING'), toh alert trigger hota hai aur Slack par notification bheja jata hai. Ye slack 
+               Alert priority ke according configure hoti hai:
+                - P1 (Immediate): Transactional / OTP failures.
+                - P3 (Daily Digest): Marketing notification failures.
+
+               ## IMPORTANT:  Monitoring isliye important hai, kyunki agar DLT aur dlt_table mein failed notifications silently accumulate hoti rahein, toh admin ko production mein notification failures ka timely
+                              pata nahi chalega. Isse OTP delivery failures ke kaaran users login nahi kar paayenge, transaction alerts miss ho sakte hain aur critical failures unnoticed reh sakte hain, jisse 
+                              compliance risks bhi badh sakte hain.
                  
