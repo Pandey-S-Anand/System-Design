@@ -469,7 +469,7 @@ Question 2 : Notification ka trigger kaise aayega?
                            → Agar previous worker aggregator ko call karne se pehle crash ho gaya tha, toh notification permanently lost ho sakti hai. Lekin agar aggregator request receive karke notification successfully 
                              deliver kar chuka tha, toh koi issue nahi hoga, kyunki notification user ko sirf ek baar hi deliver hui hai.
 
-                        2) Option 2: Skip + Offset Commit
+                        2) Option 2: TTL Wait + Retry
 
                            → Worker Redis mein IN_PROGRESS state dekhkar key ka TTL expire hone ka wait karta hai. TTL expire hone ke baad Redis key automatically delete ho jaati hai, jiske baad worker aggregator API ko
                              dobara call karta hai. Kyunki worker synchronously wait karta hai, toh TTL expire hone tak uska thread blocked rahega. Isliye IN_PROGRESS key ka TTL aggregator ke expected processing time ko 
@@ -487,5 +487,9 @@ Question 2 : Notification ka trigger kaise aayega?
                                                 kyunki user ko uski timely information nahi mil paayegi.Isliye duplicate notification annoying ho sakti hai, lekin tolerable hai.
 
                          c) Marketing: Skip approach prefer kar sakte hain, kyunki notification loss acceptable hai, jabki duplicate messages se user irritate hokar unsubscribe kar sakta hai.
+
+
+            k) - DLT Flow — Retry Exhaust Hone Ke Baad Kya Hota Hai ?
+
 
                       
