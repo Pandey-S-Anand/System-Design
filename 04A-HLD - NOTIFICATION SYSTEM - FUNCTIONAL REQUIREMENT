@@ -489,7 +489,20 @@ Question 2 : Notification ka trigger kaise aayega?
                          c) Marketing: Skip approach prefer kar sakte hain, kyunki notification loss acceptable hai, jabki duplicate messages se user irritate hokar unsubscribe kar sakta hai.
 
 
-            k) - DLT Flow — Retry Exhaust Hone Ke Baad Kya Hota Hai ?
+            k) DLT Flow 
 
+                - Worker apne respective Kafka topic se message (notification_id = "evt-123:EMAIL") consume karke aggregator API ko call karta hai. Agar configured retry attempts exhaust hone ke baad bhi request
+                  5xx error, connection timeout ya read timeout ki wajah se fail hoti hai, toh worker sabse pehle Redis mein (idempotency ke liye) notification ka status FAILED mark karta hai. Iske baad 
+                  notification_audit table mein bhi status FAILED update karta hai aur message ko channel ke according respective DLT (Dead letter topic) (email_events_dlt / sms_events_dlt / push_events_dlt) 
+                  mein publish karta hai. DLT mein successful publishing ke baad original topic ka offset commit karta hai aur next message process karna start kar deta hai.
 
-                      
+               - Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple Consumers (workers) 
+                 hote hain, jo respective DLT topic ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke dlt_table (DB) mein store karte hain.
+                 dlt_table mein har failed notification ka failure_reason, channel, aggregator_name aur notification_id jaise details store hote hain. Successful DB insertion ke baad respective DLT topic ke partition 
+                 ka offset commit kar dete hain aur next failed notification process karna start karte hain. Ye DLT consumers aggregator ko call NAHI karte. 
+
+                 IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective Kafka partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
+                            Group ka koi doosra consumer us partition ko assign hoga aur wahi event dobara consume karega. Isliye DB insertion idempotent honi chahiye — notification_id par UNIQUE constraint lagana
+                            zaroori hai, taaki duplicate records create na hon.
+
+                 
