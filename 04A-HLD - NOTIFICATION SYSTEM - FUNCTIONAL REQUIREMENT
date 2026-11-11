@@ -132,13 +132,13 @@ Question 2 : Notification ka trigger kaise aayega?
         store karti hai — SMS, Email, aur Push — matlab ek language = ek row
 
         alert_setup table:
-
-           ┌────────────────┬───────────┬──────────┬───────────┐
-           │ alert_setup_id │ transCode │ transType│ channelId │
-           ├────────────────┼───────────┼──────────┼───────────┤
-           │ 501            │ 1001      │ ORD      │ 2         │
-           │ 502            │ 1001      │ ORD      │ 3         │  ← same event, different upstream
-           └────────────────┴───────────┴──────────┴───────────┘
+        ┌────────────────┬───────────┬──────────┬───────────┬───────────────────┐
+        │ alert_setup_id │ transCode │ transType│ channelId │ notification_type │
+        ├────────────────┼───────────┼──────────┼───────────┼───────────────────┤
+        │ 501            │ 1001      │ ORD      │ 2         │ TRANSACTIONAL     │
+        │ 502            │ 1001      │ ORD      │ 2         │ TRANSACTIONAL     │
+        │ 503            │ 2001      │ MKTG     │ 1         │ MARKETING         │
+        └────────────────┴───────────┴──────────┴───────────┴───────────────────┘
 
            (transCode + transType + channelId) → UNIQUE alert_setup_id
 
@@ -210,11 +210,12 @@ Question 2 : Notification ka trigger kaise aayega?
            {
             content: "<rendered content>",                                     ← kya bhejna hai - SMS / EMAIL / PUSH content
             to: "8528702513 / anurag@example.com / fcm_device_token_abc"       ← kis mobile / email / device par bhejna hai
-            event_id: "evt-123",                                               ← audit + idempotency 
-            notification_id: "evt-123:SMS" / "evt-123:EMAIL" / "evt-123:PUSH", ← Notification ko uniquely identify karne ke liye (unique per channel)  // webhook and audit ke liye
+            event_id: "evt-123",                                               ← Event ko identify karne ke liye  + idempotency key ko banane ke liye
+            notification_id: "evt-123:SMS" / "evt-123:EMAIL" / "evt-123:PUSH", ← Notification ko uniquely identify karne ke liye (unique per channel)  // idempotency key ke liye
             template_id: "tpl-001-email",                                      ← audit ke liye // kis template se notification gaya
             user_id: "user_101",                                               ← audit ke liye // kis user ko ye email gaya
             language: "EN / HI / CH"                                           ← audit ke liye // kis language mai ye email bheja gaya user ko 
+            notification_type: "OTP / TRANSACTIONAL / PAYMENT / MARKETING"     
           }
 
 
@@ -319,8 +320,8 @@ Question 2 : Notification ka trigger kaise aayega?
                             "event": "delivered",
                             "email": "anurag@example.com",
                             "timestamp": 1699876543,
-                           "sg_message_id": "sendgrid-msg-xyz",
-                           "notification_id": "evt-123:EMAIL"    ← humne bheja tha custom_args me
+                            "sg_message_id": "sendgrid-msg-xyz",
+                            "notification_id": "evt-123:EMAIL"    ← humne bheja tha custom_args me
                          }
                       ]
 
@@ -396,10 +397,10 @@ Question 2 : Notification ka trigger kaise aayega?
 
                      CASE 2 — FAILURE (5xx / timeout / network error):
                      --------------------------------------------------
-
-                        Agar aggregator 5xx error (server-side failure) return karta hai ya connection timeout hota hai, toh retry generally safe hoti hai. Lekin Read Timeout ke case mein retry hamesha safe
-                        nahi hoti, kyunki possible hai ki aggregator ne notification request accept kar li ho, lekin response worker tak nahi pahucha ho. Aise mein retry karne par duplicate notification send
-                        ho sakti hai. Isliye duplicate notification prevent karne ke liye aggregator side par bhi idempotency mechanism hona chahiye. 
+                        Agar aggregator 5xx error return karta hai ya connection timeout hota hai, toh retry generally safe hoti hai, kyunki in cases mein aggregator ne request accept nahi ki hoti. 
+                        Lekin Read Timeout ke case mein retry risky ho sakti hai, kyunki possible hai ki aggregator ne notification accept kar li ho, lekin slow response ya network issue ki wajah se 
+                        acknowledgement worker tak nahi pahucha ho. Aise mein retry karne par duplicate notification send ho sakti hai. Isliye duplicates prevent karne ke liye aggregator side par bhi
+                        idempotency mechanism hona chahiye.
 
                         STEP 1 : Worker Redis se apni idempotency key delete karta hai (DEL idem:send:evt-123:EMAIL) Taaki next retry ke time key IN_PROGRESS state mein na mile. Otherwise, retry worker 
                                  IN_PROGRESS status dekhkar message ko skip kar sakta hai.
@@ -448,9 +449,43 @@ Question 2 : Notification ka trigger kaise aayega?
                       - Naya worker ko pata nahi ki pichla worker ne kya kiya:
                         (a) Aggregator call kiye bina crash kiya
                         (b) Aggregator call kiya but response aane se pehle crash ho gaya
-                        (c) Aggregator call kiya, response aaya, but Redis aur notification_audit table update se pehle crash kiya
+                        (c)  Aggregator call kiya, response aaya:
+                             i)  Success aaya → Redis (SENT) aur notification_audit table (SENT) update se pehle crash
+                             ii) Failure aaya (configured retries ke baad) → Redis (FAILED) aur notification_audit table (FAILED) update se pehle crash
 
-                       Teeno cases me state identical hai — Redis me IN_PROGRESS + notification_audit table me koi row nahi. Ye fundamentally ambiguous hai — perfect solution exist nahi karta.
+                       Teeno cases me naye worker ko dikhne wala state identical hai — Redis me IN_PROGRESS, aur notification_audit table me koi row nahi.
 
+                       ## IMPORTANT: Agar worker aggregator ko API call karne ke immediately baad crash ho jaata hai aur aggregator notification successfully deliver kar deta hai, toh webhook ke through status
+                                     update aayega. Lekin previous worker ne notification_audit table mein entry insert nahi ki thi, isliye webhook ka UPDATE query zero rows affect karega. Consequently, delivery
+                                     status database mein record nahi ho payega. Matlab webhook bhi confirm nahi kar paayega ki notification actually user tak pahunchi thi ya nahi.
+
+
+                      - Ab worker ke paas sirf ye 2 choice hain:
+
+                        1) Option 1: Skip + Offset Commit
+
+                           → Worker Redis mein IN_PROGRESS state dekhkar notification skip kar deta hai, corresponding Kafka topic ke partition ka offset commit karta hai aur next message process karna start kar deta hai.
+                           
+                           → Agar previous worker aggregator ko call karne se pehle crash ho gaya tha, toh notification permanently lost ho sakti hai. Lekin agar aggregator request receive karke notification successfully 
+                             deliver kar chuka tha, toh koi issue nahi hoga, kyunki notification user ko sirf ek baar hi deliver hui hai.
+
+                        2) Option 2: Skip + Offset Commit
+
+                           → Worker Redis mein IN_PROGRESS state dekhkar key ka TTL expire hone ka wait karta hai. TTL expire hone ke baad Redis key automatically delete ho jaati hai, jiske baad worker aggregator API ko
+                             dobara call karta hai. Kyunki worker synchronously wait karta hai, toh TTL expire hone tak uska thread blocked rahega. Isliye IN_PROGRESS key ka TTL aggregator ke expected processing time ko 
+                             dhyan mein rakhkar reasonably small configure karna chahiye, taaki unnecessary waiting na ho.
+
+                           → Agar previous worker ki request aggregator ko successfully mil gayi thi aur notification deliver ho chuki thi, toh retry karne par duplicate notification ja sakti hai, provided aggregator 
+                             idempotent nahi hai.
+
+                     - Kaunsa option choose karna hai, ye notification_type par depend karta hai —  duplicate notification worse hai ya notification loss? Worker ye decision payload (jo ki Instance 1 ne channel-specific
+                       topic — email_events / sms_events /  push_events — me produce kiya tha) me aaye notification_type field ke basis par leta hai.
+
+                         a) OTP: Skip approach prefer kar sakte hain, kyunki user resend kar sakta hai and duplicate OTP confusing ho sakta hai.
+                         b) Transaction Alert : Transaction Alert notifications ke liye hum Retry Approach prefer karte hain, kyunki in cases mein notification loss duplicate notification se zyada risky hai.     
+                                                Agar transaction alert user tak nahi pahunchta, toh user ko transaction ka pata nahi chalega. Ye particularly important hai jab koi fraudulent transaction hua ho,
+                                                kyunki user ko uski timely information nahi mil paayegi.Isliye duplicate notification annoying ho sakti hai, lekin tolerable hai.
+
+                         c) Marketing: Skip approach prefer kar sakte hain, kyunki notification loss acceptable hai, jabki duplicate messages se user irritate hokar unsubscribe kar sakta hai.
 
                       
