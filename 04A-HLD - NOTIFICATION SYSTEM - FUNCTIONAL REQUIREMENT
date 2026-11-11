@@ -513,8 +513,8 @@ Question 2 : Notification ka trigger kaise aayega?
              - Jab dead_letters table mein koi naya failed notification insert hota hai, toh Monitoring System (Prometheus + Grafana) periodically PENDING status wale records ka count check karta hai. Agar pending
                failures ka count configured threshold se exceed karta hai (SELECT COUNT(*) FROM dead_letters WHERE status = 'PENDING'), toh alert trigger hota hai aur Slack par notification bheja jata hai. Ye slack 
                Alert priority ke according configure hoti hai:
-                - P1 (Immediate): Transactional / OTP failures.
-                - P3 (Daily Digest): Marketing notification failures.
+                → P1 (Immediate): Transactional / OTP failures.
+                → P3 (Daily Digest): Marketing notification failures.
 
                ## IMPORTANT:  Monitoring isliye important hai, kyunki agar DLT aur dlt_table mein failed notifications silently accumulate hoti rahein, toh admin ko production mein notification failures ka timely
                               pata nahi chalega. Isse OTP delivery failures ke kaaran users login nahi kar paayenge, transaction alerts miss ho sakte hain aur critical failures unnoticed reh sakte hain, jisse 
