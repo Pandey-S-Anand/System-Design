@@ -428,10 +428,29 @@ Question 2 : Notification ka trigger kaise aayega?
                        (SMS, EMAIL, PUSH) ke respective topics par duplicate notifications publish kar deti hai.
 
 
-                      CASE 2 — VALUE = FAILED (RETRIES EXHAUST HO CHUKI HAIN, EVENT DLT MEIN HAI):
+                      CASE 2 — VALUE = "FAILED" (RETRIES EXHAUST HO CHUKI HAIN, EVENT DLT MEIN HAI):
                       ------------------------------------------------------------------------------
 
                        Iska matlab hai ki is notification ko bhejne ke saare configured retry attempts exhaust ho chuke hain aur failed message ko notification type ke according respective DLT topic
                        (email_events_dlt / sms_events_dlt / push_events_dlt) mein publish kar diya gaya hai. Ab Ops team decide karegi ki in failed notifications ko kaise reprocess karna hai
                        (DLT flow mein detail mein dekhenge). Is case mein worker aggregator ko dobara call nahi karta, directly corresponding Kafka topic ka offset commit karta hai aur next message
                        process karna start kar deta hai.
+
+
+                      
+                      CASE 3 — VALUE = IN_PROGRESS (WORKER CRASH HO GAYA AUR USKE BAAD KAFKA REBALANCING TRIGGER HO GAYI):
+                      -----------------------------------------------------------------------------------------------------
+
+                      - Iska matlab hai ki pichla worker ne event (EMAIL/SMS/PUSH) uthaya, Redis me IN_PROGRESS status set kiya, aggregator (SendGrid/Twilio/FCM) ko HTTP call bheja — lekin offset commit 
+                        karne se pehle crash ho gaya. Ab Kafka ne rebalance kiya, aur naya worker ko wo partition assign ho gaya. Kyunki pichle event ka offset commit nahi hua tha, naya worker ne dubara 
+                        same event uthaya.
+
+                      - Naya worker ko pata nahi ki pichla worker ne kya kiya:
+                        (a) Aggregator call kiye bina crash kiya
+                        (b) Aggregator call kiya but response aane se pehle crash ho gaya
+                        (c) Aggregator call kiya, response aaya, but Redis aur notification_audit table update se pehle crash kiya
+
+                       Teeno cases me state identical hai — Redis me IN_PROGRESS + notification_audit table me koi row nahi. Ye fundamentally ambiguous hai — perfect solution exist nahi karta.
+
+
+                      
