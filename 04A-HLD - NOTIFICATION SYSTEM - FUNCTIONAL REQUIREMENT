@@ -495,6 +495,7 @@ Question 2 : Notification ka trigger kaise aayega?
 
 
             k) DLT Flow 
+
                 STEP 1 : Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple 
                          Consumers (workers) hote hain, jo respective DLT ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke
                          dlt_table (DB) mein store karte hain. Successful DB insertion ke baad respective DLT ke partition ka offset commit kar dete hain aur next failed notification process karna start
@@ -528,9 +529,11 @@ Question 2 : Notification ka trigger kaise aayega?
                         CASE 1: TEMPORARY FAILURE (5XX ERROR / CONNECTION TIMEOUT / CONNECTION REFUSED)
 
                           → Provider temporarily unavailable tha, lekin ab recover ho sakta hai. Isliye Ops Team failed notification ko reprocess karne ka decision leti hai.
+
                           → Admin UI par Reprocess click karne par us notification ki existing Redis idempotency key (jiska status FAILED hai) delete ho jaati hai. notification_audit table mein status
                             REPROCESSING aur attempt_count = 4 update hota hai. Iske baad failed notification channel ke according respective Kafka topic (email_events / sms_events / push_events) mein
-                            dobara publish hoti hai. Saath hi, dead_letters table mein status REPROCESSED, reprocessed_at = NOW() aur reprocessed_by = 'admin-101' update hota hai.                       
+                            dobara publish hoti hai. Saath hi, dead_letters table mein status REPROCESSED, reprocessed_at = NOW() aur reprocessed_by = 'admin-101' update hota hai.       
+
                           → Respective topic ka worker notification ko dobara consume karke previously discussed flow ke according process karta hai. Agar aggregator request accept kar leta hai, toh Redis 
                             mein status SENT set hota hai aur notification_audit table mein bhi status SENT update hota hai. Actual delivery status baad mein aggregator ke webhook callback ke basis par update 
                             hota hai. Iske baad worker corresponding Kafka topic ke partition ka offset commit karta hai aur next message process karna start kar deta hai.
@@ -538,4 +541,9 @@ Question 2 : Notification ka trigger kaise aayega?
 
                        CASE 2: PERMANENT FAILURE (INVALID_EMAIL, INVALID_PHONE, TOKEN_INVALID)
 
-                        
+                         → Jab Ops Team Admin UI par Mark as Permanently Failed click karti hai, toh dead_letters table mein status PERMANENTLY_FAILED update hota hai. Saath hi, Redis mein corresponding
+                           idempotency key ka status PERMANENTLY_FAILED (TTL: 7 days) set kiya jata hai, taaki agar accidentally duplicate event aaye, toh worker notification ko reprocess karne ke bajaye
+                           skip kar de. Finally, notification_audit table mein bhi status PERMANENTLY_FAILED update ho jata hai.
+
+               ## IMPORTANT : Kafka DLT topic ka retention short (e.g. 3–7 days) rakh sakte hain, kyunki failed notifications already dead_letters DB table mein store ho jaati hain. DB table mein ye records audit, 
+                              compliance aur future investigation ke liye long-term retain kiye jaate hain.
