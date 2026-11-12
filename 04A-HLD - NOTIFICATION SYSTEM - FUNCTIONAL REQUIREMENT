@@ -111,12 +111,12 @@ Question 2 : Notification ka trigger kaise aayega?
 
       Example:
 
-      @KafkaListener(topics = "business_events", groupId = "notification-service", concurrency = "2")
+      @KafkaListener(topics = "business_events", groupId = "notification-service-group", concurrency = "2")
        public void consume(BusinessEvent event) {
          processNotification(event);
        }
 
-      Is configuration mein har pod ke andar 2 Kafka Consumers create honge. Teeno pods mein total 3 × 2 = 6 Kafka Consumers** honge. Ye sabhi same Consumer Group (`notification-service`) 
+      Is configuration mein har pod ke andar 2 Kafka Consumers create honge. Teeno pods mein total 3 × 2 = 6 Kafka Consumers honge. Ye sabhi same Consumer Group (`notification-service-group`) 
       ka part honge aur collectively `business_events` topic ke partitions ko parallelly consume aur process karenge.
   
    
@@ -350,6 +350,16 @@ Question 2 : Notification ka trigger kaise aayega?
                       WHERE notification_id = 'evt-123:EMAIL'
 
 
+               -----------------------------------------------------------------------
+               ## QUESTION : WEBHOOK MISS HONE PAR DELIVERY STATUS KAISE UPDATE HOGA?
+               -----------------------------------------------------------------------
+
+                Webhook delivery status track karne ka primary mechanism hai, lekin network ya aggregator issues ki wajah se webhook miss ho sakta hai. Isliye ek Reconciliation Job implement karenge, jise Scheduler
+                har 30 minutes mein trigger karega. Ye job notification_audit table se un notifications ko fetch karega jo 30 minutes se zyada time se SENT state mein hain, lekin jinka webhook update abhi tak nahi     
+                aaya hai. In notifications ke liye aggregator ki Status API call karke actual delivery status fetch kiya jayega aur notification_audit table update hogi. Agar 24 hours tak polling ke baad bhi delivery 
+                status confirm nahi hota, toh status DELIVERY_UNKNOWN mark kar diya jayega. Transactional notifications ke liye Ops alert trigger hoga, jabki Marketing notifications ko silently ignore kiya ja sakta hai.
+           
+
         
             j) Idempotency - Duplicate Event Handling - 
 
@@ -547,3 +557,80 @@ Question 2 : Notification ka trigger kaise aayega?
 
                ## IMPORTANT : Kafka DLT topic ka retention short (e.g. 3–7 days) rakh sakte hain, kyunki failed notifications already dead_letters DB table mein store ho jaati hain. DB table mein ye records audit, 
                               compliance aur future investigation ke liye long-term retain kiye jaate hain.
+
+
+              -----------------------------------------------------------------------
+               ## QUESTION: KAFKA HI KYUN USE KIYA? RABBITMQ YA AMAZON SQS KYUN NAHI?
+              -----------------------------------------------------------------------
+
+                1: REPLAY CAPABILITY
+
+                   - Humare case me currently business_events topic ko sirf notification service consume kar rahi hai — apne consumer group (notification-service) ke saath. Lekin future me koi nayi service 
+                     jaise analytics, fraud detection, ya audit — apne alag consumer group ke saath is topic ke purane events bhi consume kar sakti hai. Purane messages kitne samay tak available rahenge, ye
+                     topic ki retention policy par depend karta hai (7 days, 30 days, ya unlimited).
+
+                   - Jab naya consumer group create hota hai, to uske liye topic (business_events) ke kisi bhi partition par koi committed offset nahi hota. Isliye naye consumers ka reading start point 
+                     auto.offset.reset property decide karti hai:
+
+                        → earliest → consumer apne respective topic partition ke retention window ke andar available saare events shuru se consume karega (replay).
+                        → latest (default) → consumer sirf future events consume karega; past events miss ho jaayenge.
+
+                  - Hum existing Consumer Group ka offset manually reset kar sakte hain, jiske liye terminal mein Kafka ki kafka-consumer-groups.sh command use hoti hai. 
+                    Is command ke saath --reset-offsets --to-earliest options specify karte hain, aur --group ke through us Consumer Group ka naam dete hain jiska offset reset karna hai (e.g., notification-service). 
+                    Iske baad us Consumer Group ke consumers apne respective partitions mein earliest available offset se messages dobara consume karna start karenge. Lekin sirf wahi messages replay honge jo Kafka 
+                    mein retention period ke andar available hain, saare historical messages nahi. Offset reset karne se pehle consumers ko stop karna hota hai aur reset ke baad restart karna hota hai.
+
+
+                  - Ye offset-based replay capability RabbitMQ aur Amazon SQS mein nahi milti
+
+                       → RabbitMQ:   Consumer queue se message read karta hai aur successfully process karne ke baad ACK bhejta hai. Jaise hi RabbitMQ ko ACK receive hota hai, woh message ko queue
+                                     se permanently delete kar deta hai. ACK bhejne se pehle message queue mein hi rehta hai.
+
+                       → Amazon SQS: Consumer jab message read karta hai, toh woh immediately delete nahi hota, balki kuch time ke liye invisible ho jaata hai (Visibility Timeout). Is duration mein doosre 
+                                     consumers us message ko read nahi kar sakte. Processing successful hone ke baad consumer DeleteMessage request bhejta hai, jiske baad message permanently delete ho jaata hai.
+
+                 2: CONSUMER GROUPS — ONE TOPIC, MANY INDEPENDENT CONSUMERS
+
+                    → Different consumers same topic se independently consume kar sakte hain by having their own separate consumer group — unlike RabbitMQ, jahan har consumer ke liye hume naya queue banana padta hai.
+
+
+                 3: HIGH THROUGHPUT — Kafka millions/sec, RabbitMQ tens of thousands/sec, SQS FIFO 3000/sec.
+
+                 4: RETENTION -
+ 
+                    Kafka mein ordering partition level par guaranteed hoti hai, poore topic level par nahi, yaani Kafka mein global ordering nahi hoti. Isliye ordering achieve karne ke liye hum same entity se related saare events ko ek hi partition mein map karte hain using partition_key. Jaise, order-101 ke saare events (like ORDER_PLACED, ORDER_SHIPPED, ORDER_DELIVERED)publish karte waqt producer same order_id as partition key use karega. Isse saare events same partition mein sequence ke according store honge aur us partition ko assigned consumer bhi un messages ko same sequence mein consume karega. Agar same entity se related events ke liye consistent partition key provide nahi ki jaati, toh woh different partitions mein distribute ho sakte hain aur unke beech ordering guarantee nahi rahegi. Yahi Kafka mein global ordering ki limitation hai.
+
+                    → Kafka: Message topic mein configured retention period tak stored rehta hai (e.g., 7 days), chahe consumer usse successfully process karke offset commit kar chuka ho.
+                      Kafka ka retention mechanism DLT ke case mein particularly useful hai, kyunki consumer ke message process karne ke baad bhi woh topic mein available rehta hai. Agar future mein kisi message 
+                      ko dobara process karna ho, toh offset reset karke usse replay kar sakte hain.
+       
+                    → RabbitMQ: Messages queue mein tab tak stored rehte hain jab tak consumer unhe acknowledge (ACK) nahi karta. Jaise hi ACK receive hota hai, message queue se permanently delete ho jaata hai.
+
+                    → Amazon SQS: Messages ki retention period configure kar sakte hain, jo maximum 14 days ho sakti hai. Lekin agar consumer message successfully process karne ke baad DeleteMessage request bhej deta hai,
+                             toh message retention period complete hone se pehle hi permanently delete ho jaata hai.
+
+                 5: EVENT ORDERING -
+
+                     → Kafka: Kafka mein ordering partition level par guaranteed hoti hai, poore topic level par nahi, yaani Kafka mein global ordering nahi hoti. Isliye ordering achieve karne ke liye hum same
+                              entity se related saare events ko ek hi partition mein map karte hain using partition_key. Jaise, order-101 ke saare events publish karte waqt producer same order_id as partition 
+                              key use karega. Isse saare events same partition mein sequence ke according store honge aur us partition ko assigned consumer bhi un messages ko same sequence mein consume karega. 
+                              Agar same entity se related events ke liye consistent partition key provide nahi ki jaati, toh woh different partitions mein distribute ho sakte hain aur unke beech ordering guarantee
+                              nahi rahegi. Yahi Kafka mein global ordering ki limitation hai.
+
+                     → RabbitMQ: RabbitMQ mein queue-level ordering maintain hoti hai, lekin agar same queue se multiple consumers messages consume aur process kar rahe hain, toh ordering distort ho sakti hai, 
+                                 kyunki har consumer ki processing speed different ho sakti hai. Isliye, RabbitMQ mein message processing order maintain karne ke liye generally ek queue ke saath single consumer
+                                 use karna chahiye, multiple consumers nahi.
+
+                     → Amazon SQS:
+                          a) Standard Queue: Messages ka strict ordering guarantee nahi hota. Saath hi, same message multiple times deliver ho sakta hai . Agar consumer Visibility Timeout ke andar DeleteMessage 
+                                             request nahi bhejta, toh message dobara visible ho jaata hai aur SQS use kisi doosre consumer ko phir se deliver kar sakta hai. Isse duplicate processing ho sakti hai.
+                                             Isliye, Standard Queue ke consumers ko idempotent banana zaroori hai.
+
+                          b) FIFO Queue: Messages ka ordering maintain hota hai using MessageGroupId. Same MessageGroupId wale messages sequence mein process hote hain, jabki different MessageGroupId wale messages 
+                                         parallel process ho sakte hain. Isliye, agar humein kisi ek entity se jude saare events sequential order mein process karne hain, toh un sabhi events ko same MessageGroupId
+                                         dete hain. SQS FIFO queue MessageGroupId ke basis par messages ko group karti hai aur same group ke messages ko ek time par ek hi consumer ko process karne deti hai. Jabki 
+                                         different MessageGroupId wale messages ko different consumers parallel mein process kar sakte hain. Is tarah same entity ke events ka ordering maintain rehta hai aur different
+                                         entities ke events parallel process ho sakte hain.
+
+
+
