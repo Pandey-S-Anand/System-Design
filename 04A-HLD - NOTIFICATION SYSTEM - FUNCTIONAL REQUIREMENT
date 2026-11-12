@@ -219,15 +219,15 @@ Question 2 : Notification ka trigger kaise aayega?
           }
 
 
-           notification_audit:
-           ┌──────────────────┬─────────┬─────────┬────────┐
-           │ notification_id  │ channel │ status  │ ...    │
-           ├──────────────────┼─────────┼─────────┼────────┤
-           │ evt-123:EMAIL    │ EMAIL   │ SENT    │ ...    │
-           │ evt-123:SMS      │ SMS     │ SENT    │ ...    │
-           │ evt-123:PUSH     │ PUSH    │ FAILED  │ ...    │
-           └──────────────────┴─────────┴─────────┴────────┘
+          notification_audit:
 
+          ┌──────────────────┬─────────┬───────────┬───────────────┬──────────────────┬────────────┬──────────┬─────────┬───────────┐
+          │ notification_id  │ channel │ status    │ attempt_count │ last_attempt_at  │ template_id│ language │ user_id │ provider  │
+          ├──────────────────┼─────────┼───────────┼───────────────┼──────────────────┼────────────┼──────────┼─────────┼───────────┤
+          │ evt-123:EMAIL    │ EMAIL   │ DELIVERED │ 1             │ 10:35:00         │ TMP-101    │ EN       │ U-123   │ SendGrid  │
+          │ evt-123:SMS      │ SMS     │ FAILED    │ 3             │ 11:35:00         │ TMP-102    │ EN       │ U-123   │ Twilio    │
+          │ evt-123:PUSH     │ PUSH    │ ACCEPTED  │ 1             │ 11:40:00         │ TMP-103    │ EN       │ U-123   │ FCM       │
+          └──────────────────┴─────────┴───────────┴───────────────┴──────────────────┴────────────┴──────────┴─────────┴───────────┘
 
       i) Channel-wise Event Publishing & Processing
 
@@ -386,7 +386,7 @@ Question 2 : Notification ka trigger kaise aayega?
                         STEP 1 : Worker Redis me key update karta hai: SET idem:send:evt-123:EMAIL "SENT" EX 86400 (TTL 24 hours).
                                  SET idem:send:evt-123:EMAIL "SENT" EX 86400
 
-                        STEP 2 : notification_audit table me entry insert karta hai — status = "SENT", sent_at, notification_id, channel, template_id, user_id, language, provider = "SendGrid/Twilio/FCM".
+                        STEP 2 : notification_audit table me entry insert karta hai — status = "SENT", last_attempt_at, notification_id, channel, template_id, user_id, language, provider = "SendGrid/Twilio/FCM".
 
                         STEP 3 :  Iske baad worker corresponding topic mai offset commit karta hai aur next message process karne lagta hai.
 
@@ -406,9 +406,11 @@ Question 2 : Notification ka trigger kaise aayega?
                                  IN_PROGRESS status dekhkar message ko skip kar sakta hai.
 
                         STEP 2 : Worker configured retry policy ke according Exponential Backoff + Jitter ke saath aggregator API ko dobara call karta hai. Har retry attempt mein Redis mein IN_PROGRESS status
-                                 ke saath key create hoti hai (SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600). Aggregator se success response milne par Redis mein status ACCEPTED (TTL: 24 hours) set hota hai
-                                 aur notification_audit table mein bhi status ACCEPTED update hota hai. Failure par Redis key delete karke next retry ki jaati hai. Ye process configured maximum retry attempts
-                                 tak continue hota hai, jisme har attempt ke beech backoff duration increase hota hai aur jitter add kiya jata hai.
+                                 ke saath key create hoti hai (SET idem:send:evt-123:EMAIL "IN_PROGRESS" EX 3600). Saath hi har retry attempt par worker notification_audit table me status ko RETRYING update karta hai,
+                                 attempt_count ko increment karta hai aur last_attempt_at ko current timestamp se update karta hai — taaki total kitni baar try hua, last attempt kab hua, aur abhi retry cycle chal raha hai,
+                                 ye sab audit trail me track rahe. Aggregator se success response milne par Redis mein status ACCEPTED (TTL: 24 hours) set hota hai aur notification_audit table mein bhi status ACCEPTED
+                                 update hota hai. Failure par Redis key delete karke next retry ki jaati hai. Ye process configured maximum retry attempts tak continue hota hai, jisme har attempt ke beech backoff
+                                 duration increase hota hai aur jitter add kiya jata hai.
 
                         STEP 3 : Agar configured saare retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker Redis mein status FAILED (TTL: 7 days) set karta hai aur notification_audit table
                                  mein FAILED status aur failure_reason update karta hai. Iske baad notification ko channel ke according respective DLT (Dead letter topic) (email_events_dlt / sms_events_dlt / push_events_dlt) 
@@ -493,30 +495,47 @@ Question 2 : Notification ka trigger kaise aayega?
 
 
             k) DLT Flow 
+                STEP 1 : Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple 
+                         Consumers (workers) hote hain, jo respective DLT ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke
+                         dlt_table (DB) mein store karte hain. Successful DB insertion ke baad respective DLT ke partition ka offset commit kar dete hain aur next failed notification process karna start
+                         karte hain. Ye DLT consumers aggregator ko call NAHI karte. 
 
-               - Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple Consumers (workers) 
-                 hote hain, jo respective DLT ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke dlt_table (DB) mein store karte hain.
-                 Successful DB insertion ke baad respective DLT ke partition ka offset commit kar dete hain aur next failed notification process karna start karte hain. Ye DLT consumers aggregator ko call NAHI karte. 
+                         dead_letters table me INSERT:
 
-                  dead_letters table me INSERT:
+                         ┌──────────────────┬─────────┬──────────────────┬──────────┬──────────────────┬──────────────┬────────────────┐
+                         │ notification_id  │ channel │ failure_reason   │ status   │ dlt_received_at  │ reprocessed_at│ reprocessed_by │
+                         ├──────────────────┼─────────┼──────────────────┼──────────┼──────────────────┼──────────────┼────────────────┤
+                         │ evt-123:EMAIL    │ EMAIL   │ SENDGRID_5XX     │ PENDING  │ 10:35:05         │ NULL         │ NULL           │
+                         └──────────────────┴─────────┴──────────────────┴──────────┴──────────────────┴──────────────┴────────────────┘
 
-                  ┌──────────────────┬─────────┬──────────────────┬──────────┬──────────────────┐
-                  │ notification_id  │ channel │ failure_reason   │ status   │ dlt_received_at  │
-                  ├──────────────────┼─────────┼──────────────────┼──────────┼──────────────────┤
-                  │ evt-123:EMAIL    │ EMAIL   │ SENDGRID_5XX     │ PENDING  │ 10:35:05         │
-                  └──────────────────┴─────────┴──────────────────┴──────────┴──────────────────┘
+                 ## IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective topic partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
+                               Group ka koi doosra consumer us partition ko assign hoga aur wahi event dobara consume karega. Isliye DB insertion idempotent honi chahiye — notification_id par UNIQUE constraint lagana
+                               zaroori hai, taaki duplicate records create na hon.
 
-                 IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective topic partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
-                            Group ka koi doosra consumer us partition ko assign hoga aur wahi event dobara consume karega. Isliye DB insertion idempotent honi chahiye — notification_id par UNIQUE constraint lagana
-                            zaroori hai, taaki duplicate records create na hon.
+               STEP 2 : Jab dead_letters table mein koi naya failed notification insert hota hai, toh Monitoring System (Prometheus + Grafana) periodically PENDING status wale records ka count check karta hai. Agar
+                        pending failures ka count configured threshold se exceed karta hai (SELECT COUNT(*) FROM dead_letters WHERE status = 'PENDING'), toh alert trigger hota hai aur Slack par notification bheja 
+                        jata hai. Ye slack Alert priority ke according configure hoti hai:
 
-             - Jab dead_letters table mein koi naya failed notification insert hota hai, toh Monitoring System (Prometheus + Grafana) periodically PENDING status wale records ka count check karta hai. Agar pending
-               failures ka count configured threshold se exceed karta hai (SELECT COUNT(*) FROM dead_letters WHERE status = 'PENDING'), toh alert trigger hota hai aur Slack par notification bheja jata hai. Ye slack 
-               Alert priority ke according configure hoti hai:
-                → P1 (Immediate): Transactional / OTP failures.
-                → P3 (Daily Digest): Marketing notification failures.
+                         → P1 (Immediate): Transactional / OTP failures.
+                         → P3 (Daily Digest): Marketing notification failures.
 
-               ## IMPORTANT:  Monitoring isliye important hai, kyunki agar DLT aur dlt_table mein failed notifications silently accumulate hoti rahein, toh admin ko production mein notification failures ka timely
-                              pata nahi chalega. Isse OTP delivery failures ke kaaran users login nahi kar paayenge, transaction alerts miss ho sakte hain aur critical failures unnoticed reh sakte hain, jisse 
-                              compliance risks bhi badh sakte hain.
+                ## IMPORTANT:  Monitoring isliye important hai, kyunki DLT aur dlt_table mein failed notifications silently accumulate hone par admin ko production failures ka timely pata nahi chalega, 
+                               jisse OTP delivery issues, missed transaction alerts aur compliance risks ho sakte hain.
+
+               STEP 3 : Ops team Admin UI ke through dead_letters table mein stored failed notifications ko browse aur filter kar sakti hai. Har notification ki details jaise notification_id, failure_reason,
+                        retry_attempts, original_payload aur failed_at dekhi ja sakti hain. In details aur failure reason ke basis par Ops. team decide karti hai ki next action kya lena hai.
                  
+                        CASE 1: TEMPORARY FAILURE (5XX ERROR / CONNECTION TIMEOUT / CONNECTION REFUSED)
+
+                          → Provider temporarily unavailable tha, lekin ab recover ho sakta hai. Isliye Ops Team failed notification ko reprocess karne ka decision leti hai.
+                          → Admin UI par Reprocess click karne par us notification ki existing Redis idempotency key (jiska status FAILED hai) delete ho jaati hai. notification_audit table mein status
+                            REPROCESSING aur attempt_count = 4 update hota hai. Iske baad failed notification channel ke according respective Kafka topic (email_events / sms_events / push_events) mein
+                            dobara publish hoti hai. Saath hi, dead_letters table mein status REPROCESSED, reprocessed_at = NOW() aur reprocessed_by = 'admin-101' update hota hai.                       
+                          → Respective topic ka worker notification ko dobara consume karke previously discussed flow ke according process karta hai. Agar aggregator request accept kar leta hai, toh Redis 
+                            mein status SENT set hota hai aur notification_audit table mein bhi status SENT update hota hai. Actual delivery status baad mein aggregator ke webhook callback ke basis par update 
+                            hota hai. Iske baad worker corresponding Kafka topic ke partition ka offset commit karta hai aur next message process karna start kar deta hai.
+                      
+
+                       CASE 2: PERMANENT FAILURE (INVALID_EMAIL, INVALID_PHONE, TOKEN_INVALID)
+
+                        
