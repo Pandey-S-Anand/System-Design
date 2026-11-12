@@ -226,7 +226,7 @@ Question 2 : Notification ka trigger kaise aayega?
           ├──────────────────┼─────────┼───────────┼───────────────┼──────────────────┼────────────┼──────────┼─────────┼───────────┤
           │ evt-123:EMAIL    │ EMAIL   │ DELIVERED │ 1             │ 10:35:00         │ TMP-101    │ EN       │ U-123   │ SendGrid  │
           │ evt-123:SMS      │ SMS     │ FAILED    │ 3             │ 11:35:00         │ TMP-102    │ EN       │ U-123   │ Twilio    │
-          │ evt-123:PUSH     │ PUSH    │ ACCEPTED  │ 1             │ 11:40:00         │ TMP-103    │ EN       │ U-123   │ FCM       │
+          │ evt-123:PUSH     │ PUSH    │ SENT      │ 1             │ 11:40:00         │ TMP-103    │ EN       │ U-123   │ FCM       │
           └──────────────────┴─────────┴───────────┴───────────────┴──────────────────┴────────────┴──────────┴─────────┴───────────┘
 
       i) Channel-wise Event Publishing & Processing
