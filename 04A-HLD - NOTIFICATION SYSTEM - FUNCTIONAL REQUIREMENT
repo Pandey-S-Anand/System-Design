@@ -12,13 +12,14 @@ Q1. Notification ka trigger kaise aayega?
 
 Q2. Kaunse channels in-scope hain? - Email / SMS / Push / In-app / WhatsApp — sabhi ya subset?
 
-Q3. Ek notification ke liye channel kaise decide hoga — user preference se, notification type se, ya fallback chain se?
+Q3. Ek notification ke liye channel kaise decide hoga ?
 
-     a) User preference se? (user ne bola "sirf email bhejo" ya "email + SMS dono bhejo") — aur user ke paas ise change karne ka option hoga?
-     b) Ya notification sabhi channels ke through jaayega? (user ko har channel se notification milega?)
-     c) Ya fallback chain se? (push fail → SMS → fail → email)
-     d) Ya notification type se decide hoga? (OTP → SMS mandatory, marketing → email only, transaction alert → SMS + Email dono mandatory)
-
+     a) Ya har notification sabhi channels pe broadcast hoga? 
+     b) Kya notification type ke hisaab se certain channels mandatory honge, aur baaki channels user preference pe
+        Jaise:
+        - OTP         → SMS mandatory, email/push user preference pe
+        - Txn alert   → SMS + Email mandatory, push user preference pe
+        - Marketing   → koi mandatory nahi, saare channels user preference pe
 
 Q4. Notification ki priority/criticality kya hai?
      - Kya OTP/transaction alerts ki priority marketing alerts se zyada rakhni hai? (i.e. OTP/transaction jaldi process ho, marketing thodi der se process ho to chalega)
@@ -33,9 +34,9 @@ Q6. Kya user category-wise opt-out kar sakta hai? (marketing band, regulatory ch
 
 
 
-====================================================================================================================
-# RATE LIMITER —  Design Decision (Tumhe propose karna chahiye, poochna nahi, interviewer correct karega if needed
-====================================================================================================================
+============================================================================================================================
+# NOTIFICATION SYSTEM —  Design Decision (Tumhe propose karna chahiye, poochna nahi, interviewer correct karega if needed
+============================================================================================================================
 
 Q7. Kya template changes ka audit trail chahiye? (banking compliance ke liye — kab, kisne, kya change kiya)
 
@@ -48,7 +49,7 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
 ===============================================
 
 -----------------------------------------------------------------------------------------------------
-Question 1 : Kyun synchronous communication galat approach hai notification process karne ke liye?
+## Question : Kyun synchronous communication galat approach hai notification process karne ke liye?
 -----------------------------------------------------------------------------------------------------
 
     Upstream Service
@@ -77,7 +78,7 @@ Question 1 : Kyun synchronous communication galat approach hai notification proc
     
 
 ----------------------------------------------------
-Question 2 : Notification ka trigger kaise aayega?
+Question 1 : Notification ka trigger kaise aayega?
 ----------------------------------------------------
 
 1. Event-Driven (payment success, order placed, KYC approval)
@@ -153,12 +154,12 @@ Question 2 : Notification ka trigger kaise aayega?
           │ tpl-002     │ 501           │ hi       │ "Namaste {name}"  │"Aapka order..    │"Order {id}..."│
           └─────────────┴───────────────┴──────────┴───────────────────┴──────────────────┴───────────────┘
 
-        Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo /  exceptin throw karo).
+        Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo /  exception throw karo).
 
 
     f) Template Fetch and Template Rendering
 
-         — Ab Notification Instance 1 ke paas relevant `alert_setup_id` hai.
+         —  Ab Notification Instance 1 ke paas relevant `alert_setup_id` hai, aur event payload me user_id bhi available hai.
           
          - Iske baad Instance 1, event payload mein aaye `user_id` ke basis par `user_preference` table se user's language preference check karta hai.
 
@@ -576,7 +577,7 @@ Question 2 : Notification ka trigger kaise aayega?
                         → latest (default) → consumer sirf future events consume karega; past events miss ho jaayenge.
 
                   - Hum existing Consumer Group ka offset manually reset kar sakte hain, jiske liye terminal mein Kafka ki kafka-consumer-groups.sh command use hoti hai. 
-                    Is command ke saath --reset-offsets --to-earliest options specify karte hain, aur --group ke through us Consumer Group ka naam dete hain jiska offset reset karna hai (e.g., notification-service). 
+                    Is command ke saath --reset-offsets --to-earliest options specify karte hain, aur --group ke through us Consumer Group ka naam dete hain jiska offset reset karna hai (e.g., notification-service-group). 
                     Iske baad us Consumer Group ke consumers apne respective partitions mein earliest available offset se messages dobara consume karna start karenge. Lekin sirf wahi messages replay honge jo Kafka 
                     mein retention period ke andar available hain, saare historical messages nahi. Offset reset karne se pehle consumers ko stop karna hota hai aur reset ke baad restart karna hota hai.
 
@@ -633,4 +634,25 @@ Question 2 : Notification ka trigger kaise aayega?
                                          entities ke events parallel process ho sakte hain.
 
 
+
+
+---------------------------------------------
+# Question 2 : KONSA CHANNEL IN- SCOPE HAI ?
+---------------------------------------------
+
+Expected answer :
+
+"Email + SMS + Push. WhatsApp abhi out-of-scope (future me add ho sakta hai)."
+
+Har channel ke liye independent Kafka topic aur corresponding DLT maintain karunga, kyunki:
+
+1. Independent Scalability: Har channel ka traffic alag ho sakta hai. Jis channel ka traffic zyada hoga, uske liye more partitions create kar sakte hain aur consumers/workers ka count
+                            bhi increase kar sakte hain. Isse increased parallelism aur throughput achieve kar sakte hain.
+
+2. Independent Consumer Configuration: Har channel ka provider different hai — SendGrid (email), Twilio (SMS), FCM (Push). Har provider ka response time, rate limit, aur failure pattern alag hai.
+                                      Isliye per-channel retry policy (max attempts, backoff multiplier, timeout) independent configure karna zaroori hai.
+
+3. Separation of Concerns: Har channel ka processing logic independent rahega.
+
+4. Independent Failure Handling: Har channel ka separate DLT rahega, jisse har channel ka failure handling independently manage kar sakte hain.
 
