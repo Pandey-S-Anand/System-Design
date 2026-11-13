@@ -12,14 +12,20 @@ Q1. Notification ka trigger kaise aayega?
 
 Q2. Kaunse channels in-scope hain? - Email / SMS / Push / In-app / WhatsApp — sabhi ya subset?
 
-Q3. Ek notification ke liye channel kaise decide hoga ?
 
-     a) Ya har notification sabhi channels pe broadcast hoga? 
-     b) Kya notification type ke hisaab se certain channels mandatory honge, aur baaki channels user preference pe
-        Jaise:
-        - OTP         → SMS mandatory, email/push user preference pe
-        - Txn alert   → SMS + Email mandatory, push user preference pe
-        - Marketing   → koi mandatory nahi, saare channels user preference pe
+Q3. Ek notification ke liye kaunse channels pe bhejna hai — ye kaise decide hoga?
+
+  a) Kya notification type ke hisaab se certain channels mandatory honge, 
+     aur baaki channels user preference pe?
+     Jaise:
+     - OTP         → SMS mandatory, email/push user preference pe
+     - Txn alert   → SMS + Email mandatory, push user preference pe
+     - Marketing   → koi mandatory nahi, saare channels user preference pe
+
+  b) Agar mandatory channel ka contact detail missing ho 
+     (jaise phone number nahi hai but SMS mandatory hai) — 
+     kya karna hai? Skip karo, ya ops alert trigger karo?
+
 
 Q4. Notification ki priority/criticality kya hai?
      - Kya OTP/transaction alerts ki priority marketing alerts se zyada rakhni hai? (i.e. OTP/transaction jaldi process ho, marketing thodi der se process ho to chalega)
@@ -133,15 +139,18 @@ Question 1 : Notification ka trigger kaise aayega?
         store karti hai — SMS, Email, aur Push — matlab ek language = ek row
 
         alert_setup table:
-        ┌────────────────┬───────────┬──────────┬───────────┬───────────────────┐
-        │ alert_setup_id │ transCode │ transType│ channelId │ notification_type │
-        ├────────────────┼───────────┼──────────┼───────────┼───────────────────┤
-        │ 501            │ 1001      │ ORD      │ 2         │ TRANSACTIONAL     │
-        │ 502            │ 1001      │ ORD      │ 2         │ TRANSACTIONAL     │
-        │ 503            │ 2001      │ MKTG     │ 1         │ MARKETING         │
-        └────────────────┴───────────┴──────────┴───────────┴───────────────────┘
 
-           (transCode + transType + channelId) → UNIQUE alert_setup_id
+        ┌────────────────┬──────────┬──────────┬────────────┬───────────────────┬───────┬───────┬───────┐
+        │ alert_setup_id │ transCode│ transType│ channel_id │ notification_type │ sms   │ email │ push  │
+        ├────────────────┼──────────┼──────────┼────────────┼───────────────────┼───────┼───────┼───────┤
+        │ 501            │ 1001     │ DEBIT    │ 1          │ TRANSACTIONAL     │ true  │ true  │ true  │
+        │ 502            │ 1001     │ DEBIT    │ 2          │ TRANSACTIONAL     │ true  │ false │ true  │
+        │ 503            │ 1002     │ PWD-CHG  │ 1          │ SECURITY          │ true  │ true  │ true  │
+        │ 504            │ 1003     │ SHIPPED  │ 1          │ SERVICE           │ false │ true  │ true  │
+        │ 505            │ 2001     │ MKTG     │ 1          │ MARKETING         │ true  │ true  │ true  │
+        └────────────────┴──────────┴──────────┴────────────┴───────────────────┴───────┴───────┴───────┘
+
+         (transCode + transType + channelId) → UNIQUE alert_setup_id
 
         template table:
 
@@ -655,4 +664,11 @@ Har channel ke liye independent Kafka topic aur corresponding DLT maintain karun
 3. Separation of Concerns: Har channel ka processing logic independent rahega.
 
 4. Independent Failure Handling: Har channel ka separate DLT rahega, jisse har channel ka failure handling independently manage kar sakte hain.
+
+
+
+
+
+
+
 
