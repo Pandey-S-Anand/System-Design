@@ -15,16 +15,12 @@ Q2. Kaunse channels in-scope hain? - Email / SMS / Push / In-app / WhatsApp — 
 
 Q3. Ek notification ke liye kaunse channels pe bhejna hai — ye kaise decide hoga?
 
-  a) Kya notification type ke hisaab se certain channels mandatory honge, 
+   - Kya notification type ke hisaab se certain channels mandatory honge, 
      aur baaki channels user preference pe?
      Jaise:
-     - OTP         → SMS mandatory, email/push user preference pe
-     - Txn alert   → SMS + Email mandatory, push user preference pe
-     - Marketing   → koi mandatory nahi, saare channels user preference pe
-
-  b) Agar mandatory channel ka contact detail missing ho 
-     (jaise phone number nahi hai but SMS mandatory hai) — 
-     kya karna hai? Skip karo, ya ops alert trigger karo?
+      TRANSACTION      → SMS + Email mandatory, push user preference pe 
+      AUTHENTICATION   → SMS mandatory, email/push user preference pe
+      MARKETING        → koi mandatory nahi, saare channels user preference pe
 
 
 Q4. Notification ki priority/criticality kya hai?
@@ -35,9 +31,6 @@ Q4. Notification ki priority/criticality kya hai?
 Q5. Delivery guarantee kya chahiye?
      - At-least-once (duplicate possible, but loss nahi) — ya at-most-once (duplicate nahi, but loss possible)?
      - Ya notification type par depend karta hai? (jaise transaction alert → at-least-once, duplicate acceptable; marketing alert → at-most-once, message loss acceptable)
-
-Q6. Kya user category-wise opt-out kar sakta hai? (marketing band, regulatory chalu)
-
 
 
 ============================================================================================================================
