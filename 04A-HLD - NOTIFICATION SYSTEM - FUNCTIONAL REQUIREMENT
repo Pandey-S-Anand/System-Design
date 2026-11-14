@@ -138,19 +138,24 @@ Question 1 : Notification ka trigger kaise aayega?
         mein multiple rows ho sakti hain — agar us alert ke liye multiple languages supported hain. template table ki har row us particular language ke teeno channel templates
         store karti hai — SMS, Email, aur Push — matlab ek language = ek row
 
+        -- ## QUERY - Given: transCode = '1001', transType = 'DEBIT', channelId = '1'
+        SELECT alert_setup_id, notification_type FROM alert_setup WHERE transCode = '1001' AND transType = 'DEBIT' AND channel_id = '1';
+
         alert_setup table:
 
-        ┌────────────────┬──────────┬──────────┬────────────┬───────────────────┬───────┬───────┬───────┐
-        │ alert_setup_id │ transCode│ transType│ channel_id │ notification_type │ sms   │ email │ push  │
-        ├────────────────┼──────────┼──────────┼────────────┼───────────────────┼───────┼───────┼───────┤
-        │ 501            │ 1001     │ DEBIT    │ 1          │ TRANSACTIONAL     │ true  │ true  │ true  │
-        │ 502            │ 1001     │ DEBIT    │ 2          │ TRANSACTIONAL     │ true  │ false │ true  │
-        │ 503            │ 1002     │ PWD-CHG  │ 1          │ SECURITY          │ true  │ true  │ true  │
-        │ 504            │ 1003     │ SHIPPED  │ 1          │ SERVICE           │ false │ true  │ true  │
-        │ 505            │ 2001     │ MKTG     │ 1          │ MARKETING         │ true  │ true  │ true  │
-        └────────────────┴──────────┴──────────┴────────────┴───────────────────┴───────┴───────┴───────┘
+        ┌────────────────┬──────────┬──────────┬────────────┬───────────────────┐
+        │ alert_setup_id │ transCode│ transType│ channel_id │ notification_type │
+        ├────────────────┼──────────┼──────────┼────────────┼───────────────────┤
+        │ 501            │ 1001     │ DEBIT    │ 1          │ TRANSACTIONAL     │
+        │ 502            │ 1001     │ DEBIT    │ 2          │ TRANSACTIONAL     │
+        │ 503            │ 1002     │ PWD-CHG  │ 1          │ SECURITY          │
+        │ 504            │ 1003     │ SHIPPED  │ 1          │ SERVICE           │
+        │ 505            │ 2001     │ MKTG     │ 1          │ MARKETING         │
+        │ 506            │ 2002     │ AUTH     │ 1          │ AUTHENTICATION    │
+        └────────────────┴──────────┴──────────┴────────────┴───────────────────┘
 
          (transCode + transType + channelId) → UNIQUE alert_setup_id
+
 
         template table:
 
@@ -166,19 +171,99 @@ Question 1 : Notification ka trigger kaise aayega?
         Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo /  exception throw karo).
 
 
-    f) Template Fetch and Template Rendering
+    f) Language Decide, Template Fetch & Channel Resolution
 
-         —  Ab Notification Instance 1 ke paas relevant `alert_setup_id` hai, aur event payload me user_id bhi available hai.
-          
-         - Iske baad Instance 1, event payload mein aaye `user_id` ke basis par `user_preference` table se user's language preference check karta hai.
+       - Instance 1 ke paas alert_setup_id aur notification_type available hai, aur event payload me user_id bhi available hai. Ab teen cheezein sequentially decide karni hain:
 
-            Case 1: User ki language preference exist karti hai:
-                 → template table mein us preferred language ke corresponding row ko lookup karta hai aur us row se teeno channels (Email, Push aur SMS) ke templates retrieve kar leta hai.
+             STEP 1: USER KI LANGUAGE PREFERENCE AUR MARKETING ALERTS KE LIYE OPT-OUT STATUS CHECK KARNA
 
-            Case 2: User ki language preference exist nahi karti:
-                 → user_preference table mein stored default language ke basis par template table se corresponding row lookup karta hai aur us row se teeno channels ke templates retrieve kar leta hai. 
-                   Default language hardcoded nahi hoti.
- 
+               → Instance 1, user_account table mein user_id ke basis par lookup karega aur user's preferred language ke saath ye bhi check karega ki user ne marketing alerts 
+                 ke liye unsubscribe kiya hai ya nahi.
+
+                   a) Agar pref_lang exist karti hai → usi pref_lang value ko use karke template table se template fetch hoga
+                   b) Agar pref_lang NULL hai → def_lang (jo user ne select ki hai) value ko use karke template table se template fetch hogi
+
+                 Note: Template table ki ek row teeno channels (SMS, Email, Push) ki template contain karti hai — matlab ek language = ek row.
+
+              → Application code level par alert_setup_id ke corresponding notification_type check karenge.
+
+                a) Agar alert MARKETING hai aur unsubscribe flag true hai → Aage processing ki zaroorat nahi. Event ko log karke drop kar denge.
+                b) Agar unsubscribe flag false hai ya alert NON-MARKETING hai → Processing continue hogi.
+
+
+              user_profile:
+              ┌─────────┬──────────────────────┬────────────┬──────────────────────┬───────────┬──────────┬──────────────────────┐
+              │ user_id │ email                │ phone      │ device_token         │ pref_lang │ def_lang │ marketing_opted_out  │
+              ├─────────┼──────────────────────┼────────────┼──────────────────────┼───────────┼──────────┼──────────────────────┤
+              │ 101     │ anurag@example.com   │ 8528702513 │ fcm_token_abc        │ HI        │ EN       │ true                 │
+              │ 102     │ rahul@example.com    │ 9876543210 │ NULL                 │ NULL      │ EN       │ false                │
+              │ 103     │ amit@example.com     │ 9123456789 │ fcm_token_xyz        │ NULL      │ TA       │ false                │
+              └─────────┴──────────────────────┴────────────┴──────────────────────┴───────────┴──────────┴──────────────────────┘
+
+             ## QUERY - Given: user_id = 101
+             SELECT pref_lang, def_lang AS language_to_use, marketing_opted_out FROM user_account_preference WHERE user_id = 101;
+
+
+            STEP 2: ALERT KIN CHANNELS KE THROUGH BHEJNA HAI?
+
+               → Iske liye Instance 1 sabse pehle category_policy table me notification_type ke basis par lookup karega — taaki pata chal sake ki is notification type ke liye kaunse channels 
+                 mandatory hain (jinki value true set hai) aur kaunse non-mandatory (optional) hain (jinki value false set hai).
+
+                  a) Mandatory channels → inke liye user preference ignore hogi (seedha send hoga)
+                  b) Non-mandatory (optional) channels → inke liye Instance 1 (user_id + notification_type) ke basis par user_channel_preference table me lookup karega aur wahan se user ki preference fetch karega
+
+               → Finally, humein un channels ki list mil jaayegi jin par notification send karni hai
+
+                
+              category_policy:
+
+             ┌───────────────────┬───────────────┬─────────────────┬────────────────┐
+             │ notification_type │ sms_mandatory │ email_mandatory │ push_mandatory │
+             ├───────────────────┼───────────────┼─────────────────┼────────────────┤
+             │ AUTHENTICATION    │ true          │ false           │ false          │
+             │ TRANSACTIONAL     │ true          │ false           │ false          │
+             │ SECURITY          │ true          │ true            │ false          │
+             │ SERVICE           │ false         │ false           │ false          │
+             │ MARKETING         │ false         │ false           │ false          │
+             └───────────────────┴───────────────┴─────────────────┴────────────────┘
+
+             user_channel_preference :
+
+             ┌─────────┬───────────────────┬───────┬───────┬───────┐
+             │ user_id │ notification_type │ sms   │ email │ push  │
+             ├─────────┼───────────────────┼───────┼───────┼───────┤
+             │ 101     │ AUTHENTICATION    │ NULL  │ true  │ false │
+             │ 101     │ TRANSACTIONAL     │ NULL  │ false │ true  │
+             │ 101     │ SECURITY          │ NULL  │ NULL  │ true  │
+             │ 101     │ SERVICE           │ true  │ false │ true  │
+             │ 101     │ MARKETING         │ false │ false │ false │
+             └─────────┴───────────────────┴───────┴───────┴───────┘
+
+             NULL → "ye channel is category me mandatory hai — user preference apply nahi hoti"
+             true / false → "user ne optional channel pe choice di hai"
+
+
+             ## QUERY
+
+             SELECT  cp.notification_type, cp.sms_mandatory, cp.email_mandatory, cp.push_mandatory, ucp.sms   AS user_sms, ucp.email AS user_email, ucp.push  AS user_push FROM category_policy cp
+             LEFT JOIN user_channel_preference ucp
+             ON ucp.notification_type = cp.notification_type AND ucp.user_id = 101
+             WHERE cp.notification_type = 'TRANSACTIONAL';
+               
+              // SMS
+              boolean sendSms = row.sms_mandatory || Boolean.TRUE.equals(row.user_sms);
+              // Email
+              boolean sendEmail = row.email_mandatory || Boolean.TRUE.equals(row.user_email);
+              // Push
+              boolean sendPush = row.push_mandatory || Boolean.TRUE.equals(row.user_push);
+
+
+          - Ab decided language ke basis par template table se alert_setup_id ke corresponding Email, Push aur SMS templates fetch karta hai. Is step tak humein ye bhi determine ho jaata hai ki 
+            is user ke liye particular alert kin channels ke through send karna hai.
+
+          - Templates fetch hone ke baad, sirf applicable channels ke templates ke placeholders ko event payload aur user_id se database mein fetch kiye gaye user data ki help se populate karta hai.
+            Isse applicable channels ke liye final rendered templates ready ho jaate hain.
+
          - Template fetch directly DB se nahi karte — latency badh jaayegi. 
 
            Templates read-heavy hoti hain, write-heavy nahi. Isliye application aur DB ke beech Redis as distributed cache use karte hain — koi local/instance-level cache nahi,
@@ -204,16 +289,14 @@ Question 1 : Notification ka trigger kaise aayega?
           same Redis se read hain, fix bhi same time pe hota hai — inconsistent state nahi banti. Templates rare update hote hain, to agar Redis update kabhi miss bhi ho jaye, to manual invalidate/update bhi 
           possible hai — koi critical issue nahi. Isliye decision: Redis-only rakhte hain — simple, consistent, compliance-safe. 1-3ms local cache savings ke liye compliance risk lena worth nahi.
 
-        - Ab relevant template fetch hone ke baad, template ke placeholders populate hote hain — event payload aur user data se (ye user data user_id se hum database se fetch kar lete hain). 
-          Isse template final ready ho jaata hai.
 
 
-      h) Contact Details Fetching & Channel-Specific Payload Construction
+      g) Contact Details Fetching & Channel-Specific Payload Construction
 
-         - Ab Notification Instance 1 ke paas teeno channels (EMAIL, SMS, PUSH) ke liye rendered template content ready hai. 
+         - Ab Notification Instance 1 ke paas applicable channels ke liye rendered template content ready hai. 
          - Ab 3 naye topics (sms_events, email_events, push_events) Admin/DevOps team manually create karti hai.
          - Instance 1 ab user_profile table se user_id ke basis par DB ya user cache se contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
-         - Contact details milne ke baad Instance 1 teen channel-specific payloads construct karta hai:
+         - Contact details retrieve karne ke baad, Instance 1 har applicable channel ke liye channel-specific payload construct karta hai.
 
            sms_events / email_events / push_events sample payload:
 
@@ -239,22 +322,21 @@ Question 1 : Notification ka trigger kaise aayega?
           │ evt-123:PUSH     │ PUSH    │ SENT      │ 1             │ 11:40:00         │ TMP-103    │ EN       │ U-123   │ FCM       │
           └──────────────────┴─────────┴───────────┴───────────────┴──────────────────┴────────────┴──────────┴─────────┴───────────┘
 
-      i) Channel-wise Event Publishing & Processing
+      h) Channel-wise Event Publishing & Processing
 
-         - Ab Instance 1 producer ki tarah act karta hai aur 3 alag Kafka topics (email_events, sms_events aur push_events) mein respective payloads/events publish karta hai.
+         - Ab Instance 1 producer ki tarah act karta hai aur sirf applicable channels ke respective Kafka topics (email_events, sms_events, push_events) mein channel-specific payloads/events publish karta hai.
 
-         - Har topic ka apna independent Consumer Group hota hai — email-workers, sms-workers, push-workers. Har Consumer Group ke andar multiple consumers ho sakte hain - inhe worker
-           bhi kehte hain, jo respective topic ke partitions se events parallelly consume aur process karte hain. Isse multiple events parallelly process ho sakte hain, jisse overall event 
-           processing throughput improve hota hai.
+         - Har topic ka apna independent Consumer Group hota hai — email-workers, sms-workers, push-workers. Har Consumer Group ke andar multiple consumers (workers) ho sakte hain, jo respective topic ke partitions
+           se events parallelly consume aur process karte hain. Isse overall event processing throughput improve hota hai.
 
-         - In consumers ka high-level responsibility respective payloads ko corresponding external client/aggregator tak forward karna hota hai — API call (sync HTTP POST) ke through 
-           taaki user ko Email, SMS ya Push Notification deliver ho sake.
+         - In consumers ki responsibility respective channel ke payloads ko corresponding external client/aggregator tak forward karna hoti hai via synchronous HTTP POST API call, taaki user ko applicable channels
+           ke through Notification deliver ho sake.
 
-         - Worker aggregator se success acknowledgement ka configured timeout tak synchronously wait karta hai. Agar aggregator se configured timeout ke andar success acknowledgement nahi milta, 
-           toh worker configured retry policy ke according request retry karta hai. Retries ke beech Exponential Backoff + Jitter apply hota hai. Configured maximum retry attempts exhaust hone ke
-           baad bhi request fail hoti hai, toh worker failed event ko DLT (Dead Letter Topic) mein publish kar deta hai.
+         - Worker aggregator se success acknowledgement ka configured timeout tak synchronously wait karta hai. Agar configured timeout ke andar success acknowledgement nahi milta, toh worker configured retry
+           policy ke according request retry karta hai. Retries ke beech Exponential Backoff + Jitter apply hota hai. Configured maximum retry attempts exhaust hone ke baad bhi request fail hoti hai, toh worker
+           failed event ko us channel ke corresponding DLT mein publish kar deta hai (email_events_dlt, sms_events_dlt, push_events_dlt).
 
-         - Aggregator se success acknowledgement (`200 OK` ya `202 Accepted`) milne ke baad worker apne respective Kafka topic ka offset commit karta hai. Iske baad worker next available message 
+         - Aggregator se success acknowledgement (200 OK ya 202 Accepted) receive hone ke baad, worker apne respective Kafka topic ke partition ka offset commit karta hai. Iske baad woh next available message
            consume karke process karta hai.
 
            ## Important Nuance — 202 Accepted ≠ Delivered to User
@@ -371,14 +453,14 @@ Question 1 : Notification ka trigger kaise aayega?
            
 
         
-            j) Idempotency - Duplicate Event Handling - 
+            i) Idempotency - Duplicate Event Handling - 
 
-               - Worker kisi bhi notification ko aggregator (SendGrid/Twilio/FCM) ko bhejne se pehle check karta hai ki wo notification already bhej to nahi diya gaya. Ye check zaroori hai kyunki duplicate 
-                 notification possible hai agar upstream system (Order Service) ne business_events topic me event (evt-123) publish kiya, Kafka broker se ACK bhi mil gaya, but offset commit karne se pehle 
-                 wo crash ho gaya. Agar upstream idempotent nahi hai, to restart hone ke baad wo same event_id (evt-123) ko dubara publish kar sakta hai. Ab business_events topic me evt-123 do baar hai  
-                 (do alag offsets pe). Notification Instance 1 dono ko process karega, aur dono baar 3 channel topics (email_events, sms_events, push_events) me produce karega → worker ko evt-123:EMAIL, 
-                 evt-123:SMS, evt-123:PUSH do baar milenge → bina idempotency ke user ko duplicate email/SMS/push jaayegi. Isliye worker-level idempotency check must hai — ye duplicate scenario
-                 rokta hai jo upstream ki non-idempotency ki wajah se create hota hai.
+               - Worker kisi bhi notification ko aggregator (SendGrid/Twilio/FCM) ko bhejne se pehle check karta hai ki woh notification already send toh nahi ho chuki hai. Ye check zaroori hai kyunki duplicate
+                 notifications possible hain agar upstream system (Order Service) ne business_events topic mein event (evt-123) publish kiya, Kafka broker se ACK bhi mil gaya, lekin offset commit karne se pehle
+                 Order Service crash ho gaya. Agar upstream system idempotent nahi hai, toh restart hone ke baad woh same event_id (evt-123) dobara publish kar sakta hai. Ab business_events topic mein evt-123 do
+                 baar present hoga (do different offsets par). Notification Instance 1 dono events process karega aur applicable channel topics mein corresponding payloads publish karega. Isliye workers ko
+                 evt-123:EMAIL, evt-123:SMS ya evt-123:PUSH jaise events duplicate mil sakte hain. Bina idempotency check ke user ko duplicate notifications send ho sakti hain. Isliye worker-level idempotency check
+                 zaroori hai, taaki upstream system ki non-idempotency ki wajah se generate hone wale duplicate notifications ko roka ja sake.
 
                - Worker topic se message uthata hai (say notification_id = "evt-123:EMAIL"). Aggregator (SendGrid/Twilio/FCM) ko call karne se pehle, Redis me idempotency key check karta hai:
 
@@ -514,7 +596,7 @@ Question 1 : Notification ka trigger kaise aayega?
                          c) Marketing: Skip approach prefer kar sakte hain, kyunki notification loss acceptable hai, jabki duplicate messages se user irritate hokar unsubscribe kar sakta hai.
 
 
-            k) DLT Flow 
+            j) DLT Flow 
 
                 STEP 1 : Har DLT ke liye ek separate Consumer Group configure hota hai (sms-dlt-consumer-group / email-dlt-consumer-group / push-dlt-consumer-group). Us Consumer Group ke andar multiple 
                          Consumers (workers) hote hain, jo respective DLT ke partitions se failed notifications ko parallelly consume karte hain. Ye DLT Consumers failed notifications ko consume karke
