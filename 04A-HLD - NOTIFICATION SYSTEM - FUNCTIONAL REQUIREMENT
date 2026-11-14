@@ -25,7 +25,9 @@ Q3. Ek notification ke liye kaunse channels pe bhejna hai — ye kaise decide ho
 
 Q4. Notification ki priority/criticality kya hai?
      - Kya OTP/transaction alerts ki priority marketing alerts se zyada rakhni hai? (i.e. OTP/transaction jaldi process ho, marketing thodi der se process ho to chalega)
-     - Kya marketing notifications ko per user rate limit karna hai? (spam prevention)
+
+
+Q5. Kya marketing notifications ko per user rate limit karna hai? (spam prevention)
 
 
 Q5. Delivery guarantee kya chahiye?
@@ -757,13 +759,30 @@ Optional channels ke liye user preferences check karenge aur unke basis par fina
 # QUESTION 4 : NOTIFICATION KI PRIORITY / CRITICALITY KYA HAI ?  
 ----------------------------------------------------------------
 
+Expected answer :
+
+"Haan, priority chahiye. OTP aur transaction alerts time-critical hain — 2-3 second me jaane chahiye. Marketing thodi der late ho jaaye to chalega."
+
 Main har channel ke liye separate topic maintain karunga — sms_events, email_events, push_events. Har topic ke partitions us channel ke traffic volume ke basis pe decide karunga.
 Aur partitions ke according us particular consumer group ke liye workers add karunga.  Isse channel-level traffic independently handle aur scale ho jaata hai — agar SMS ka traffic 
 badha, sirf SMS workers badhaunga, email/push unaffected rahenge.
 
-Ab channel ke andar bhi priority chahiye. Toh main har channel ke topics ko priority ke basis pe split karunga e.g sms_high_events, sms_low_events, similarly email aur push ke liye.
-High priority wale notifcation (OTP aur transactional notifications ) apne respective channel ke high topic me jaayenge simialry low priority wale notifacartion (marketing aur service notifications) 
-apne respectice channle ke low wale yopci mai publsish hinge.low topic me.
+Ab humein har channel ke topics ko priority ke basis par split karna hoga, jaise sms_high_events, sms_low_events aur similarly Email aur Push ke liye bhi. High-priority notifications 
+apne respective channel ke High-priority topic mein publish hongi. Similarly, low-priority notifications apne respective channel ke Low-priority topic mein publish hongi.
+
+Per channel:
+  sms_high_events    — OTP, TRANSACTIONAL, SECURITY
+  sms_low_events     — SERVICE, MARKETING
+
+  email_high_events  — OTP, TRANSACTIONAL, SECURITY
+  email_low_events   — SERVICE, MARKETING
+
+  push_high_events   — OTP, TRANSACTIONAL, SECURITY
+  push_low_events    — SERVICE, MARKETING
+
+(+ 6 DLTs — one per topic)
+
+Total: 12 topics
 
 
 ## QUESTION: EK HI CHANNEL KE SABHI PRIORITY NOTIFICATIONS KO EK TOPIC MEIN KYUN NA RAKHEIN AUR US TOPIC MEIN PUBLISH HONE WALE EVENTS KE PAYLOAD MEIN PRIORITY FIELD KYUN NA PASS KAREIN?
@@ -793,3 +812,13 @@ Baaki available consumers idle reh sakte hain, jisse parallelism aur resource ut
 Isliye hum har channel ke liye priority-based separate topics maintain karenge.
 
 
+
+-----------------------------------------------------------------------------------------------
+# QUESTION 5: KYA MARKETING NOTIFICATIONS KO PER-USER RATE LIMIT KARNA HAI? (SPAM PREVENTION)
+-----------------------------------------------------------------------------------------------
+
+"Haan, Marketing notifications ko per-user rate limit bhi karna hoga — spam nahi hona chahiye."
+
+Rate limiting layered responsibility hai.
+- Global per-user rate limiting: API Gateway level par hoti hai, jo sabhi services ke across apply hoti hai.
+- Marketing per-user per-service rate limiting: Marketing Service khud maintain karti hai. As an upstream service, Marketing Service isi rate limit ke according har user ke liye marketing alerts publish karti hai.
