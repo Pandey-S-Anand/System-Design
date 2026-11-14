@@ -30,7 +30,7 @@ Q4. Notification ki priority/criticality kya hai?
 Q5. Kya marketing notifications ko per user rate limit karna hai? (spam prevention)
 
 
-Q5. Delivery guarantee kya chahiye?
+Q6. Delivery guarantee kya chahiye?
      - At-least-once (duplicate possible, but loss nahi) — ya at-most-once (duplicate nahi, but loss possible)?
      - Ya notification type par depend karta hai? (jaise transaction alert → at-least-once, duplicate acceptable; marketing alert → at-most-once, message loss acceptable)
 
