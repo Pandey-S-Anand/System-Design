@@ -212,15 +212,15 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
                 
               category_policy:
 
-             ┌───────────────────┬───────────────┬─────────────────┬────────────────┐
-             │ notification_type │ sms_mandatory │ email_mandatory │ push_mandatory │
-             ├───────────────────┼───────────────┼─────────────────┼────────────────┤
-             │ AUTHENTICATION    │ true          │ false           │ false          │
-             │ TRANSACTIONAL     │ true          │ false           │ false          │
-             │ SECURITY          │ true          │ true            │ false          │
-             │ SERVICE           │ false         │ false           │ false          │
-             │ MARKETING         │ false         │ false           │ false          │
-             └───────────────────┴───────────────┴─────────────────┴────────────────┘
+              ┌───────────────────┬───────────────┬─────────────────┬────────────────┬──────────┐
+              │ notification_type │ sms_mandatory │ email_mandatory │ push_mandatory │ priority │
+              ├───────────────────┼───────────────┼─────────────────┼────────────────┼──────────┤
+              │ AUTHENTICATION    │ true          │ false           │ false          │ HIGH     │
+              │ TRANSACTIONAL     │ true          │ false           │ false          │ HIGH     │
+              │ SECURITY          │ true          │ true            │ false          │ HIGH     │
+              │ SERVICE           │ false         │ false           │ false          │ LOW      │
+              │ MARKETING         │ false         │ false           │ false          │ LOW      │
+              └───────────────────┴───────────────┴─────────────────┴────────────────┴──────────┘
 
              user_channel_preference :
 
