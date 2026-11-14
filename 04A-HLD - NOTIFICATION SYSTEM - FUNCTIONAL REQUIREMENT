@@ -77,7 +77,7 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
     
 
 ----------------------------------------------------
-Question 1 : Notification ka trigger kaise aayega?
+# QUESTION 1 : NOTIFICATION KA TRIGGER KAISE AAYEGA?
 ----------------------------------------------------
 
 1. Event-Driven (payment success, order placed, KYC approval)
@@ -721,7 +721,7 @@ Question 1 : Notification ka trigger kaise aayega?
 
 
 ---------------------------------------------
-# Question 2 : KONSA CHANNEL IN- SCOPE HAI ?
+# QUESTION 2 : KONSA CHANNEL IN- SCOPE HAI ?
 ---------------------------------------------
 
 Expected answer :
@@ -734,16 +734,62 @@ Har channel ke liye independent Kafka topic aur corresponding DLT maintain karun
                             bhi increase kar sakte hain. Isse increased parallelism aur throughput achieve kar sakte hain.
 
 2. Independent Consumer Configuration: Har channel ka provider different hai — SendGrid (email), Twilio (SMS), FCM (Push). Har provider ka response time, rate limit, aur failure pattern alag hai.
-                                      Isliye per-channel retry policy (max attempts, backoff multiplier, timeout) independent configure karna zaroori hai.
+                                       Isliye per-channel retry policy (max attempts, backoff multiplier, timeout) independent configure karna zaroori hai.
 
 3. Separation of Concerns: Har channel ka processing logic independent rahega.
 
-4. Independent Failure Handling: Har channel ka separate DLT rahega, jisse har channel ka failure handling independently manage kar sakte hain.
+
+
+------------------------------------------------------------------------------------------------
+# QUESTION 3 :  EK NOTIFICATION KE LIYE KAUNSE CHANNELS PE BHEJNA HAI — YE KAISE DECIDE HOGA ?
+------------------------------------------------------------------------------------------------
+
+Expected answer :
+
+"Har notification_type ke basis par mandatory channels decide honge, aur baaki optional channels user ki preferences ke according select honge."
+
+Jaise humne flow mein discuss kiya hai, hum alerts ko different categories mein divide karenge. Har category ke liye kuch channels mandatory honge, jabki baaki channels optional honge. 
+Optional channels ke liye user preferences check karenge aur unke basis par final set of applicable channels determine karenge, jin par notification send ki jayegi.
 
 
 
+----------------------------------------------------------------
+# QUESTION 4 : NOTIFICATION KI PRIORITY / CRITICALITY KYA HAI ?  
+----------------------------------------------------------------
+
+Main har channel ke liye separate topic maintain karunga — sms_events, email_events, push_events. Har topic ke partitions us channel ke traffic volume ke basis pe decide karunga.
+Aur partitions ke according us particular consumer group ke liye workers add karunga.  Isse channel-level traffic independently handle aur scale ho jaata hai — agar SMS ka traffic 
+badha, sirf SMS workers badhaunga, email/push unaffected rahenge.
+
+Ab channel ke andar bhi priority chahiye. Toh main har channel ke topics ko priority ke basis pe split karunga e.g sms_high_events, sms_low_events, similarly email aur push ke liye.
+High priority wale notifcation (OTP aur transactional notifications ) apne respective channel ke high topic me jaayenge simialry low priority wale notifacartion (marketing aur service notifications) 
+apne respectice channle ke low wale yopci mai publsish hinge.low topic me.
 
 
+## QUESTION: EK HI CHANNEL KE SABHI PRIORITY NOTIFICATIONS KO EK TOPIC MEIN KYUN NA RAKHEIN AUR US TOPIC MEIN PUBLISH HONE WALE EVENTS KE PAYLOAD MEIN PRIORITY FIELD KYUN NA PASS KAREIN?
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+Agar hum ek channel ke sabhi priority notifications ko ek hi topic mein publish karte hain, toh workers priority ke basis par messages ko independently process nahi kar sakte. Kyunki Kafka har topic ke
+partition mein messages ko sequential offsets ke saath store karta hai aur consumers unhe same sequence mein consume karte hain.
+
+Example: Agar sms_events topic ke Partition 0 mein pehle 20 low-priority marketing messages hain aur uske baad ek high-priority OTP message aata hai, toh worker ke paas do options honge:
+
+1. Low-priority messages process kare: Worker ko pehle un 20 marketing messages ko process karna padega, jisse time-sensitive OTP delay ho sakta hai.
+2. Low-priority messages skip kare: Worker ko un messages ke offsets commit karne padenge, jisse woh messages permanently skip ho jayenge aur baad mein process nahi ho payenge.
+
+Is problem ko Head-of-Line Blocking kehte hain.
+
+Alternative: Priority-based partitioning
+
+Ek aur approach ye ho sakti hai ki hum har channel ke topic mein priority ke basis par partitions dedicate kar dein:
+- Partition 0 and 1 → High-priority notifications
+- Partition 2 and 3 → Low-priority notifications
+
+Lekin is approach ki limitation ye hai ki same consumer group mein ek partition ko ek time par sirf ek consumer hi consume kar sakta hai.
+
+Isliye agar high-priority notifications sirf Partition 0 and 1 par publish ho rahi hain, toh unhe maximum 2 consumers hi parallel mein process kar payenge. 
+Baaki available consumers idle reh sakte hain, jisse parallelism aur resource utilisation limited ho jayegi.
+
+Isliye hum har channel ke liye priority-based separate topics maintain karenge.
 
 
