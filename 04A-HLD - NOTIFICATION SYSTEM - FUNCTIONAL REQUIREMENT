@@ -915,3 +915,19 @@ template_audit
 │ 3        │ tpl-001     │ UPDATE │ admin-101  │ 2026-03-20 09:15:00 │ 3       │ "Hello {name}, your order is confirmed"│ "Hello {name}, your order is confirmed" │ "Dear {name}, thank you"  │ "Dear {name}, thank you"  │ "Order {id} confirmed"       │ "Order {id} has been shipped"│ Push changed     │
 │ 4        │ tpl-001     │ DELETE │ admin-102  │ 2026-04-10 16:45:00 │ 4       │ "Hello {name}, your order is confirmed"│ NULL                                    │ "Dear {name}, thank you"  │ NULL                      │ "Order {id} has been shipped"│ NULL                         │ Deleted          │
 └──────────┴─────────────┴────────┴────────────┴─────────────────────┴─────────┴────────────────────────────────────────┴─────────────────────────────────────────┴───────────────────────────┴───────────────────────────┴──────────────────────────────┴──────────────────────────────┴──────────────────┘
+
+
+
+
+-----------------------------------------------------------------------------------
+Q8. MULTI-LANGUAGE SUPPORT (HINDI, ENGLISH, REGIONAL LANGUAGES) — DESIGN DECISION
+-----------------------------------------------------------------------------------
+
+Har alert ke liye multiple language templates store karenge, taaki user ko uski preferred language me notification mil sake.
+Agar user ne koi preferred language select nahi ki hai, to uski default selected language wala template use karenge.
+
+Template table ki composite key (alert_setup_id, language) hai — ek alert_setup_id ke against multiple language rows ho sakti hain 
+(jaise en, hi, ta). Ek language row me us language ke teeno channels (SMS, Email, Push) ke templates hote hain.
+
+Resolution ke baad, resolved language wali row se teeno channels ke templates fetch hote hain, aur placeholders sirf un channels ke liye 
+populate hote hain jo us alert ke liye applicable hain.
