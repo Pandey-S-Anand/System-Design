@@ -119,8 +119,7 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
       ka part honge aur collectively `business_events` topic ke partitions ko parallelly consume aur process karenge.
   
    
-   d) Manlo Notification Instance 1 event (evt-123) receive karta hai and business_events topic pe offset commit karta hai. Ab Instance 1 ko ye event process karna hai. 
-      Assume: 3 channels (Email + SMS + Push) — user preference bhool jao, sabhi bhejne hain.
+   d) Manlo Notification Instance 1 event (evt-123) receive karta hai. Ab Instance 1 ko ye event process karna hai. 
 
    e) Alert Setup Retrieval
 
@@ -287,7 +286,7 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
 
          - Ab Notification Instance 1 ke paas applicable channels ke liye rendered template content ready hai. 
          - Ab 3 naye topics (sms_events, email_events, push_events) Admin/DevOps team manually create karti hai.
-         - Instance 1 ab user_profile table se user_id ke basis par DB ya user cache se contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
+         - Instance 1 ab user_profile table se user_id ke basis par user ka contact details fetch karta hai — email, phone number, aur device token (FCM/APNs) etc .
          - Contact details retrieve karne ke baad, Instance 1 har applicable channel ke liye channel-specific payload construct karta hai.
 
            sms_events / email_events / push_events sample payload:
@@ -306,17 +305,19 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
 
           notification_audit:
 
-          ┌──────────────────┬─────────┬───────────┬───────────────┬──────────────────┬────────────┬──────────┬─────────┬───────────┐
-          │ notification_id  │ channel │ status    │ attempt_count │ last_attempt_at  │ template_id│ language │ user_id │ provider  │
-          ├──────────────────┼─────────┼───────────┼───────────────┼──────────────────┼────────────┼──────────┼─────────┼───────────┤
-          │ evt-123:EMAIL    │ EMAIL   │ DELIVERED │ 1             │ 10:35:00         │ TMP-101    │ EN       │ U-123   │ SendGrid  │
-          │ evt-123:SMS      │ SMS     │ FAILED    │ 3             │ 11:35:00         │ TMP-102    │ EN       │ U-123   │ Twilio    │
-          │ evt-123:PUSH     │ PUSH    │ SENT      │ 1             │ 11:40:00         │ TMP-103    │ EN       │ U-123   │ FCM       │
-          └──────────────────┴─────────┴───────────┴───────────────┴──────────────────┴────────────┴──────────┴─────────┴───────────┘
+          ┌──────────────────┬─────────┬───────────┬───────────────┬────────────┬──────────┬─────────┬───────────┬────────────────────┬──────────────────┐
+          │ notification_id  │ channel │ status    │ attempt_count │ template_id│ language │ user_id │ provider  │ webhook_received_at│ last_attempt_at  │
+          ├──────────────────┼─────────┼───────────┼───────────────┼────────────┼──────────┼─────────┼───────────┼────────────────────┼──────────────────┤
+          │ evt-123:EMAIL    │ EMAIL   │ DELIVERED │ 1             │ TMP-101    │ EN       │ U-123   │ SendGrid  │ 10:37:12           │ 10:35:00         │
+          │ evt-123:SMS      │ SMS     │ FAILED    │ 3             │ TMP-102    │ EN       │ U-123   │ Twilio    │ NULL               │ 11:35:00         │
+          │ evt-123:PUSH     │ PUSH    │ SENT      │ 1             │ TMP-103    │ EN       │ U-123   │ FCM       │ NULL               │ 11:40:00         │
+          └──────────────────┴─────────┴───────────┴───────────────┴────────────┴──────────┴─────────┴───────────┴────────────────────┴──────────────────┘
 
       h) Channel-wise Event Publishing & Processing
 
-         - Ab Instance 1 producer ki tarah act karta hai aur sirf applicable channels ke respective Kafka topics (email_events, sms_events, push_events) mein channel-specific payloads/events publish karta hai.
+         - Ab Instance 1 producer ki tarah act karta hai aur sirf applicable channels ke respective topics (email_events, sms_events, push_events) mein channel-specific payloads publish karta hai. 
+           Saare applicable channels ke topics pe publish successful hone ke baad hi Instance 1 business_events topic ke respective partition ka offset commit karta hai — ye ensure karta hai ki agar
+           publish ke beech crash ho jaye, to event dobara consume hoga aur worker-level idempotency duplicate handle kar legi (koi notification lost nahi hogi).
 
          - Har topic ka apna independent Consumer Group hota hai — email-workers, sms-workers, push-workers. Har Consumer Group ke andar multiple consumers (workers) ho sakte hain, jo respective topic ke partitions
            se events parallelly consume aur process karte hain. Isse overall event processing throughput improve hota hai.
@@ -430,7 +431,7 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
                        }
 
                       UPDATE notification_audit 
-                      SET status = 'DELIVERED', delivered_at = <timestamp>
+                      SET status = 'DELIVERED', webhook_received_at = <timestamp>
                       WHERE notification_id = 'evt-123:EMAIL'
 
 
@@ -563,22 +564,37 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
                       CASE 3 — VALUE = IN_PROGRESS (WORKER CRASH HO GAYA AUR USKE BAAD KAFKA REBALANCING TRIGGER HO GAYI):
                       -----------------------------------------------------------------------------------------------------
 
-                       SCENARIO A: First attempt me crash 
-                      ------------------------------------
+                       SCENARIO A: First attempt mein crash — Redis aur notification_audit dono update ho chuke the
+                      -----------------------------------------------------------------------------------------------
                          → Redis: IN_PROGRESS
                          → notification_audit : status = IN_PROGRESS, attempt_count = 0
 
-                       SCENARIO B: Retry attempt me crash 
-                      ------------------------------------
+
+                      SCENARIO B: First attempt mein crash — notification_audit mein row insert hone se pehle
+                      -----------------------------------------------------------------------------------------
+                         → Redis: IN_PROGRESS
+                         → notification_audit: No entry exists. / KOI ROW NAHI
+                        
+                         ## NOTE : Code flow  ke hisaab se Aggregator API call hamesha notification_audit mein row insert hone ke baad hi hoti hai. Isliye is case mein confirm hai ki Aggregator API call nahi hui thi.
+
+                         ## ACTION : Worker directly Aggregator API ko call karega aur notification process karne ka normal flow follow karega. Is case mein Aggregator ki Status API call karke delivery 
+                                     status check karne ki zarurat nahi hai, kyunki notification_audit mein entry nahi hone ka matlab hai ki Aggregator API call hui hi nahi thi.
+
+
+                       SCENARIO C: Retry attempt me crash (notifcation_audit tbale mi entry surely exist kar ti hoig jab original attmep hua hoga to)
+                      ------------------------------------------------------------------------------------------------------------------------------------------------
                          → Redis: IN_PROGRESS
                          → notification_audit : status = RETRYING, attempt_count = N (N >= 1)
 
-                       ## IMPORTANT: Dono cases mein previous worker ne Aggregator API call kiya tha ya nahi crash hone se pehle , iski confirmation nahi hai. Ho sakta hai worker API call karne ke baad response aane se 
-                                     pehle crash ho gaya ho, ya 202 Accepted response milne ke baad Redis aur notification_audit table update karne se pehle crash ho gaya ho. Agar API call hui bhi hogi, toh abhi tak 
-                                     delivery confirmation nahi mila hai (i.e. webhook receive nahi hua). Warna notification_audit table mai status update ho chuka hota.
+
+                       ## IMPORTANT: SCENARIO A aur SCENARIO C
+
+                          SCENARIO A and SCENARIO C and cases mein previous worker ne Aggregator API call kiya tha ya nahi crash hone se pehle , iski confirmation nahi hai. Ho sakta hai worker API call karne ke baad 
+                          response aane se pehle crash ho gaya ho, ya 202 Accepted response milne ke baad Redis aur notification_audit table update karne se pehle crash ho gaya ho. Agar API call hui bhi hogi, toh abhi
+                          tak delivery confirmation nahi mila hai (i.e. webhook receive nahi hua). Warna notification_audit table mai status update ho chuka hota.
                        
 
-                      - Recovery flow :
+                      - RECOVERY FLOW (SCENARIO A aur SCENARIO C):
 
                           STEP 1: Worker aggregator (SendGrid/Twilio/FCM) ki Status API call karta hai, notification_id ke saath — jo humne aggregator API call ke time custom metadata / idempotency key 
                                   ke roop me bheja tha.
