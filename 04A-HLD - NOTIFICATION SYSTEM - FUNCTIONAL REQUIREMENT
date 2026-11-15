@@ -6,8 +6,6 @@ Q1. Notification ka trigger kaise aayega?
 
 - Event-driven only? (payment success, order placed, KYC approval)
 - Scheduled? (marketing at 9 AM, appointment reminders)
-- User-initiated? (forgot password OTP, resend verification)
-- Admin broadcast? (service outage alert)
 
 
 Q2. Kaunse channels in-scope hain? - Email / SMS / Push / In-app / WhatsApp — sabhi ya subset?
