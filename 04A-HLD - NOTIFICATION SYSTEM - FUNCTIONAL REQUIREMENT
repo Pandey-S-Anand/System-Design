@@ -36,9 +36,9 @@ Q5. Kya marketing notifications ko per user rate limit karna hai? (spam preventi
 
 Q6. Delivery Guarantee — Design Decision
 
-Q7. Kya template changes ka audit trail chahiye? (banking compliance ke liye — kab, kisne, kya change kiya)
+Q7. Template Audit Trail — Design Decision
 
-Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
+Q8. Multi - language support (Hindi, English, regional languages) — Design Decision
 
 
 
@@ -152,12 +152,14 @@ Q8. Kya multi-language support chahiye? (Hindi, English, regional languages)
 
           Composite Key: (alert_setup_id, language)
 
-          ┌─────────────┬───────────────┬──────────┬───────────────────┬──────────────────┬───────────────┐
-          │ template_id │ alert_setup_id│ language │ sms_template      │ email_template   │ push_template │
-          ├─────────────┼───────────────┼──────────┼───────────────────┼──────────────────┼───────────────┤
-          │ tpl-001     │ 501           │ en       │ "Hi {name}..."    │ "Dear {name}..   │ "Order {id}.."│
-          │ tpl-002     │ 501           │ hi       │ "Namaste {name}"  │"Aapka order..    │"Order {id}..."│
-          └─────────────┴───────────────┴──────────┴───────────────────┴──────────────────┴───────────────┘
+        ┌─────────────┬───────────────┬──────────┬───────────────────┬──────────────────┬──────────────────┬─────────────────────┬─────────┐
+        │ template_id │ alert_setup_id│ language │ sms_template      │ email_template   │ push_template    │ updated_at          │ version │
+        ├─────────────┼───────────────┼──────────┼───────────────────┼──────────────────┼──────────────────┼─────────────────────┼─────────┤
+        │ tpl-001     │ 501           │ en       │ "Hi {name}..."    │ "Dear {name}.."  │ "Order {id}.."   │ 2026-03-20 09:15:00 │ 3       │
+        │ tpl-002     │ 501           │ hi       │ "Namaste {name}"  │ "Aapka order.."  │ "Order {id}..."  │ 2026-02-15 14:30:00 │ 2       │
+        └─────────────┴───────────────┴──────────┴───────────────────┴──────────────────┴──────────────────┴─────────────────────┴─────────┘
+
+        ## NOTE : Version = template kitni baar modify hua hai including initial creation (kisi bhi channel pe) — channel-independent counter.
 
         Agar koi matching alert_setup nahi mila → event ke liye koi notification configured nahi hai → event skip kar do (log karo /  exception throw karo).
 
@@ -851,6 +853,65 @@ Rate limiting layered responsibility hai.
 # QUESTION 6: DELIVERY GUARANTEE — DESIGN DECISION
 ----------------------------------------------------
 
-Hum at-least-once delivery model use karenge — notification loss avoid karna hai. Isse duplicate possible hai agar upstream system se duplciaent event aa jaye to, jise handle karne ke liye worker-level idempotency ]
-implement karenge iske liye worker Redis me notification_id (idemepotency key) based key check karke duplicate nitication ki call  skip kar denge. Exactly-once overkill hai — Kafka transactions + aggregator-level i
-dempotency dono chahiye, cost vs benefit justify nahi karta notification service me.
+Hum at-least-once delivery model use karenge — notification loss avoid karna hai. Duplicate possible hai 3 sources se, har source ka handling alag hai:
+
+(1) Upstream duplicate event — upstream system retry pe same event dobara publish kar sakta hai.
+    Handling: Worker-level idempotency (Redis notification_id key) —  duplicate detect karke aggregator call skip kar denge.
+
+(2) Worker crash — Aggregator call ke baad but offset commit se pehle crash hone par Kafka rebalancing karega, same message redeliver hoga. Crash ke 
+    waqt Redis state ke basis pe 2 cases:
+
+    - Redis = SENT → Naya worker skip karega, duplicate nahi hoga 
+      (clean case, koi ambiguity nahi)
+
+    - Redis = IN_PROGRESS → Ambiguous — worker ko pata nahi aggregator call hui thi ya nahi. Aggregator ki Status API check karenge: 'NOT FOUND' → retry, 'ACCEPTED' → SENT mark karo. 
+      Detail idempotency flow me hai.
+
+(3) Read timeout pe retry — aggregator ne request accept kar li but response slow, worker ne retry kiya → duplicate possible.
+    Handling: Aggregator-level idempotency (jahan available ho — Twilio, SendGrid notification_id key support karte hain). Jahan nahi, wahan duplicate risk accept karenge.
+
+Exactly-once overkill hai — Kafka transactions + aggregator-level idempotency dono chahiye, cost vs benefit justify nahi karta notification service me.
+
+
+
+--------------------------------------------
+Q7. TEMPLATE AUDIT TRAIL — DESIGN DECISION
+--------------------------------------------
+
+- Compliance ke liye har template change ka complete audit trail maintain karenge, jiske liye ek separate template_audit table hogi. Ye table append-only hogi isliye full history preserved.
+
+- Template Service jab bhi template par CREATE / UPDATE / DELETE operation perform karegi, toh template table mein corresponding change aur template_audit table mein audit entry SAME DB TRANSACTION 
+  mein perform hogi. Dono operations saath mein COMMIT ya ROLLBACK honge. Agar audit entry insert fail hoti hai, toh template change bhi rollback ho jayega. Isse koi bhi template change bina audit
+  entry ke possible nahi hoga.
+
+Rules:
+- CREATE: 
+  * old_* = NULL for all channels
+  * new_* = initial values for channels where content provided,  NULL for channels left empty
+  * version = 1 
+
+- UPDATE:
+  * Changed channel → old = previous value, new = current value
+  * Unchanged channel → old = new (same value)
+  * version = template ka last existing version + 1
+  * Same version template table me bhi update hoga
+
+- DELETE:
+  * old_* = current values, new_* = NULL
+  * version = template ka last existing version + 1
+  * Template table se row delete ho jaata hai
+  * Audit row intact rehta hai — full history preserved
+
+
+## NOTE version = counter — is template pe kitne operations hue (CREATE + UPDATE + DELETE sab milake)
+
+template_audit 
+
+┌──────────┬─────────────┬────────┬────────────┬─────────────────────┬─────────┬────────────────────────────────────────┬─────────────────────────────────────────┬───────────────────────────┬───────────────────────────┬──────────────────────────────┬──────────────────────────────┬──────────────────┐
+│audit_id  │ template_id │ action │ changed_by │ changed_at          │ version │ old_sms                                │ new_sms                                 │ old_email                 │ new_email                 │ old_push                     │ new_push                     │ change_summary   │
+├──────────┼─────────────┼────────┼────────────┼─────────────────────┼─────────┼────────────────────────────────────────┼─────────────────────────────────────────┼───────────────────────────┼───────────────────────────┼──────────────────────────────┼──────────────────────────────┼──────────────────┤
+│ 1        │ tpl-001     │ CREATE │ admin-101  │ 2026-01-01 10:00:00 │ 1       │ NULL                                   │ "Hi {name}, order confirmed"            │ NULL                      │ "Dear {name}, thank you"  │ NULL                         │ "Order {id} confirmed"       │ Created          │
+│ 2        │ tpl-001     │ UPDATE │ admin-102  │ 2026-02-15 14:30:00 │ 2       │ "Hi {name}, order confirmed"           │ "Hello {name}, your order is confirmed" │ "Dear {name}, thank you"  │ "Dear {name}, thank you"  │ "Order {id} confirmed"       │ "Order {id} confirmed"       │ SMS changed      │
+│ 3        │ tpl-001     │ UPDATE │ admin-101  │ 2026-03-20 09:15:00 │ 3       │ "Hello {name}, your order is confirmed"│ "Hello {name}, your order is confirmed" │ "Dear {name}, thank you"  │ "Dear {name}, thank you"  │ "Order {id} confirmed"       │ "Order {id} has been shipped"│ Push changed     │
+│ 4        │ tpl-001     │ DELETE │ admin-102  │ 2026-04-10 16:45:00 │ 4       │ "Hello {name}, your order is confirmed"│ NULL                                    │ "Dear {name}, thank you"  │ NULL                      │ "Order {id} has been shipped"│ NULL                         │ Deleted          │
+└──────────┴─────────────┴────────┴────────────┴─────────────────────┴─────────┴────────────────────────────────────────┴─────────────────────────────────────────┴───────────────────────────┴───────────────────────────┴──────────────────────────────┴──────────────────────────────┴──────────────────┘
