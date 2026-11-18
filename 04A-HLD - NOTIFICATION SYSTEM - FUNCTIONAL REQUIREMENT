@@ -1,5 +1,5 @@
 ==================================================================================================
-# NOTIFICATION SYSTEM — FUNCTIONAL REQUIREMENTS (KYA KAREGA SYSTEM?)  - Ye interveiwer se pucho 
+# NOTIFICATION SYSTEM — FUNCTIONAL REQUIREMENTS (KYA KAREGA SYSTEM?)  - YE INTERVIEWER SE PUCHO 
 ==================================================================================================
 
 Q1. Notification ka trigger kaise aayega?
@@ -29,7 +29,7 @@ Q5. Kya marketing notifications ko per user rate limit karna hai? (spam preventi
 
 
 ============================================================================================================================
-# NOTIFICATION SYSTEM —  Design Decision (Tumhe propose karna chahiye, poochna nahi, interviewer correct karega if needed
+# NOTIFICATION SYSTEM —  Design Decision (TUMHE PROPOSE KARNA CHAHIYE, POOCHNA NAHI, INTERVIEWER CORRECT KAREGA IF NEEDED
 ============================================================================================================================
 
 Q6. Delivery Guarantee — Design Decision
@@ -41,7 +41,7 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
 
 
 ===============================================
-# SELF-UNDERSTANDING (Har Question ka Answer)
+# SELF-UNDERSTANDING (HAR QUESTION KA ANSWER)
 ===============================================
 
 -----------------------------------------------------------------------------------------------------
