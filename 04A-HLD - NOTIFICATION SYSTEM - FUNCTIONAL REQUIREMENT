@@ -29,7 +29,7 @@ Q5. Kya marketing notifications ko per user rate limit karna hai? (spam preventi
 
 
 ============================================================================================================================
-# NOTIFICATION SYSTEM —  Design Decision (TUMHE PROPOSE KARNA CHAHIYE, POOCHNA NAHI, INTERVIEWER CORRECT KAREGA IF NEEDED
+# NOTIFICATION SYSTEM —  Design Decision (TUMHE PROPOSE KARNA CHAHIYE, POOCHNA NAHI, INTERVIEWER CORRECT KAREGA IF NEEDED)
 ============================================================================================================================
 
 Q6. Delivery Guarantee — Design Decision
@@ -77,7 +77,8 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
 # QUESTION 1 : NOTIFICATION KA TRIGGER KAISE AAYEGA?
 ----------------------------------------------------
 
-1. Event-Driven (payment success, order placed, KYC approval)
+1. EVENT-DRIVEN (payment success, order placed, KYC approval)
+---------------------------------------------------------------
 
  - Upstream service event publish karti hai, notification service event ko consume karti hai and alert trigger karti hai.
  - Scenario: User ne order place kiya. Order Service ko "Order Placed" notification trigger karni hai.
@@ -744,6 +745,14 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
 
 
 
+2. SCHEDULED-NOTIFICATION 
+---------------------------
+
+
+
+
+
+
 
 ---------------------------------------------
 # QUESTION 2 : KONSA CHANNEL IN- SCOPE HAI ?
@@ -929,3 +938,5 @@ Template table ki composite key (alert_setup_id, language) hai — ek alert_setu
 
 Resolution ke baad, resolved language wali row se teeno channels ke templates fetch hote hain, aur placeholders sirf un channels ke liye 
 populate hote hain jo us alert ke liye applicable hain.
+
+
