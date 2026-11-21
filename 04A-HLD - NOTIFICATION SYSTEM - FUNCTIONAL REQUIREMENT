@@ -624,11 +624,20 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
 
                          dead_letters table me INSERT:
 
-                         ┌──────────────────┬─────────┬──────────────────┬──────────┬──────────────────┬──────────────┬────────────────┐
-                         │ notification_id  │ channel │ failure_reason   │ status   │ dlt_received_at  │ reprocessed_at│ reprocessed_by │
-                         ├──────────────────┼─────────┼──────────────────┼──────────┼──────────────────┼──────────────┼────────────────┤
-                         │ evt-123:EMAIL    │ EMAIL   │ SENDGRID_5XX     │ PENDING  │ 10:35:05         │ NULL         │ NULL           │
-                         └──────────────────┴─────────┴──────────────────┴──────────┴──────────────────┴──────────────┴────────────────┘
+                         ┌──────────────────┬─────────┬──────────────────┬─────────────┬──────────────────────────────────────────────────────────┬──────────┬────────────┬───────────────┬────────────────┐
+                         │ notification_id  │ channel │ failure_reason   │ retry_count │ original_payload                                         │ status   │ received_at│ reprocessed_at│ reprocessed_by │
+                         ├──────────────────┼─────────┼──────────────────┼─────────────┼──────────────────────────────────────────────────────────┼──────────┼────────────┼───────────────┼────────────────┤
+                         │ evt-123:EMAIL    │ EMAIL   │ SENDGRID_5XX     │ 3           │ {                                                        │ PENDING  │ 10:35:05   │ NULL          │ NULL           │
+                         │                  │         │                  │             │   "content": "Your payment of Rs. 500 was successful.",  │          │            │               │                │
+                         │                  │         │                  │             │   "to": "anurag@example.com",                            │          │            │               │                │
+                         │                  │         │                  │             │   "event_id": "evt-123",                                 │          │            │               │                │
+                         │                  │         │                  │             │   "notification_id": "evt-123:EMAIL",                    │          │            │               │                │
+                         │                  │         │                  │             │   "template_id": "tpl-001-email",                        │          │            │               │                │
+                         │                  │         │                  │             │   "user_id": "user_101",                                 │          │            │               │                │
+                         │                  │         │                  │             │   "language": "EN",                                      │          │            │               │                │
+                         │                  │         │                  │             │   "notification_type": "TRANSACTIONAL"                   │          │            │               │                │
+                         │                  │         │                  │             │ }                                                        │          │            │               │                │
+                         └──────────────────┴─────────┴──────────────────┴─────────────┴──────────────────────────────────────────────────────────┴──────────┴────────────┴───────────────┴────────────────┘
 
                  ## IMPORTANT: Agar DLT Consumer dlt_table mein record insert karne ke baad, lekin respective topic partition ka offset commit karne se pehle crash ho jaata hai, toh rebalancing ke baad same Consumer
                                Group ka koi doosra consumer us partition ko assign hoga aur wahi event dobara consume karega. Isliye DB insertion idempotent honi chahiye — notification_id par UNIQUE constraint lagana
@@ -645,7 +654,7 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
                                jisse OTP delivery issues, missed transaction alerts aur compliance risks ho sakte hain.
 
                STEP 3 : Ops team Admin UI ke through dead_letters table mein stored failed notifications ko browse aur filter kar sakti hai. Har notification ki details jaise notification_id, failure_reason,
-                        retry_attempts, original_payload aur failed_at dekhi ja sakti hain. In details aur failure reason ke basis par Ops. team decide karti hai ki next action kya lena hai.
+                        retry_attempts and original_payload dekhi ja sakti hain. In details aur failure reason ke basis par Ops. team decide karti hai ki next action kya lena hai.
                  
                         CASE 1: TEMPORARY FAILURE (5XX ERROR / CONNECTION TIMEOUT / CONNECTION REFUSED)
 
@@ -748,9 +757,136 @@ Q8. Multi - language support (Hindi, English, regional languages) — Design Dec
 2. SCHEDULED-NOTIFICATION 
 ---------------------------
 
+STEP 1: Upstream Service (e.g marketing-service) Notification Service ke /batch/schedule endpoint pe ek HTTP POST request bhejti hai.
+
+     POST /batch/schedule
+     Headers:
+     Idempotency-Key: diwali-2026-v1  // Duplicate batch processing ko prevent karne ke liye
+
+     Body:
+     {
+      "batch_id": "diwali-2026",              // Is batch notification ka unique identifier
+      "segment_ids": ["seg-1", ..., "seg-10"], // Segments ki list — seg-1 se seg-10 tak; har segment ke andar multiple user_ids hongi
+      "transCode": "2001",                     // Template identifier ka part
+      "transType": "MKTG",                     // Template identifier ka part
+      "channelId": "1",                        // Template identifier ka part
+      "scheduled_at": "2026-11-12T09:00:00Z",  // Is date aur time se batch notifications trigger karna shuru karna hai
+      "deadline": "2026-11-12T10:00:00Z"       // Is time tak batch ki saari notifications intended users ko trigger ho jaani chahiye
+     }
+
+     Upstream Service directly user_ids bhejne ke bajaye sirf segment_ids bhejti hai. Notification Service, segment_users table se corresponding
+     user_ids fetch karke recipients identify karti hai. Isse payload size chhota rehta hai aur upstream system par read timeout ka risk kam hota 
+     hai. Ye approach particularly useful hai jab millions of users ko notifications bhejni hon.
 
 
 
+
+
+STEP 2: API Ingress — Validate & Accept (Fast Path)
+
+
+Notification Service (3 instances deployed) — Campaign Controller → CampaignService
+    │
+    ├── 1. Idempotency check
+    │      Redis: SET idem:campaign:diwali-2026-v1 NX EX 86400
+    │      If exists → return existing campaign_id (200)
+    │
+    ├── 2. Validate segment_ids
+    │      a. Each segment_id exists in segment_users? → If no → 400
+    │      b. total_users = SUM(user_count in each segment)
+    │      c. total_users > 0? → If no → 400
+    │      d. deadline > scheduled_at  → If no → 400
+    │
+    ├── 3. Persist campaign in campaign table
+    │
+    └── 4. Return 202 Accepted
+           { campaign_id: "diwali-2026", status: "CREATING" }
+
+
+campaign table 
+
+┌──────────────┬───────────────────┬──────────────────────────────┬────────────┬─────────────────────┐
+│ campaign_id  │ upstream_service  │ payload (JSONB)              │ status     │ created_at          │
+├──────────────┼───────────────────┼──────────────────────────────┼────────────┼─────────────────────┤
+│ diwali-2026  │ marketing-service │ {segment_ids:[...10],        │ READY      │ 2026-11-01 10:30:00 │
+│              │                   │  transCode:"2001",           │            │                     │
+│              │                   │  transType:"MKTG",           │            │                     │
+│              │                   │  channelId:"1",              │            │                     │
+│              │                   │  scheduled_at:"...",         │            │                     │
+│              │                   │  deadline:"..."}             │            │                     │
+├──────────────┼───────────────────┼──────────────────────────────┼────────────┼─────────────────────┤
+│ bank-emi-rem │ banking-service   │ {segment_ids:[seg-emi-1],    │ PROCESSING │ 2026-11-01 10:35:00 │
+│              │                   │  transCode:"3001",           │            │                     │
+│              │                   │  transType:"EMI_REM",        │            │                     │
+│              │                   │  channelId:"1", ...}         │            │                     │
+├──────────────┼───────────────────┼──────────────────────────────┼────────────┼─────────────────────┤
+│ new-year-mktg│ marketing-service │ {segment_ids:[seg-1],        │ CREATING   │ 2026-11-01 10:40:00 │
+│              │                   │  transCode:"2001", ...}      │            │                     │
+├──────────────┼───────────────────┼──────────────────────────────┼────────────┼─────────────────────┤
+│ offer-101    │ banking-service   │ {segment_ids:[seg-x], ...}   │ FAILED     │ 2026-11-01 09:00:00 │
+└──────────────┴───────────────────┴──────────────────────────────┴────────────┴─────────────────────┘
+
+CREATING -> Just submitted, worker not picked yet
+PROCESSING -> Worker has picked this campaign and is currently processing it...i.e it is on the way to storing it int eh schdeudled_notifcation table
+READY -> Successfully processed by the worker and stored it in the schedueld_notification table
+FAILED -> Worker crashed / error.
+
+
+segment_users
+
+┌───────────────────────┬────────────┬──────────────────────────────────┬─────────────────────┬─────────────────────┐
+│ segment_id            │ user_count │ user_ids                         │ created_at          │ updated_at          │
+├───────────────────────┼────────────┼──────────────────────────────────┼─────────────────────┼─────────────────────┤
+│ seg-1                 │ 1000000    │ [101, 102, 103, ..., 1000100]    │ 2026-10-15 08:00:00 │ 2026-11-01 06:00:00 │
+│ seg-2                 │ 1000000    │ [1000101, ..., 2000100]          │ 2026-10-15 08:00:00 │ 2026-11-01 06:00:00 │
+│ seg-3                 │ 1000000    │ [2000101, ..., 3000100]          │ 2026-10-15 08:00:00 │ 2026-11-01 06:00:00 │
+└───────────────────────┴────────────┴──────────────────────────────────┴─────────────────────┴─────────────────────┘
+
+UNIQUE (segment_id)
+
+
+scheduled_notifications
+┌────┬─────────────┬─────────┬───────────┬───────────┬────────────┬──────────────┬─────────┐
+│ id │ campaign_id │ user_id │ transCode │ transType │ channel_id │ scheduled_at │ status  │
+├────┼─────────────┼─────────┼───────────┼───────────┼────────────┼──────────────┼─────────┤
+│ 1  │ bank-diwali │ 101     │ 2001      │ MKTG      │ "1"        │ 2026-11-12   │ PENDING │
+│ 2  │ mktg-diwali │ 101     │ 2001      │ MKTG      │ "2"        │ 2026-11-12   │ PENDING │
+└────┴─────────────┴─────────┴───────────┴───────────┴────────────┴──────────────┴─────────┘
+
+UNIQUE (campaign_id, user_id)
+INDEX (status, scheduled_at)
+
+
+
+
+STEP 3: Background Workers — Per-User Rows Insert
+
+Campaign Inserter Worker (every 30 sec)
+
+STEP 1: Claim campaign
+    Pick 1 campaign where status='CREATING' → mark PROCESSING
+
+STEP 2: Resolve user_ids
+    Parse segment_ids from campaign
+    For each segment_id → get user_ids from segment_users
+    store each of these cumualtive  user_ids in a list 
+
+STEP 3: Bulk INSERT
+    Chunk user_ids into batches of 5000 
+    For each chunk → INSERT INTO scheduled_notifications with status as PENDING 
+    ON CONFLICT (assuming an an exception  there is same user acros different segment_id for the same campaign) DO NOTHING (safety net)
+
+
+STEP 4: Mark READY
+    UPDATE campaigns SET status='READY'
+
+
+
+STEP 3: Background Worker — Publoshs to busisness_veent topic
+
+Ab ek scheduler har kuch ssmaya par chalega and wo check akr ege ki kya current time = scheduelrd_tme ke baraba rhaia ya phir current time scehdueled time se bada haia 
+rto wo Schedueld _notifcatieon table sen eratian amount of entries poick ak regea nd usska status makrk kar dega as QUEUED / Publsished....and publsihs akr 
+busisnes_ent topic mai iske baad ka pura flow as it is sams erahege as event direvrne flow ....
 
 
 
